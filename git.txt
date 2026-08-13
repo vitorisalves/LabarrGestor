@@ -1,0 +1,9 @@
+-VSCODE
+git pull
+git add .
+git commit -m "att"
+git push
+
+AISTUDIO
+execute git pull origin main
+commit pelo aistudio
