@@ -823,10 +823,10 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
                                   {product.name}
                                 </h4>
                                 <div className="space-y-1.5 mb-6">
-                                  <div className={`flex items-center gap-2 px-2 py-1 rounded-lg border ${product.code ? 'bg-indigo-50/50 border-indigo-100/50 text-indigo-700' : 'bg-amber-50/50 border-amber-150 text-amber-700'}`}>
-                                    <div className={`w-1.5 h-1.5 rounded-full ${product.code ? 'bg-indigo-500 animate-pulse' : 'bg-amber-500'}`} />
-                                    <span className="text-[11px] font-bold uppercase">Código:</span>
-                                    <span className="text-[11px] font-mono font-bold uppercase tracking-wider">{product.code || 'Não associado'}</span>
+                                  <div className="flex items-center gap-2 bg-indigo-50/50 px-2 py-1 rounded-lg border border-indigo-100/50">
+                                    <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full" />
+                                    <span className="text-[11px] text-slate-500 font-bold uppercase">Código:</span>
+                                    <span className="text-[11px] text-indigo-700 font-mono font-black uppercase tracking-wider">{product.code || 'Não associado'}</span>
                                   </div>
                                   {product.lastPurchaseDate && (
                                     <div className="flex items-center gap-2 bg-indigo-50/50 px-2 py-1 rounded-lg border border-indigo-100/50">
@@ -983,10 +983,10 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
                           {product.name}
                         </h4>
                         <div className="space-y-1.5 mb-6">
-                          <div className={`flex items-center gap-2 px-2 py-1 rounded-lg border ${product.code ? 'bg-indigo-50/50 border-indigo-100/50 text-indigo-700' : 'bg-amber-50/50 border-amber-150 text-amber-700'}`}>
-                            <div className={`w-1.5 h-1.5 rounded-full ${product.code ? 'bg-indigo-500 animate-pulse' : 'bg-amber-500'}`} />
-                            <span className="text-[11px] font-bold uppercase">Código:</span>
-                            <span className="text-[11px] font-mono font-bold uppercase tracking-wider">{product.code || 'Não associado'}</span>
+                          <div className="flex items-center gap-2 bg-indigo-50/50 px-2 py-1 rounded-lg border border-indigo-100/50">
+                            <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full" />
+                            <span className="text-[11px] text-slate-500 font-bold uppercase">Código:</span>
+                            <span className="text-[11px] text-indigo-700 font-mono font-black uppercase tracking-wider">{product.code || 'Não associado'}</span>
                           </div>
                           {product.lastPurchaseDate && (
                             <div className="flex items-center gap-2 bg-indigo-50/50 px-2 py-1 rounded-lg border border-indigo-100/50">
@@ -1139,10 +1139,10 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
                           {product.name}
                         </h4>
                         <div className="space-y-1.5 mb-6">
-                          <div className={`flex items-center gap-2 px-2 py-1 rounded-lg border ${product.code ? 'bg-indigo-50/50 border-indigo-100/50 text-indigo-700' : 'bg-amber-50/50 border-amber-150 text-amber-700'}`}>
-                            <div className={`w-1.5 h-1.5 rounded-full ${product.code ? 'bg-indigo-500 animate-pulse' : 'bg-amber-500'}`} />
-                            <span className="text-[11px] font-bold uppercase">Código:</span>
-                            <span className="text-[11px] font-mono font-bold uppercase tracking-wider">{product.code || 'Não associado'}</span>
+                          <div className="flex items-center gap-2 bg-indigo-50/50 px-2 py-1 rounded-lg border border-indigo-100/50">
+                            <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full" />
+                            <span className="text-[11px] text-slate-500 font-bold uppercase">Código:</span>
+                            <span className="text-[11px] text-indigo-700 font-mono font-black uppercase tracking-wider">{product.code || 'Não associado'}</span>
                           </div>
                           {product.lastPurchaseDate && (
                             <div className="flex items-center gap-2 bg-indigo-50/50 px-2 py-1 rounded-lg border border-indigo-100/50">

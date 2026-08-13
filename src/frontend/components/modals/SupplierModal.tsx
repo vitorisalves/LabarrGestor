@@ -189,8 +189,8 @@ export const SupplierModal: React.FC<SupplierModalProps> = ({
                       onChange={(e) => setProductCategory(e.target.value)}
                     >
                       <option value="">Categoria</option>
-                      {categories.map(cat => (
-                        <option key={cat} value={cat}>{cat}</option>
+                      {Array.from(new Set(categories)).map((cat, idx) => (
+                        <option key={`${cat}-${idx}`} value={cat}>{cat}</option>
                       ))}
                     </select>
                   </div>
@@ -269,8 +269,8 @@ export const SupplierModal: React.FC<SupplierModalProps> = ({
                                     value={productCategory}
                                     onChange={(e) => setProductCategory(e.target.value)}
                                   >
-                                    {categories.map(cat => (
-                                      <option key={cat} value={cat}>{cat}</option>
+                                    {Array.from(new Set(categories)).map((cat, idx) => (
+                                      <option key={`${cat}-${idx}`} value={cat}>{cat}</option>
                                     ))}
                                   </select>
                                 </div>

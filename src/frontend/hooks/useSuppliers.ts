@@ -88,8 +88,9 @@ export const useSuppliers = (isAuthReady: boolean, isApproved: boolean) => {
       localStorage.setItem('cache_suppliers', safeStringify(suppliersData));
 
       if (categoriesData.length > 0) {
-        setCategories(categoriesData);
-        localStorage.setItem('cache_categories', safeStringify(categoriesData));
+        const uniqueCategories = Array.from(new Set(categoriesData));
+        setCategories(uniqueCategories);
+        localStorage.setItem('cache_categories', safeStringify(uniqueCategories));
       }
 
       localStorage.setItem('suppliers_last_fetch', String(Date.now()));

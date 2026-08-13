@@ -118,8 +118,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       </button>
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      {categories.map(cat => (
-                        <div key={cat} className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 text-slate-600 rounded-lg text-xs font-bold border border-slate-100 group">
+                      {Array.from(new Set(categories)).map((cat, idx) => (
+                        <div key={`${cat}-${idx}`} className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 text-slate-600 rounded-lg text-xs font-bold border border-slate-100 group">
                           {cat}
                           <button
                             onClick={() => setCategoryToDelete(cat)}

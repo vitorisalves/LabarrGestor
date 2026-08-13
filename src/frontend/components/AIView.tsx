@@ -982,7 +982,7 @@ export const AIView: React.FC<AIViewProps> = ({
                             onChange={(e) => updateItemConfig(i, { selectedCategory: e.target.value })}
                           >
                             <option value="">Selecionar Categoria</option>
-                            {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                            {Array.from(new Set(categories)).map((c, idx) => <option key={`${c}-${idx}`} value={c}>{c}</option>)}
                           </select>
                         </td>
 
