@@ -1,0 +1,172 @@
+{
+  "entities": {
+    "Supplier": {
+      "title": "Supplier",
+      "description": "A supplier of products",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "products": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "code": { "type": "string" },
+              "name": { "type": "string" },
+              "price": { "type": "number" },
+              "category": { "type": "string" }
+            }
+          }
+        }
+      },
+      "required": ["id", "name", "phone", "products"]
+    },
+    "Invoice": {
+      "title": "Invoice",
+      "description": "An invoice parsed from XML",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "supplierName": { "type": "string" },
+        "date": { "type": "string" },
+        "products": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "code": { "type": "string" },
+              "name": { "type": "string" }
+            }
+          }
+        }
+      },
+      "required": ["id", "supplierName", "date", "products"]
+    },
+    "SavedList": {
+      "title": "Saved List",
+      "description": "A finalized shopping list",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "date": { "type": "string" },
+        "total": { "type": "number" },
+        "items": { "type": "array" }
+      },
+      "required": ["id", "name", "date", "total", "items"]
+    },
+    "AuthorizedUser": {
+      "title": "Authorized User",
+      "description": "A user with access permissions",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "cpf": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "approved", "denied"] },
+        "requestDate": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "user"] }
+      },
+      "required": ["cpf", "status", "requestDate"]
+    },
+    "Category": {
+      "title": "Category",
+      "description": "Product category",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" }
+      },
+      "required": ["name"]
+    },
+    "DeliveredProduct": {
+      "title": "Delivered Product",
+      "description": "A product that was bought and is pending delivery",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "supplierName": { "type": "string" },
+        "purchaseDate": { "type": "string" },
+        "delivered": { "type": "boolean" },
+        "deliveryDate": { "type": "string" },
+        "quantity": { "type": "number" }
+      },
+      "required": ["id", "name", "supplierName", "purchaseDate", "delivered"]
+    },
+    "Reminder": {
+      "title": "Reminder",
+      "description": "A reminder for a product",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "productName": { "type": "string" },
+        "date": { "type": "string" },
+        "notified": { "type": "boolean" }
+      },
+      "required": ["productName", "date", "notified"]
+    },
+    "PushSubscription": {
+      "title": "Push Subscription",
+      "description": "Browser push subscription data",
+      "type": "object",
+      "properties": {
+        "endpoint": { "type": "string" },
+        "keys": { "type": "object" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["endpoint", "keys"]
+    },
+    "XmlSpending": {
+      "title": "XML Spending",
+      "description": "Monthly spending item parsed from XML",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "supplierName": { "type": "string" },
+        "dhEmi": { "type": "string" },
+        "vTotTrib": { "type": "number" },
+        "fileName": { "type": "string" }
+      },
+      "required": ["id", "supplierName", "dhEmi", "vTotTrib", "fileName"]
+    }
+  },
+  "firestore": {
+    "/suppliers/{supplierId}": {
+      "schema": "Supplier",
+      "description": "Collection of suppliers"
+    },
+    "/xml_spendings/{spendingId}": {
+      "schema": "XmlSpending",
+      "description": "Collection of parsed XML spendings"
+    },
+    "/invoices/{invoiceId}": {
+      "schema": "Invoice",
+      "description": "Collection of parsed XML invoices"
+    },
+    "/lists/{listId}": {
+      "schema": "SavedList",
+      "description": "Collection of saved shopping lists"
+    },
+    "/authorized_users/{cpf}": {
+      "schema": "AuthorizedUser",
+      "description": "Collection of authorized CPFs"
+    },
+    "/categories/{categoryId}": {
+      "schema": "Category",
+      "description": "Collection of product categories"
+    },
+    "/delivered_products/{productId}": {
+      "schema": "DeliveredProduct",
+      "description": "Collection of products pending delivery"
+    },
+    "/reminders/{reminderId}": {
+      "schema": "Reminder",
+      "description": "Collection of product reminders"
+    },
+    "/push_subscriptions/{subId}": {
+      "schema": "PushSubscription",
+      "description": "Collection of browser push subscriptions"
+    }
+  }
+}

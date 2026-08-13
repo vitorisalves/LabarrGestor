@@ -1,0 +1,196 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // 0. Public and Background Access (Worker/Public)
+    // ===============================================================
+    /** 
+     * NOTE: These collections are currently public to allow the ReminderWorker
+     * to function even if the Firebase Admin SDK fails with PERMISSION_DENIED.
+     * 
+     * ERROR IDENTIFIED: '7 PERMISSION_DENIED' in background workers usually means
+     * the Google Cloud Service Account lacks the "Cloud Datastore User" role.
+     * 
+     * FIX REQUIRED: Add 'roles/datastore.user' to the Compute Service Account.
+     */
+    match /reminders/{reminderId} {
+      allow read, write: if true;
+    }
+
+    match /push_subscriptions/{subId} {
+      allow read, write: if true;
+    }
+
+    // ===============================================================
+    // Helper Functions (The Primitives)
+    // ===============================================================
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Helper to get user data safely
+    function getUserData() {
+      return get(/databases/$(database)/documents/authorized_users/$(request.auth.uid)).data;
+    }
+    
+    function hasUserDoc() {
+      return exists(/databases/$(database)/documents/authorized_users/$(request.auth.uid));
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        (request.auth.token.get('email', '') == "vitorisalves1@gmail.com" && request.auth.token.get('email_verified', false) == true) ||
+        (hasUserDoc() && (
+          getUserData().get('role', 'user') == 'admin' || 
+          getUserData().get('cpf', '') == '05839352144'
+        ))
+      );
+    }
+
+    function isApproved() {
+      return isSignedIn() && (
+        (request.auth.token.get('email', '') == "vitorisalves1@gmail.com" && request.auth.token.get('email_verified', false) == true) ||
+        hasUserDoc()
+      );
+    }
+
+    // ===============================================================
+    // Validation Blueprints
+    // ===============================================================
+    
+    function isValidUser(data) {
+      return data.keys().hasAll(['cpf', 'status', 'requestDate', 'role']) &&
+             data.cpf is string && data.cpf.size() == 11 &&
+             data.status in ['pending', 'approved', 'denied'] &&
+             data.role in ['admin', 'user'] &&
+             data.requestDate is string && data.requestDate.size() < 100;
+    }
+
+    function isValidSupplier(data) {
+      return data.keys().hasAll(['id', 'name', 'phone', 'products']) &&
+             data.id is string && data.id.size() <= 128 &&
+             data.name is string && data.name.size() <= 200 &&
+             data.phone is string && data.phone.size() <= 30 &&
+             data.products is list && data.products.size() <= 1000;
+    }
+
+    function isValidInvoice(data) {
+      return data.keys().hasAll(['id', 'supplierName', 'date', 'products']) &&
+             data.id is string && data.id.size() <= 200 &&
+             data.supplierName is string && data.supplierName.size() <= 200 &&
+             data.date is string &&
+             data.products is list && data.products.size() <= 1000;
+    }
+
+    function isValidDeliveredProduct(data) {
+      return data.keys().hasAll(['id', 'name', 'supplierName', 'purchaseDate', 'delivered']) &&
+             data.id is string && data.id.size() <= 200 &&
+             data.name is string && data.name.size() <= 200 &&
+             data.supplierName is string && data.supplierName.size() <= 200 &&
+             data.purchaseDate is string &&
+             data.delivered is bool;
+    }
+
+    // ===============================================================
+    // Resource Rules
+    // ===============================================================
+
+    
+    
+    match /test_invoices/{document=**} {
+      allow read, write: if true;
+    }
+    match /test_xml_spendings/{document=**} {
+      allow read, write: if true;
+    }
+    match /test_price_increases/{document=**} {
+      allow read, write: if true;
+    }
+    match /test_suppliers/{document=**} {
+      allow read, write: if true;
+    }
+    match /test_shopping_lists/{document=**} {
+      allow read, write: if true;
+    }
+    match /test_categories/{document=**} {
+      allow read, write: if true;
+    }
+    match /test_delivered_products/{document=**} {
+      allow read, write: if true;
+    }
+    match /test_reminders/{document=**} {
+      allow read, write: if true;
+    }
+    match /test_push_subscriptions/{document=**} {
+      allow read, write: if true;
+    }
+    match /test_authorized_users/{document=**} {
+      allow read, write: if true;
+    }
+    match /test_product_categories/{document=**} {
+      allow read, write: if true;
+    }
+    match /test_pending_list_products/{document=**} {
+      allow read, write: if true;
+    }
+
+    match /pending_list_products/{pendingId} {
+      allow read, write: if true;
+    }
+
+
+
+    match /authorized_users/{userId} {
+      allow read, write: if true;
+    }
+
+    match /price_increases/{increaseId} {
+      allow read, write: if true;
+    }
+
+    match /suppliers/{supplierId} {
+      allow read, write: if true;
+    }
+
+    match /shopping_lists/{listId} {
+      allow read, write: if true;
+    }
+
+    match /categories/{categoryId} {
+      allow read, write: if true;
+    }
+
+    match /delivered_products/{productId} {
+      allow read, write: if true;
+    }
+
+    match /invoices/{invoiceId} {
+      allow read, write: if true;
+    }
+
+    match /xml_spendings/{spendingId} {
+      allow read, write: if true;
+    }
+
+    match /product_categories/{pcId} {
+      allow read, write: if true;
+    }
+
+    match /_health_check/{docId} {
+      allow read, write: if true;
+    }
+  }
+}

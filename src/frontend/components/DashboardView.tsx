@@ -1,0 +1,2861 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { 
+  TrendingUp, 
+  Calendar as CalendarIcon, 
+  Download,
+  AlertCircle,
+  Clock,
+  RefreshCcw,
+  Upload,
+  FileText,
+  Trash2,
+  XCircle,
+  FileCheck2,
+  HelpCircle,
+  Briefcase,
+  Search,
+  ArrowUpRight,
+  ArrowDownRight,
+  PieChart as PieChartIcon,
+  ShoppingCart,
+  CheckCircle2
+} from 'lucide-react';
+import { 
+  CartesianGrid, 
+  Tooltip as RechartsTooltip, 
+  ResponsiveContainer, 
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  PieChart,
+  Pie,
+  Cell,
+  Legend
+} from 'recharts';
+import { format, isWithinInterval, startOfMonth, endOfMonth, parseISO } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import { domToCanvas } from 'modern-screenshot';
+
+import { db } from '../firebase';
+import { collection, onSnapshot, doc, setDoc, deleteDoc, getDocs } from 'firebase/firestore';
+import { formatCurrency, safeStringify, handleFirestoreError, OperationType } from '../utils';
+import { SavedList } from '../types';
+import { useTestMode } from '../context/TestModeContext';
+import { analyzePrices } from '../utils/priceAnalysis';
+
+const PIE_COLORS = ['#4f46e5', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#06b6d4', '#f97316', '#64748b'];
+
+const parseDateSafe = (dateStr: any): Date | null => {
+  if (!dateStr) return null;
+  if (dateStr instanceof Date) return isNaN(dateStr.getTime()) ? null : dateStr;
+  if (typeof dateStr !== 'string') return null;
+
+  const cleanStr = dateStr.trim();
+  if (!cleanStr) return null;
+
+  const dateOnlyMatch = cleanStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (dateOnlyMatch) {
+    const year = parseInt(dateOnlyMatch[1], 10);
+    const month = parseInt(dateOnlyMatch[2], 10) - 1;
+    const day = parseInt(dateOnlyMatch[3], 10);
+    return new Date(year, month, day, 12, 0, 0);
+  }
+
+  const parsedISO = parseISO(cleanStr);
+  if (!isNaN(parsedISO.getTime())) return parsedISO;
+
+  const fallback = new Date(cleanStr);
+  if (!isNaN(fallback.getTime())) return fallback;
+
+  return null;
+};
+
+interface DashboardViewProps {
+  savedLists?: SavedList[];
+  categories?: any[];
+}
+
+export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, categories: propCategories = [] }) => {
+  const { isTestMode } = useTestMode();
+  const [startDate, setStartDate] = useState<string>(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
+  const [endDate, setEndDate] = useState<string>(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
+  const [isChartReady, setIsChartReady] = useState(false);
+  
+  // Real-time XML Spendings State with localStorage caching
+  const [xmlSpendings, setXmlSpendings] = useState<any[]>(() => {
+    try {
+      const cached = localStorage.getItem('cached_dashboard_xml_spendings');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [isLoading, setIsLoading] = useState(() => {
+    try {
+      const cached = localStorage.getItem('cached_dashboard_xml_spendings');
+      return cached ? false : true;
+    } catch {
+      return true;
+    }
+  });
+  
+  // Upload state
+  const [isUploading, setIsUploading] = useState(false);
+  const [xmlLogs, setXmlLogs] = useState<{ type: 'success' | 'warning' | 'error', text: string }[]>([]);
+  const [batchPreview, setBatchPreview] = useState<any[]>([]);
+  const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
+  const [categories, setCategories] = useState<any[]>([]);
+  const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
+  const [bulkCategory, setBulkCategory] = useState<string>('');
+
+
+  const [selectedChartCategory, setSelectedChartCategory] = useState<string>('');
+  const [pieSearchQuery, setPieSearchQuery] = useState('');
+  const [pieCategoryFilter, setPieCategoryFilter] = useState('ALL');
+  const [showPieProductList, setShowPieProductList] = useState(false);
+
+  const [productMemory, setProductMemory] = useState<Record<string, string>>(() => {
+    try { return JSON.parse(localStorage.getItem('dashboard_product_memory') || '{}'); } catch { return {}; }
+  });
+
+  useEffect(() => {
+    fetch('/api/xml/categories').then(res => res.json()).then(data => setCategories(Array.isArray(data) ? data : data.data || [])).catch(console.error);
+  }, []);
+
+  const normalizedCategories = useMemo(() => {
+    const defaults = ['Embalagens', 'Ingredientes', 'Limpeza', 'Escritório', 'Fornecedor', 'Insumos', 'Loja', 'Fábrica'];
+    const map = new Map<string, { id: string, name: string }>();
+
+    defaults.forEach(d => {
+      map.set(d.toLowerCase(), { id: d, name: d });
+    });
+
+    const listsToMerge = [...propCategories, ...(Array.isArray(categories) ? categories : [])];
+    listsToMerge.forEach((item: any) => {
+      if (!item) return;
+      if (typeof item === 'string') {
+        if (item.trim()) map.set(item.trim().toLowerCase(), { id: item.trim(), name: item.trim() });
+      } else if (typeof item === 'object') {
+        const name = item.name || item.id || '';
+        const id = item.id || item.name || '';
+        if (name) map.set(String(name).trim().toLowerCase(), { id: String(id), name: String(name) });
+      }
+    });
+
+    return Array.from(map.values());
+  }, [categories, propCategories]);
+
+
+  // States of invoices and suppliers for pricing dashboard
+  const [invoices, setInvoices] = useState<any[]>(() => {
+    try {
+      const cached = localStorage.getItem('cached_dashboard_invoices');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [suppliers, setSuppliers] = useState<any[]>(() => {
+    try {
+      const cached = localStorage.getItem('cached_dashboard_suppliers');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [isPriceLoading, setIsPriceLoading] = useState(false);
+  const [priceSearchQuery, setPriceSearchQuery] = useState('');
+  const [priceSearchYear, setPriceSearchYear] = useState<string>('all');
+  const [selectedProduct, setSelectedProduct] = useState<any | null>(null);
+  const [showSearchDropdown, setShowSearchDropdown] = useState(false);
+
+  // Logs do Sistema
+  const [systemLogs, setSystemLogs] = useState<Array<{ id: string; timestamp: string; type: 'category' | 'delete' | 'info'; message: string }>>([]);
+
+  const addSystemLog = (type: 'category' | 'delete' | 'info', message: string) => {
+    const timestamp = new Date().toLocaleTimeString('pt-BR');
+    console.log(`[LOG DO SISTEMA - ${type.toUpperCase()}] ${timestamp}: ${message}`);
+    setSystemLogs(prev => [
+      { id: Date.now().toString() + '_' + Math.random().toString(36).substring(2, 6), timestamp, type, message },
+      ...prev.slice(0, 49) // Limite de 50 registros
+    ]);
+  };
+
+  // Alertas de Aumento de Preço (Nova Tabela Temporária)
+  const [priceIncreases, setPriceIncreases] = useState<any[]>([]);
+  const [isPriceIncreasesLoading, setIsPriceIncreasesLoading] = useState(false);
+  const [selectedIncreases, setSelectedIncreases] = useState<string[]>([]);
+
+  const fetchPriceIncreases = async () => {
+    setIsPriceIncreasesLoading(true);
+    try {
+      const res = await fetch('/api/xml/price-increases');
+      if (res.ok) {
+        const data = await res.json();
+        setPriceIncreases(data);
+      }
+    } catch (err) {
+      console.error("Erro ao buscar aumentos de preço:", err);
+    } finally {
+      setIsPriceIncreasesLoading(false);
+    }
+  };
+
+  const handleDeleteIncrease = async (id: string) => {
+    try {
+      const res = await fetch('/api/xml/price-increases/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: [id] })
+      });
+      if (res.ok) {
+        setPriceIncreases(prev => prev.filter(item => item.id !== id));
+        setSelectedIncreases(prev => prev.filter(item => item !== id));
+      }
+    } catch (err) {
+      console.error("Erro ao deletar aumento de preço:", err);
+    }
+  };
+
+  const handleBulkDeleteIncreases = async () => {
+    if (selectedIncreases.length === 0) return;
+    try {
+      const res = await fetch('/api/xml/price-increases/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: selectedIncreases })
+      });
+      if (res.ok) {
+        setPriceIncreases(prev => prev.filter(item => !selectedIncreases.includes(item.id)));
+        setSelectedIncreases([]);
+      }
+    } catch (err) {
+      console.error("Erro ao deletar aumentos em lote:", err);
+    }
+  };
+
+  const handleToggleSelectAll = () => {
+    if (selectedIncreases.length === priceIncreases.length) {
+      setSelectedIncreases([]);
+    } else {
+      setSelectedIncreases(priceIncreases.map(item => item.id));
+    }
+  };
+
+  const handleToggleSelect = (id: string) => {
+    setSelectedIncreases(prev => 
+      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+    );
+  };
+
+  // --- PRODUTOS PENDENTES DE LISTAS DE COMPRAS ---
+  const [pendingListProducts, setPendingListProducts] = useState<any[]>([]);
+  const [isPendingLoading, setIsPendingLoading] = useState(false);
+  const [selectedPendingIds, setSelectedPendingIds] = useState<string[]>([]);
+  const [bulkPendingCategory, setBulkPendingCategory] = useState('');
+  const [bulkPendingPrice, setBulkPendingPrice] = useState('');
+  const [deletePendingConfirmModal, setDeletePendingConfirmModal] = useState<{
+    open: boolean;
+    idsToDelete: string[];
+    isBulk: boolean;
+  }>({ open: false, idsToDelete: [], isBulk: false });
+
+  const fetchPendingListProducts = async (force = false) => {
+    setIsPendingLoading(true);
+    try {
+      const url = force ? '/api/xml/pending-list-products?fresh=true' : '/api/xml/pending-list-products';
+      const res = await fetch(url, force ? { headers: { 'Cache-Control': 'no-cache' } } : undefined);
+      if (res.ok) {
+        const data = await res.json();
+        setPendingListProducts(data || []);
+      }
+    } catch (err) {
+      console.error("Erro ao buscar produtos pendentes das listas:", err);
+    } finally {
+      setIsPendingLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchPendingListProducts();
+  }, []);
+
+  const handlePendingPriceChange = async (id: string, newPrice: number) => {
+    const updated = pendingListProducts.map(p => p.id === id ? { ...p, price: newPrice } : p);
+    setPendingListProducts(updated);
+    const target = updated.find(p => p.id === id);
+    if (target) {
+      await fetch('/api/xml/pending-list-products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ item: target })
+      }).catch(console.error);
+    }
+  };
+
+  const handlePendingCategoryChange = async (id: string, newCategory: string) => {
+    const updated = pendingListProducts.map(p => p.id === id ? { ...p, category: newCategory } : p);
+    setPendingListProducts(updated);
+    const target = updated.find(p => p.id === id);
+    if (target) {
+      await fetch('/api/xml/pending-list-products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ item: target })
+      }).catch(console.error);
+    }
+  };
+
+  const handleToggleSelectAllPending = () => {
+    if (selectedPendingIds.length === pendingListProducts.length) {
+      setSelectedPendingIds([]);
+    } else {
+      setSelectedPendingIds(pendingListProducts.map(p => p.id));
+    }
+  };
+
+  const handleToggleSelectPending = (id: string) => {
+    setSelectedPendingIds(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  };
+
+  const handleApplyBulkPendingCategory = async () => {
+    if (!bulkPendingCategory || selectedPendingIds.length === 0) return;
+    const updatedItems: any[] = [];
+    const nextList = pendingListProducts.map(p => {
+      if (selectedPendingIds.includes(p.id)) {
+        const item = { ...p, category: bulkPendingCategory };
+        updatedItems.push(item);
+        return item;
+      }
+      return p;
+    });
+    setPendingListProducts(nextList);
+    setBulkPendingCategory('');
+    await fetch('/api/xml/pending-list-products', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items: updatedItems })
+    }).catch(console.error);
+  };
+
+  const handleApplyBulkPendingPrice = async () => {
+    const priceNum = parseFloat(bulkPendingPrice);
+    if (isNaN(priceNum) || priceNum < 0 || selectedPendingIds.length === 0) return;
+    const updatedItems: any[] = [];
+    const nextList = pendingListProducts.map(p => {
+      if (selectedPendingIds.includes(p.id)) {
+        const item = { ...p, price: priceNum };
+        updatedItems.push(item);
+        return item;
+      }
+      return p;
+    });
+    setPendingListProducts(nextList);
+    setBulkPendingPrice('');
+    await fetch('/api/xml/pending-list-products', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items: updatedItems })
+    }).catch(console.error);
+  };
+
+  const handlePromptDeletePending = (id: string) => {
+    setDeletePendingConfirmModal({
+      open: true,
+      idsToDelete: [id],
+      isBulk: false
+    });
+  };
+
+  const handlePromptBulkDeletePending = () => {
+    if (selectedPendingIds.length === 0) return;
+    setDeletePendingConfirmModal({
+      open: true,
+      idsToDelete: selectedPendingIds,
+      isBulk: true
+    });
+  };
+
+  const executeDeletePending = async () => {
+    const ids = deletePendingConfirmModal.idsToDelete;
+    if (ids.length === 0) return;
+
+    try {
+      const res = await fetch('/api/xml/pending-list-products/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids })
+      });
+      if (res.ok) {
+        setPendingListProducts(prev => prev.filter(p => !ids.includes(p.id)));
+        setSelectedPendingIds(prev => prev.filter(id => !ids.includes(id)));
+        addSystemLog('delete', `${ids.length} produto(s) pendente(s) removido(s) da lista do dashboard.`);
+      }
+    } catch (err) {
+      console.error("Erro ao deletar produto(s) pendente(s):", err);
+    } finally {
+      setDeletePendingConfirmModal({ open: false, idsToDelete: [], isBulk: false });
+    }
+  };
+
+  const handleConfirmPendingProducts = async () => {
+    const itemsToConfirm = selectedPendingIds.length > 0
+      ? pendingListProducts.filter(p => selectedPendingIds.includes(p.id))
+      : pendingListProducts;
+
+    if (itemsToConfirm.length === 0) return;
+
+    try {
+      setIsUploading(true);
+      const res = await fetch('/api/xml/pending-list-products/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items: itemsToConfirm })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const confirmedIds = itemsToConfirm.map(p => p.id);
+        setPendingListProducts(prev => prev.filter(p => !confirmedIds.includes(p.id)));
+        setSelectedPendingIds(prev => prev.filter(id => !confirmedIds.includes(id)));
+
+        addSystemLog('info', `${data.confirmedCount || itemsToConfirm.length} produto(s) de listas de compras confirmado(s) e adicionado(s) aos gráficos.`);
+
+        // Refresh all charts & invoices instantly
+        await fetchPricingData(true);
+        await fetchSpendings(true);
+        await fetchPendingListProducts(true);
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        alert(`Erro ao confirmar produtos: ${errData.message || errData.error || res.statusText}`);
+      }
+    } catch (err: any) {
+      console.error("Erro ao confirmar produtos das listas:", err);
+      alert("Falha na comunicação ao confirmar os produtos.");
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const fetchPricingData = async (force = false) => {
+    const now = Date.now();
+
+    setIsPriceLoading(true);
+    try {
+      const urlInvoices = force ? '/api/xml/invoices?fresh=true' : '/api/xml/invoices';
+      const urlSuppliers = force ? '/api/xml/suppliers?fresh=true' : '/api/xml/suppliers';
+      const fetchOpts = force ? { headers: { 'Cache-Control': 'no-cache' } } : undefined;
+
+      // Fetch invoices from backend cache
+      const invoicesRes = await fetch(urlInvoices, fetchOpts);
+      let invoicesData: any[] = [];
+      if (invoicesRes.ok) {
+        invoicesData = await invoicesRes.json();
+      }
+
+      // Fetch suppliers from backend cache with client-side fallback
+      let suppliersData: any[] = [];
+      try {
+        const suppliersRes = await fetch(urlSuppliers, fetchOpts);
+        if (suppliersRes.ok) {
+          suppliersData = await suppliersRes.json();
+        } else {
+          const errData = await suppliersRes.json().catch(() => ({}));
+          throw new Error(`Backend suppliers failed: ${errData.message || errData.error || suppliersRes.statusText}`);
+        }
+      } catch (backendErr) {
+        console.warn("Falling back to client-side Firestore for suppliers:", backendErr);
+        const suppSnap = await getDocs(collection(db, 'suppliers'));
+        suppSnap.forEach(doc => {
+          suppliersData.push({ id: doc.id, ...doc.data() });
+        });
+      }
+
+      setInvoices(invoicesData);
+      setSuppliers(suppliersData);
+      localStorage.setItem('cached_dashboard_invoices', JSON.stringify(invoicesData));
+      localStorage.setItem('cached_dashboard_suppliers', JSON.stringify(suppliersData));
+      localStorage.setItem('dashboard_last_fetch', String(now));
+    } catch (err) {
+      console.error("Erro ao carregar dados de preços:", err);
+    } finally {
+      setIsPriceLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchPricingData();
+    fetchPriceIncreases();
+  }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsChartReady(true);
+    }, 150);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Fetch xml_spendings with caching
+  const fetchSpendings = async (force = false) => {
+    const cached = localStorage.getItem('cached_dashboard_xml_spendings');
+    const now = Date.now();
+
+    setIsLoading(true);
+    try {
+      let items: any[] = [];
+      try {
+        const url = force ? '/api/xml/spendings?fresh=true' : '/api/xml/spendings';
+        const fetchOpts = force ? { headers: { 'Cache-Control': 'no-cache' } } : undefined;
+        const spendingsRes = await fetch(url, fetchOpts);
+        if (spendingsRes.ok) {
+          items = await spendingsRes.json();
+        } else {
+          const errData = await spendingsRes.json().catch(() => ({}));
+          throw new Error(`Backend spendings failed: ${errData.message || errData.error || spendingsRes.statusText}`);
+        }
+      } catch (backendErr) {
+        console.warn("Falling back to client-side Firestore for spendings:", backendErr);
+        const q = collection(db, 'xml_spendings');
+        const snapshot = await getDocs(q);
+        snapshot.forEach((doc) => {
+          items.push({ id: doc.id, ...doc.data() });
+        });
+      }
+
+      setXmlSpendings(items);
+      localStorage.setItem('cached_dashboard_xml_spendings', JSON.stringify(items));
+      localStorage.setItem('xml_spendings_last_fetch', String(now));
+    } catch (err: any) {
+      console.error("Erro ao carregar dados XML de gastos:", err);
+      if (cached) {
+        try {
+          setXmlSpendings(JSON.parse(cached));
+        } catch (e) {
+          console.error(e);
+        }
+      }
+      handleFirestoreError(err, OperationType.GET, 'xml_spendings');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchSpendings();
+  }, []);
+
+  const expenseChartRef = useRef<HTMLDivElement>(null);
+
+  // Parse XML Function
+  const parseNFeXml = (xmlText: string, fileName: string) => {
+    const parser = new DOMParser();
+    const xmlDoc = parser.parseFromString(xmlText, "text/xml");
+
+    const parserError = xmlDoc.getElementsByTagName("parsererror");
+    if (parserError.length > 0) {
+      throw new Error(`Erro ao parsing do XML de ${fileName}`);
+    }
+
+    // Identificação da Nota (nfeKey) para prevenção de duplicidade
+    const infNFeEl = xmlDoc.getElementsByTagName("infNFe")[0];
+    let nfeKey = infNFeEl?.getAttribute("Id") || "";
+    if (nfeKey.startsWith("NFe")) {
+      nfeKey = nfeKey.substring(3);
+    }
+    if (!nfeKey) {
+      nfeKey = xmlDoc.getElementsByTagName("chNFe")[0]?.textContent || "";
+    }
+    if (!nfeKey) {
+      const cNPJ = xmlDoc.getElementsByTagName("CNPJ")[0]?.textContent || "";
+      const nNF = xmlDoc.getElementsByTagName("nNF")[0]?.textContent || "";
+      nfeKey = cNPJ && nNF ? `${cNPJ}_${nNF}` : `${fileName}_${Date.now()}`;
+    }
+
+    // Identificar Data de Emissão (dhEmi)
+    const ideEl = xmlDoc.getElementsByTagName("ide")[0];
+    const dhEmiRaw = ideEl?.getElementsByTagName("dhEmi")[0]?.textContent || 
+                     xmlDoc.getElementsByTagName("dhEmi")[0]?.textContent || 
+                     ideEl?.getElementsByTagName("dEmi")[0]?.textContent || 
+                     xmlDoc.getElementsByTagName("dEmi")[0]?.textContent || 
+                     new Date().toISOString();
+
+    let dhEmi = dhEmiRaw;
+    if (dhEmiRaw.includes("T")) {
+      dhEmi = dhEmiRaw.split("T")[0];
+    }
+
+    // Identificar Valor Total da Nota, preferindo vNF (Valor da Nota) para o Gasto Mensal Real
+    const vTotTribText = xmlDoc.getElementsByTagName("vNF")[0]?.textContent || 
+                         xmlDoc.getElementsByTagName("vTotTrib")[0]?.textContent || 
+                         "0";
+    const vTotTrib = parseFloat(vTotTribText.replace(",", ".")) || 0;
+
+    const emitEl = xmlDoc.getElementsByTagName("emit")[0];
+    const supplierName = emitEl?.getElementsByTagName("xNome")[0]?.textContent || 
+                         xmlDoc.getElementsByTagName("xNome")[0]?.textContent || 
+                         "FORNECEDOR XML";
+
+
+    const products: any[] = [];
+    const detEls = xmlDoc.getElementsByTagName("det");
+    for (let i = 0; i < detEls.length; i++) {
+      const prodEl = detEls[i].getElementsByTagName("prod")[0];
+      if (prodEl) {
+        const code = prodEl.getElementsByTagName("cProd")[0]?.textContent || "N/A";
+        const name = prodEl.getElementsByTagName("xProd")[0]?.textContent || "N/A";
+        
+        const vUnComStr = prodEl.getElementsByTagName("vUnCom")[0]?.textContent || prodEl.getElementsByTagName("vUnTrib")[0]?.textContent || "0";
+        const vUnCom = parseFloat(vUnComStr.replace(',', '.')) || 0;
+        
+        const qTribStr = prodEl.getElementsByTagName("qTrib")[0]?.textContent || prodEl.getElementsByTagName("qCom")[0]?.textContent || "1";
+        const qTrib = parseFloat(qTribStr.replace(',', '.')) || 1;
+        
+        products.push({
+          code,
+          name,
+          vUnCom,
+          quantity: qTrib,
+          categoryId: productMemory[code] || '',
+          deleted: false
+        });
+      }
+    }
+
+    return { nfeKey, dhEmi, vTotTrib, supplierName, products };
+
+  };
+
+  const processXmlFiles = async (files: File[]) => {
+    setIsUploading(true);
+    const previews: any[] = [];
+    const logs: { type: 'success' | 'warning' | 'error', text: string }[] = [];
+
+    // Detecção de duplicados localmente antes da pré-visualização consolidada
+    const tempKeys = new Set<string>();
+
+    for (const file of files) {
+      try {
+        if (!file.name.toLowerCase().endsWith('.xml')) {
+          logs.push({ type: 'error', text: `Arquivo "${file.name}" inválido. Não é um arquivo XML.` });
+          continue;
+        }
+
+        const text = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (e) => resolve(e.target?.result as string);
+          reader.onerror = () => reject(new Error("Falha ao ler arquivo"));
+          reader.readAsText(file);
+        });
+
+        const parsed = parseNFeXml(text, file.name);
+
+        // Prevenção de duplicidade na própria seleção local
+        if (tempKeys.has(parsed.nfeKey)) {
+          logs.push({ type: 'warning', text: `Arquivo duplicado ignorado na seleção: ${file.name}` });
+          continue;
+        }
+        tempKeys.add(parsed.nfeKey);
+
+        const alreadyExists = xmlSpendings.some(item => item.id === parsed.nfeKey);
+
+        previews.push({
+          ...parsed,
+          xmlText: text,
+          fileName: file.name,
+          alreadyExists
+        });
+
+      } catch (err: any) {
+        logs.push({ type: 'error', text: `Erro em ${file.name}: ${err.message}` });
+      }
+    }
+
+    if (logs.length > 0) {
+      setXmlLogs(prev => [...logs, ...prev]);
+    }
+
+    if (previews.length > 0) {
+      setBatchPreview(previews);
+      setIsPreviewModalOpen(true);
+    }
+    setIsUploading(false);
+  };
+
+
+  const handleProductCategoryChange = (invoiceIdx: number, productIdx: number, categoryId: string) => {
+    setBatchPreview(prev => {
+      const next = [...prev];
+      next[invoiceIdx].products[productIdx].categoryId = categoryId;
+      return next;
+    });
+    
+    // Update memory
+    const prodCode = batchPreview[invoiceIdx].products[productIdx].code;
+    setProductMemory(prev => {
+      const nm = { ...prev, [prodCode]: categoryId };
+      localStorage.setItem('dashboard_product_memory', JSON.stringify(nm));
+      return nm;
+    });
+  };
+
+  const handleToggleProductDeletion = (invoiceIdx: number, productIdx: number) => {
+    setBatchPreview(prev => {
+      const next = [...prev];
+      next[invoiceIdx].products[productIdx].deleted = !next[invoiceIdx].products[productIdx].deleted;
+      return next;
+    });
+  };
+
+  const handleBulkCategorize = () => {
+    if (!bulkCategory) return;
+    setBatchPreview(prev => {
+      const next = [...prev];
+      selectedProducts.forEach(id => {
+        const [iIdx, pIdx] = id.split('-').map(Number);
+        next[iIdx].products[pIdx].categoryId = bulkCategory;
+        
+        const prodCode = next[iIdx].products[pIdx].code;
+        setProductMemory(pm => {
+          const nm = { ...pm, [prodCode]: bulkCategory };
+          localStorage.setItem('dashboard_product_memory', JSON.stringify(nm));
+          return nm;
+        });
+      });
+      return next;
+    });
+    setSelectedProducts([]);
+    setBulkCategory('');
+  };
+
+  const handleBulkDelete = () => {
+    setBatchPreview(prev => {
+      const next = [...prev];
+      selectedProducts.forEach(id => {
+        const [iIdx, pIdx] = id.split('-').map(Number);
+        next[iIdx].products[pIdx].deleted = true;
+      });
+      return next;
+    });
+    setSelectedProducts([]);
+  };
+
+  const toggleProductSelection = (id: string) => {
+    setSelectedProducts(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
+
+  const toggleAllProducts = () => {
+    const allIds: string[] = [];
+    batchPreview.forEach((inv, iIdx) => inv.products.forEach((_, pIdx) => allIds.push(`${iIdx}-${pIdx}`)));
+    if (selectedProducts.length === allIds.length) {
+      setSelectedProducts([]);
+    } else {
+      setSelectedProducts(allIds);
+    }
+  };
+
+  
+  const handleConfirmBatchImport = async () => {
+    if (batchPreview.length === 0) return;
+    setIsUploading(true);
+    const logs: { type: 'success' | 'warning' | 'error', text: string }[] = [];
+    let earliestDate: Date | null = null;
+    let latestDate: Date | null = null;
+
+    try {
+      const payloads = batchPreview.map(p => {
+        const overrides: Record<string, { categoryId?: string, deleted?: boolean }> = {};
+        p.products.forEach((prod: any) => {
+          overrides[prod.code] = { categoryId: prod.categoryId, deleted: prod.deleted };
+        });
+        return { xmlText: p.xmlText, overrides };
+      });
+      const res = await fetch('/api/xml/process-batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ payloads })
+      });
+
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || errData.error || "Erro no processamento do lote pelo servidor.");
+      }
+
+      const { results } = await res.json();
+
+      results.forEach((r: any) => {
+        if (r.status === 'error') {
+          logs.push({ type: 'error', text: `Erro ao importar arquivo: ${r.error}` });
+        } else {
+          logs.push({
+            type: r.status === 'updated' ? 'warning' : 'success',
+            text: `Sucesso: Nota de "${r.supplierName}" (R$ ${r.vTotTrib.toFixed(2)}) ${r.status === 'updated' ? 'atualizada' : 'importada'}.`
+          });
+
+        }
+      });
+
+      setXmlLogs(prev => [...logs, ...prev]);
+      setIsPreviewModalOpen(false);
+      setBatchPreview([]);
+
+      // Força a atualização simultânea e imediata de todos os dashboards, incluindo o GASTO MENSAL
+      await fetchPricingData(true);
+      await fetchSpendings(true);
+      await fetchPriceIncreases();
+
+    } catch (err: any) {
+      console.error("Erro na importação em lote:", err);
+      logs.push({ type: 'error', text: `Falha na importação em lote: ${err.message || err}` });
+      setXmlLogs(prev => [...logs, ...prev]);
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleDeleteXmlSpending = async (id: string) => {
+    if (!window.confirm("Tem certeza que deseja excluir este registro de gasto?")) return;
+    try {
+      if (!isTestMode) {
+        await deleteDoc(doc(db, 'xml_spendings', id));
+        try {
+          await fetch(`/api/xml/invoices/${id}`, {
+            method: 'DELETE'
+          });
+        } catch (apiErr) {
+          console.error("Erro ao deletar fatura do banco de preços central:", apiErr);
+        }
+      }
+      setXmlSpendings(prev => prev.filter(item => item.id !== id));
+      setInvoices(prev => prev.filter(item => item.id !== id));
+      await fetchPricingData(true);
+      await fetchSpendings(true);
+    } catch (err) {
+      console.error("Erro ao deletar gasto XML:", err);
+      handleFirestoreError(err, OperationType.DELETE, `xml_spendings/${id}`);
+    }
+  };
+
+  // Filtered expense data within selected dates
+  
+  const expenseData = useMemo(() => {
+    const dayMap = new Map<string, number>();
+    
+    const start = new Date(startDate + 'T00:00:00');
+    const end = new Date(endDate + 'T23:59:59');
+    
+    // Initialize interval days list
+    let current = new Date(start);
+    while (current <= end) {
+      dayMap.set(format(current, 'dd/MM'), 0);
+      current.setDate(current.getDate() + 1);
+    }
+
+    // We will use invoices to calculate category breakdown, and fallback to xmlSpendings
+    const processedInvoiceIds = new Set<string>();
+
+    invoices.forEach(inv => {
+      const dateStr = inv.date || inv.dhEmi || inv.createdAt;
+      if (!dateStr) return;
+      const spendingDate = parseDateSafe(dateStr);
+      if (spendingDate && isWithinInterval(spendingDate, { start, end })) {
+        if (inv.id) processedInvoiceIds.add(inv.id);
+        const dateKey = format(spendingDate, 'dd/MM');
+        
+        let validSpend = 0;
+        const invTotal = typeof inv.vTotTrib === 'number' && inv.vTotTrib > 0 ? inv.vTotTrib : (inv.vNF || inv.total || 0);
+        
+        if (selectedChartCategory) {
+          // Calculate sum of products in that category with discount factor
+          const allProds = (inv.products || []).filter((p: any) => !p.deleted);
+          const prodGrossTotal = allProds.reduce((acc: number, p: any) => acc + ((p.vUnComGross || p.vUnCom || p.price || 0) * (p.quantity || 1)), 0);
+          const discountRatio = (prodGrossTotal > 0 && invTotal > 0 && invTotal < prodGrossTotal)
+            ? (invTotal / prodGrossTotal)
+            : 1;
+
+          const normalizeCatStr = (str: string) =>
+            String(str || '')
+              .toLowerCase()
+              .normalize("NFD")
+              .replace(/[\u0300-\u036f]/g, "")
+              .trim();
+
+          const selCatNorm = normalizeCatStr(selectedChartCategory);
+          const selCatObj = normalizedCategories.find(c =>
+            c.id === selectedChartCategory ||
+            c.name === selectedChartCategory ||
+            normalizeCatStr(c.id) === selCatNorm ||
+            normalizeCatStr(c.name) === selCatNorm
+          );
+          const selCatNameNorm = selCatObj ? normalizeCatStr(selCatObj.name) : selCatNorm;
+          const selCatIdNorm = selCatObj ? normalizeCatStr(selCatObj.id) : selCatNorm;
+
+          const catProds = allProds.filter((p: any) => {
+            const pCatVal = p.categoryId || p.category;
+            if (!pCatVal) return false;
+            const pCatNorm = normalizeCatStr(pCatVal);
+            const foundCat = normalizedCategories.find(c =>
+              c.id === pCatVal ||
+              c.name === pCatVal ||
+              normalizeCatStr(c.id) === pCatNorm ||
+              normalizeCatStr(c.name) === pCatNorm
+            );
+            const foundNameNorm = foundCat ? normalizeCatStr(foundCat.name) : '';
+            const foundIdNorm = foundCat ? normalizeCatStr(foundCat.id) : '';
+
+            return pCatNorm === selCatNorm ||
+                   pCatNorm === selCatNameNorm ||
+                   pCatNorm === selCatIdNorm ||
+                   (foundNameNorm && (foundNameNorm === selCatNameNorm || foundNameNorm === selCatNorm)) ||
+                   (foundIdNorm && (foundIdNorm === selCatIdNorm || foundIdNorm === selCatNorm));
+          });
+          validSpend = catProds.reduce((acc: number, p: any) => {
+            if (p.totalNet !== undefined) return acc + p.totalNet;
+            if (p.discount !== undefined) return acc + Math.max(0, ((p.vUnComGross || p.vUnCom || 0) * (p.quantity || 1)) - p.discount);
+            const baseVal = (p.vUnCom || p.price || 0) * (p.quantity || 1);
+            return acc + (baseVal * discountRatio);
+          }, 0);
+        } else {
+          // If no category selected, use the invoice total
+          validSpend = invTotal > 0
+            ? invTotal
+            : (inv.products || []).reduce((acc: number, p: any) => acc + (p.totalNet || (p.vUnCom || p.price || 0) * (p.quantity || 1)), 0);
+        }
+
+        const currentVal = dayMap.get(dateKey) || 0;
+        dayMap.set(dateKey, currentVal + validSpend);
+      }
+    });
+
+    // Fallback: If no category filter is active, also sum items in xmlSpendings that were not found in invoices
+    if (!selectedChartCategory) {
+      xmlSpendings.forEach(spending => {
+        if (spending.id && processedInvoiceIds.has(spending.id)) return;
+        const dateStr = spending.dhEmi || spending.date || spending.createdAt;
+        if (!dateStr) return;
+        const spendingDate = parseDateSafe(dateStr);
+        if (spendingDate && isWithinInterval(spendingDate, { start, end })) {
+          const dateKey = format(spendingDate, 'dd/MM');
+          const val = Number(spending.vTotTrib || spending.vNF || spending.total || 0);
+          const currentVal = dayMap.get(dateKey) || 0;
+          dayMap.set(dateKey, currentVal + val);
+        }
+      });
+    }
+
+    return Array.from(dayMap.entries()).map(([name, valor]) => ({ name, valor }));
+  }, [invoices, xmlSpendings, startDate, endDate, selectedChartCategory, normalizedCategories]);
+
+  const categoryPieData = useMemo(() => {
+    const catMap = new Map<string, number>();
+    const start = new Date(startDate + 'T00:00:00');
+    const end = new Date(endDate + 'T23:59:59');
+
+    invoices.forEach(inv => {
+      const dateStr = inv.date || inv.dhEmi || inv.createdAt;
+      if (!dateStr) return;
+      const spendingDate = parseDateSafe(dateStr);
+      if (spendingDate && isWithinInterval(spendingDate, { start, end })) {
+        const prods = (inv.products || []).filter((p: any) => !p.deleted);
+        
+        // Calculate gross sum of products in invoice to check for unallocated invoice-level discount
+        const prodGrossTotal = prods.reduce((acc: number, p: any) => acc + ((p.vUnComGross || p.vUnCom || p.price || 0) * (p.quantity || 1)), 0);
+        const invTotal = typeof inv.vTotTrib === 'number' && inv.vTotTrib > 0 ? inv.vTotTrib : (inv.vNF || inv.total || 0);
+        const discountRatio = (prodGrossTotal > 0 && invTotal > 0 && invTotal < prodGrossTotal)
+          ? (invTotal / prodGrossTotal)
+          : 1;
+
+        prods.forEach((p: any) => {
+          const normalizeCatStr = (str: string) =>
+            String(str || '')
+              .toLowerCase()
+              .normalize("NFD")
+              .replace(/[\u0300-\u036f]/g, "")
+              .trim();
+
+          const rawCatVal = p.categoryId || p.category || '';
+          const pCatNorm = rawCatVal ? normalizeCatStr(rawCatVal) : '';
+          const foundCat = normalizedCategories.find(c =>
+            c.id === rawCatVal ||
+            c.name === rawCatVal ||
+            (pCatNorm && normalizeCatStr(c.id) === pCatNorm) ||
+            (pCatNorm && normalizeCatStr(c.name) === pCatNorm)
+          );
+          const catName = foundCat ? foundCat.name : (rawCatVal || 'Sem Categoria');
+          
+          let val = 0;
+          if (p.totalNet !== undefined) {
+            val = p.totalNet;
+          } else if (p.discount !== undefined) {
+            val = Math.max(0, ((p.vUnComGross || p.vUnCom || 0) * (p.quantity || 1)) - p.discount);
+          } else {
+            const baseVal = (p.vUnCom || p.price || 0) * (p.quantity || 1);
+            val = baseVal * discountRatio;
+          }
+
+          catMap.set(catName, (catMap.get(catName) || 0) + val);
+        });
+      }
+    });
+
+    const result = Array.from(catMap.entries()).map(([name, value]) => ({ name, value }));
+    return result.filter(r => r.value > 0).sort((a, b) => b.value - a.value);
+  }, [invoices, startDate, endDate, normalizedCategories]);
+
+
+  const rangeProducts = useMemo(() => {
+    const start = new Date(startDate + "T00:00:00");
+    const end = new Date(endDate + "T23:59:59");
+
+    const map = new Map<string, {
+      key: string;
+      code: string;
+      name: string;
+      category: string;
+      supplierName: string;
+      totalNet: number;
+      occurrences: number;
+    }>();
+
+    invoices.forEach(inv => {
+      const dateStr = inv.date || inv.dhEmi || inv.createdAt;
+      if (!dateStr) return;
+      const spendingDate = parseDateSafe(dateStr);
+      if (spendingDate && isWithinInterval(spendingDate, { start, end })) {
+        const suppName = inv.supplierName || inv.emitName || inv.fornecedor || "Fornecedor";
+        (inv.products || []).filter((p: any) => !p.deleted).forEach((p: any) => {
+          const name = String(p.name || p.xProd || "Produto sem nome");
+          const code = String(p.code ?? p.cProd ?? "");
+          const rawCat = p.categoryId || p.category || "";
+          
+          const normalizeCatStr = (str: string) =>
+            String(str || "")
+              .toLowerCase()
+              .normalize("NFD")
+              .replace(/[\u0300-\u036f]/g, "")
+              .trim();
+              
+          const pCatNorm = rawCat ? normalizeCatStr(rawCat) : "";
+          const foundCat = normalizedCategories.find(c =>
+            c.id === rawCat ||
+            c.name === rawCat ||
+            (pCatNorm && normalizeCatStr(c.id) === pCatNorm) ||
+            (pCatNorm && normalizeCatStr(c.name) === pCatNorm)
+          );
+          const cat = foundCat ? foundCat.name : (rawCat || "Sem Categoria");
+
+          const key = (code ? `CODE_${code}` : `NAME_${String(name).toLowerCase().trim()}`);
+
+          let baseVal = 0;
+          if (p.totalNet !== undefined) {
+            baseVal = p.totalNet;
+          } else if (p.discount !== undefined) {
+            baseVal = Math.max(0, ((p.vUnComGross || p.vUnCom || 0) * (p.quantity || 1)) - p.discount);
+          } else {
+            baseVal = (p.vUnCom || p.price || 0) * (p.quantity || 1);
+          }
+
+          if (!map.has(key)) {
+            map.set(key, {
+              key,
+              code,
+              name,
+              category: cat,
+              supplierName: suppName,
+              totalNet: baseVal,
+              occurrences: 1
+            });
+          } else {
+            const item = map.get(key)!;
+            item.totalNet += baseVal;
+            item.occurrences += 1;
+            if (cat !== "Sem Categoria") {
+              item.category = cat;
+            }
+          }
+        });
+      }
+    });
+
+    return Array.from(map.values()).sort((a, b) => b.totalNet - a.totalNet);
+  }, [invoices, startDate, endDate, normalizedCategories]);
+
+  const uncategorizedCount = useMemo(() => {
+    return rangeProducts.filter(p => !p.category || p.category === "Sem Categoria").length;
+  }, [rangeProducts]);
+
+  const filteredPieProducts = useMemo(() => {
+    return rangeProducts.filter(p => {
+      const q = pieSearchQuery.toLowerCase().trim();
+      const pName = String(p.name || "").toLowerCase();
+      const pCode = String(p.code || "").toLowerCase();
+      const pCat = String(p.category || "").toLowerCase();
+      const pSupp = String(p.supplierName || "").toLowerCase();
+
+      const matchQuery = !q || 
+        pName.includes(q) || 
+        pCode.includes(q) || 
+        pCat.includes(q) || 
+        pSupp.includes(q);
+
+      if (!matchQuery) return false;
+
+      if (pieCategoryFilter === "ALL") return true;
+      if (pieCategoryFilter === "SEM_CATEGORIA") {
+        return !p.category || p.category === "Sem Categoria";
+      }
+      return pCat === pieCategoryFilter.toLowerCase();
+    });
+  }, [rangeProducts, pieSearchQuery, pieCategoryFilter]);
+
+  const handleUpdateProductCategory = async (code: string, name: string, newCategory: string) => {
+    if (!newCategory) return;
+    const normStr = (s: string) => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+    const targetCode = String(code || "").trim();
+    const targetName = normStr(name);
+
+    let updatedProductsCount = 0;
+    let updatedInvoicesCount = 0;
+
+    // 1. Update Invoices state
+    let invoicesChanged = false;
+    const nextInvoices = invoices.map(inv => {
+      let invChanged = false;
+      const updatedProducts = (inv.products || []).map((p: any) => {
+        const pCode = String(p.code !== undefined && p.code !== null && p.code !== "" ? p.code : (p.cProd !== undefined && p.cProd !== null ? p.cProd : "")).trim();
+        const pName = normStr(p.name || p.xProd || "");
+
+        const codeMatches = targetCode && pCode && targetCode === pCode;
+        const nameMatches = targetName && pName && (targetName === pName || targetName.includes(pName) || pName.includes(targetName));
+
+        if (codeMatches || nameMatches) {
+          invChanged = true;
+          invoicesChanged = true;
+          updatedProductsCount++;
+          return {
+            ...p,
+            categoryId: newCategory,
+            category: newCategory
+          };
+        }
+        return p;
+      });
+
+      if (invChanged) {
+        updatedInvoicesCount++;
+        return { ...inv, products: updatedProducts };
+      }
+      return inv;
+    });
+
+    if (invoicesChanged) {
+      setInvoices(nextInvoices);
+      localStorage.setItem("cached_dashboard_invoices", JSON.stringify(nextInvoices));
+    }
+
+    // 2. Update Suppliers state
+    let suppliersChanged = false;
+    const nextSuppliers = suppliers.map(s => {
+      let suppChanged = false;
+      const updatedProducts = (s.products || []).map((p: any) => {
+        const pCode = String(p.code !== undefined && p.code !== null && p.code !== "" ? p.code : (p.cProd !== undefined && p.cProd !== null ? p.cProd : "")).trim();
+        const pName = normStr(p.name || "");
+
+        const codeMatches = targetCode && pCode && targetCode === pCode;
+        const nameMatches = targetName && pName && (targetName === pName || targetName.includes(pName) || pName.includes(targetName));
+
+        if (codeMatches || nameMatches) {
+          suppChanged = true;
+          suppliersChanged = true;
+          return {
+            ...p,
+            category: newCategory
+          };
+        }
+        return p;
+      });
+
+      if (suppChanged) {
+        return { ...s, products: updatedProducts };
+      }
+      return s;
+    });
+
+    if (suppliersChanged) {
+      setSuppliers(nextSuppliers);
+      localStorage.setItem("cached_dashboard_suppliers", JSON.stringify(nextSuppliers));
+    }
+
+    // 3. Register Category if new
+    const catExists = normalizedCategories.some(c => normStr(c.name) === normStr(newCategory));
+    if (!catExists) {
+      const catId = newCategory.toLowerCase().replace(/\s+/g, "_");
+      setCategories(prev => [...prev, { id: catId, name: newCategory }]);
+    }
+
+    if (targetCode) {
+      setProductMemory(prev => {
+        const next = { ...prev, [targetCode]: newCategory };
+        localStorage.setItem('dashboard_product_memory', JSON.stringify(next));
+        return next;
+      });
+    }
+
+    // Log do Sistema
+    const logDetails = `Categoria do produto "${name}" ${targetCode ? `(Cód: ${targetCode})` : ''} alterada para "${newCategory}". ${updatedProductsCount} item(ns) em ${updatedInvoicesCount} nota(s) fiscal(is) atualizados.`;
+    addSystemLog('category', logDetails);
+
+    // 4. Send to backend if normal mode
+    if (!isTestMode) {
+      try {
+        await fetch("/api/xml/products/update-category", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code: targetCode, name, category: newCategory })
+        });
+      } catch (err) {
+        console.error("Erro ao salvar categoria no servidor:", err);
+      }
+    }
+  };
+
+  const handleDeleteProduct = async (code: string, name: string) => {
+    if (!window.confirm(`Tem certeza que deseja excluir o produto "${name}"? Esta ação removerá o produto do período e das análises.`)) {
+      return;
+    }
+
+    const normStr = (s: string) => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+    const targetCode = String(code || "").trim();
+    const targetName = normStr(name);
+
+    let deletedProductsCount = 0;
+    let deletedInvoicesCount = 0;
+
+    // 1. Mark as deleted in Invoices state
+    let invoicesChanged = false;
+    const nextInvoices = invoices.map(inv => {
+      let invChanged = false;
+      const updatedProducts = (inv.products || []).map((p: any) => {
+        const pCode = String(p.code !== undefined && p.code !== null && p.code !== "" ? p.code : (p.cProd !== undefined && p.cProd !== null ? p.cProd : "")).trim();
+        const pName = normStr(p.name || p.xProd || "");
+
+        const codeMatches = targetCode && pCode && targetCode === pCode;
+        const nameMatches = targetName && pName && (targetName === pName || targetName.includes(pName) || pName.includes(targetName));
+
+        if (codeMatches || nameMatches) {
+          invChanged = true;
+          invoicesChanged = true;
+          deletedProductsCount++;
+          return {
+            ...p,
+            deleted: true
+          };
+        }
+        return p;
+      });
+
+      if (invChanged) {
+        deletedInvoicesCount++;
+        return { ...inv, products: updatedProducts };
+      }
+      return inv;
+    });
+
+    if (invoicesChanged) {
+      setInvoices(nextInvoices);
+      localStorage.setItem("cached_dashboard_invoices", JSON.stringify(nextInvoices));
+    }
+
+    // 2. Remove from Suppliers state
+    let suppliersChanged = false;
+    const nextSuppliers = suppliers.map(s => {
+      let suppChanged = false;
+      const updatedProducts = (s.products || []).filter((p: any) => {
+        const pCode = String(p.code !== undefined && p.code !== null && p.code !== "" ? p.code : (p.cProd !== undefined && p.cProd !== null ? p.cProd : "")).trim();
+        const pName = normStr(p.name || "");
+
+        const codeMatches = targetCode && pCode && targetCode === pCode;
+        const nameMatches = targetName && pName && (targetName === pName || targetName.includes(pName) || pName.includes(targetName));
+
+        if (codeMatches || nameMatches) {
+          suppChanged = true;
+          suppliersChanged = true;
+          return false;
+        }
+        return true;
+      });
+
+      if (suppChanged) {
+        return { ...s, products: updatedProducts };
+      }
+      return s;
+    });
+
+    if (suppliersChanged) {
+      setSuppliers(nextSuppliers);
+      localStorage.setItem("cached_dashboard_suppliers", JSON.stringify(nextSuppliers));
+    }
+
+    // Log do Sistema
+    const logDetails = `Produto "${name}" ${targetCode ? `(Cód: ${targetCode})` : ''} foi excluído do sistema. ${deletedProductsCount} item(ns) em ${deletedInvoicesCount} nota(s) marcado(s) como excluído(s).`;
+    addSystemLog('delete', logDetails);
+
+    // 3. Send to backend if normal mode
+    if (!isTestMode) {
+      try {
+        await fetch("/api/xml/products/delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code: targetCode, name })
+        });
+      } catch (err) {
+        console.error("Erro ao deletar produto no servidor:", err);
+      }
+    }
+  };
+
+  // Totals calculations
+  const selectedCategoryObj = useMemo(() => {
+    if (!selectedChartCategory) return null;
+    const normalizeCatStr = (str: string) =>
+      String(str || '')
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .trim();
+    const selNorm = normalizeCatStr(selectedChartCategory);
+    return normalizedCategories.find(c =>
+      c.id === selectedChartCategory ||
+      c.name === selectedChartCategory ||
+      normalizeCatStr(c.id) === selNorm ||
+      normalizeCatStr(c.name) === selNorm
+    );
+  }, [selectedChartCategory, normalizedCategories]);
+
+  const selectedCategoryName = selectedCategoryObj ? selectedCategoryObj.name : selectedChartCategory;
+
+  const totalExpense = useMemo(() => {
+    return expenseData.reduce((acc, item) => acc + item.valor, 0);
+  }, [expenseData]);
+
+  const activeInvoicesCount = useMemo(() => {
+    const start = new Date(startDate + 'T00:00:00');
+    const end = new Date(endDate + 'T23:59:59');
+    
+    return xmlSpendings.filter(spending => {
+      const dateStr = spending.dhEmi || spending.date || spending.createdAt;
+      if (!dateStr) return false;
+      const spendingDate = parseDateSafe(dateStr);
+      return spendingDate ? isWithinInterval(spendingDate, { start, end }) : false;
+    }).length;
+  }, [xmlSpendings, startDate, endDate]);
+
+  const averageInvoiceValue = useMemo(() => {
+    return activeInvoicesCount > 0 ? totalExpense / activeInvoicesCount : 0;
+  }, [totalExpense, activeInvoicesCount]);
+
+  // List of invoices inside range
+  const invoicesInRange = useMemo(() => {
+    const start = new Date(startDate + 'T00:00:00');
+    const end = new Date(endDate + 'T23:59:59');
+    
+    return xmlSpendings.filter(spending => {
+      const dateStr = spending.dhEmi || spending.date || spending.createdAt;
+      if (!dateStr) return false;
+      const spendingDate = parseDateSafe(dateStr);
+      return spendingDate ? isWithinInterval(spendingDate, { start, end }) : false;
+    }).sort((a, b) => {
+      const da = parseDateSafe(a.dhEmi || a.date)?.getTime() || 0;
+      const db = parseDateSafe(b.dhEmi || b.date)?.getTime() || 0;
+      return db - da;
+    });
+  }, [xmlSpendings, startDate, endDate]);
+
+  // Generate PDF Report
+  const generateReport = async () => {
+    if (!expenseChartRef.current) return;
+
+    try {
+      const canvas = await domToCanvas(expenseChartRef.current, {
+        scale: 2,
+        backgroundColor: '#ffffff'
+      });
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      
+      pdf.setFontSize(20);
+      pdf.setTextColor(30, 41, 59);
+      pdf.text('Relatório de Gastos Mensais - XML', 20, 20);
+      
+      pdf.setFontSize(10);
+      pdf.setTextColor(100, 116, 139);
+      pdf.text(`Período: ${format(parseISO(startDate), 'dd/MM/yyyy')} até ${format(parseISO(endDate), 'dd/MM/yyyy')}`, 20, 28);
+      pdf.text(`Gerado em: ${format(new Date(), 'dd/MM/yyyy HH:mm')}`, 20, 33);
+      
+      const imgWidth = pageWidth - 40;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      pdf.addImage(imgData, 'PNG', 20, 45, imgWidth, imgHeight);
+      
+      const tableData = invoicesInRange.map(inv => [
+        inv.supplierName,
+        format(parseISO(inv.dhEmi), 'dd/MM/yyyy'),
+        inv.id,
+        formatCurrency(inv.vTotTrib)
+      ]);
+      
+      const tableHeaders = ['Fornecedor', 'Emissão', 'Chave de Acesso', 'Valor Total'];
+
+      autoTable(pdf, {
+        startY: imgHeight + 60,
+        head: [tableHeaders],
+        body: tableData,
+        theme: 'striped',
+        headStyles: { fillColor: [79, 70, 229] },
+        margin: { left: 20, right: 20 }
+      });
+      
+      const finalY = (pdf as any).lastAutoTable.finalY + 15;
+      pdf.setFontSize(14);
+      pdf.setTextColor(30, 41, 59);
+      pdf.text(`Gasto Total no Período (XML): ${formatCurrency(totalExpense)}`, 20, finalY);
+
+      pdf.save(`relatorio-gastos-xml-${format(new Date(), 'yyyy-MM-dd')}.pdf`);
+    } catch (error) {
+      console.error('Erro ao gerar relatório jspdf:', error);
+    }
+  };
+
+  const availableYears = useMemo(() => {
+    const years = new Set<string>();
+    invoices.forEach(inv => {
+      const dateStr = inv.dhEmi || inv.date;
+      if (dateStr && dateStr.length >= 4) {
+        years.add(dateStr.substring(0, 4));
+      }
+    });
+    return Array.from(years).sort((a, b) => b.localeCompare(a));
+  }, [invoices]);
+
+  // Pricing Engine - Processes all invoices & suppliers to build price history and increases
+  const priceAnalysis = useMemo(() => {
+    let filteredInvoices = invoices;
+    if (priceSearchYear !== 'all') {
+      filteredInvoices = invoices.filter(inv => {
+        const dateStr = inv.dhEmi || inv.date;
+        if (!dateStr) return false;
+        return dateStr.startsWith(priceSearchYear);
+      });
+    }
+    return analyzePrices(filteredInvoices, suppliers);
+  }, [invoices, suppliers, priceSearchYear]);
+
+  const parsedSearchSuggestions = useMemo(() => {
+    if (!priceSearchQuery.trim()) return [];
+    const lower = priceSearchQuery.toLowerCase();
+    return priceAnalysis.allProducts
+      .filter(p => String(p.name || "").toLowerCase().includes(lower))
+      .slice(0, 5);
+  }, [priceSearchQuery, priceAnalysis]);
+
+  return (
+    <div className="w-full max-w-[1800px] mx-auto space-y-8 pb-24">
+      {/* Batch Import Preview Modal */}
+      {isPreviewModalOpen && batchPreview.length > 0 && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className="bg-white w-full max-w-4xl rounded-3xl shadow-xl border border-slate-100 overflow-hidden flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-300">
+            {/* Modal Header */}
+            <div className="p-6 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-black text-slate-900 uppercase tracking-tight flex items-center gap-2">
+                  <FileCheck2 className="w-5 h-5 text-indigo-600" />
+                  Conciliação e Pré-visualização de XML em Lote
+                </h3>
+                <p className="text-xs text-slate-600 mt-1">
+                  Revise as faturas consolidadas abaixo antes de persistir as mudanças no banco de dados.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsPreviewModalOpen(false);
+                  setBatchPreview([]);
+                }}
+                className="p-2 hover:bg-slate-200 rounded-full transition-colors text-slate-500"
+              >
+                <XCircle className="w-6 h-6" />
+              </button>
+            </div>
+
+
+            {/* Modal Actions */}
+            <div className="px-6 py-4 bg-slate-50 border-b border-slate-100 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-2">
+                <select
+                  value={bulkCategory}
+                  onChange={(e) => setBulkCategory(e.target.value)}
+                  className="bg-white border border-slate-200 text-slate-700 text-xs font-bold rounded-lg px-3 py-2 outline-none focus:border-indigo-500"
+                >
+                  <option value="">-- Selecionar Categoria --</option>
+                  {normalizedCategories.map((c: any) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={handleBulkCategorize}
+                  disabled={!bulkCategory || selectedProducts.length === 0}
+                  className="px-3 py-2 bg-indigo-100 text-indigo-700 hover:bg-indigo-200 disabled:opacity-50 text-xs font-black uppercase rounded-lg transition-colors"
+                >
+                  Categorizar Selecionados
+                </button>
+                <button
+                  type="button"
+                  onClick={handleBulkDelete}
+                  disabled={selectedProducts.length === 0}
+                  className="px-3 py-2 bg-red-100 text-red-700 hover:bg-red-200 disabled:opacity-50 text-xs font-black uppercase rounded-lg transition-colors"
+                >
+                  Excluir Selecionados
+                </button>
+              </div>
+              <div className="text-xs font-bold text-slate-500">
+                {selectedProducts.length} selecionados
+              </div>
+            </div>
+
+            {/* Modal Body (Table) */}
+            <div className="p-6 overflow-y-auto flex-1 space-y-4">
+              <div className="overflow-x-auto border border-slate-100 rounded-2xl">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-100">
+                      <th className="p-3 text-center w-10">
+                        <input
+                          type="checkbox"
+                          checked={batchPreview.length > 0 && selectedProducts.length === batchPreview.reduce((acc, inv) => acc + inv.products.length, 0)}
+                          onChange={toggleAllProducts}
+                          className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-600"
+                        />
+                      </th>
+                      <th className="p-3 text-[10px] font-black text-slate-600 uppercase tracking-wider">Fornecedor / Arquivo</th>
+                      <th className="p-3 text-[10px] font-black text-slate-600 uppercase tracking-wider">Produto</th>
+                      <th className="p-3 text-right text-[10px] font-black text-slate-600 uppercase tracking-wider">Valor Un.</th>
+                      <th className="p-3 text-right text-[10px] font-black text-slate-600 uppercase tracking-wider">Qtd</th>
+                      <th className="p-3 text-[10px] font-black text-slate-600 uppercase tracking-wider">Categoria</th>
+                      <th className="p-3 text-center text-[10px] font-black text-slate-600 uppercase tracking-wider">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {batchPreview.map((inv, iIdx) => (
+                      <React.Fragment key={inv.nfeKey || iIdx}>
+                        {inv.products.map((prod: any, pIdx: number) => {
+                          const pId = `${iIdx}-${pIdx}`;
+                          const isSelected = selectedProducts.includes(pId);
+                          return (
+                            <tr key={pId} className={`transition-colors ${prod.deleted ? 'bg-red-50/50 opacity-60' : isSelected ? 'bg-indigo-50/50' : 'hover:bg-slate-50/50'}`}>
+                              <td className="p-3 text-center">
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => toggleProductSelection(pId)}
+                                  className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-600"
+                                />
+                              </td>
+                              <td className="p-3 text-xs font-bold text-slate-900 max-w-[150px] truncate uppercase">
+                                <div className="text-[10px] text-slate-400 font-normal">{inv.fileName}</div>
+                                {inv.supplierName}
+                              </td>
+                              <td className="p-3 text-xs font-bold text-slate-800 max-w-[180px] truncate">
+                                {prod.name}
+                              </td>
+                              <td className="p-3 text-xs font-semibold text-slate-600 text-right">{formatCurrency(prod.vUnCom)}</td>
+                              <td className="p-3 text-xs font-semibold text-slate-600 text-right">{prod.quantity}</td>
+                              <td className="p-3">
+                                <select
+                                  value={prod.categoryId || ''}
+                                  onChange={(e) => handleProductCategoryChange(iIdx, pIdx, e.target.value)}
+                                  className="w-full bg-white border border-slate-200 text-slate-700 text-xs font-bold rounded-lg px-2 py-1 outline-none focus:border-indigo-500"
+                                >
+                                  <option value="">Sem Categoria</option>
+                                  {normalizedCategories.map((c: any) => (
+                                    <option key={c.id} value={c.id}>{c.name}</option>
+                                  ))}
+                                </select>
+                              </td>
+                              <td className="p-3 text-center">
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleProductDeletion(iIdx, pIdx)}
+                                  className={`px-2 py-1 text-[10px] font-black uppercase rounded-lg ${prod.deleted ? 'bg-slate-200 text-slate-600 hover:bg-slate-300' : 'bg-red-100 text-red-600 hover:bg-red-200'}`}
+                                >
+                                  {prod.deleted ? 'Restaurar' : 'Excluir'}
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </React.Fragment>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            {/* Modal Footer */}
+            <div className="p-6 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsPreviewModalOpen(false);
+                  setBatchPreview([]);
+                }}
+                className="px-4 py-2 text-xs font-black uppercase text-slate-600 hover:text-slate-800 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmBatchImport}
+                disabled={isUploading}
+                className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-black uppercase rounded-2xl transition-all shadow-sm font-bold"
+              >
+                {isUploading ? (
+                  <>
+                    <RefreshCcw className="w-4 h-4 animate-spin" />
+                    Processando...
+                  </>
+                ) : (
+                  <>
+                    <FileCheck2 className="w-4 h-4" />
+                    Confirmar Importação ({batchPreview.length} XMLs)
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Header & Filters */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-white p-6 rounded-3xl border border-slate-100 shadow-sm animate-in fade-in slide-in-from-top-4 duration-500">
+        <div>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tighter uppercase flex items-center gap-3">
+            <TrendingUp className="w-8 h-8 text-indigo-700 animate-pulse" />
+            Dashboard XML
+          </h1>
+          <p className="text-slate-700 text-sm font-bold mt-1">Análise de gastos reais baseado exclusivamente nos XMLs importados.</p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-3 bg-slate-50 p-2 rounded-2xl border border-slate-100 shadow-inner">
+              <div className="flex items-center gap-2 px-3">
+                <CalendarIcon className="w-4 h-4 text-indigo-500" />
+                <input 
+                  type="date" 
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="bg-transparent border-0 text-sm font-black text-slate-900 focus:outline-none uppercase cursor-pointer"
+                />
+              </div>
+              <div className="w-px h-6 bg-slate-200" />
+              <div className="flex items-center gap-2 px-3">
+                <CalendarIcon className="w-4 h-4 text-indigo-500" />
+                <input 
+                  type="date" 
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="bg-transparent border-0 text-sm font-black text-slate-900 focus:outline-none uppercase cursor-pointer"
+                />
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                const allItems = [...invoices, ...xmlSpendings];
+                if (allItems.length > 0) {
+                  let minD: string | null = null;
+                  let maxD: string | null = null;
+                  allItems.forEach((inv: any) => {
+                    const dateVal = inv.date || inv.dhEmi || inv.createdAt;
+                    if (!dateVal) return;
+                    const d = dateVal.includes('T') ? dateVal.split('T')[0] : dateVal;
+                    if (!minD || d < minD) minD = d;
+                    if (!maxD || d > maxD) maxD = d;
+                  });
+                  if (minD && maxD) {
+                    setStartDate(minD);
+                    setEndDate(maxD);
+                  }
+                }
+              }}
+              className="px-3 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[10px] font-black uppercase rounded-xl transition-colors cursor-pointer border-0 font-bold"
+              title="Ajustar filtro para abranger todas as notas importadas"
+            >
+              Ver Todas as Datas
+            </button>
+          </div>
+
+          <input
+            type="file"
+            accept=".xml"
+            multiple
+            onChange={(e) => e.target.files && processXmlFiles(Array.from(e.target.files))}
+            className="hidden"
+            id="dashboard-xml-file-picker"
+          />
+          <label 
+            htmlFor="dashboard-xml-file-picker" 
+            className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black uppercase rounded-2xl transition-all shadow-sm cursor-pointer whitespace-nowrap font-bold"
+          >
+            <Upload className="w-4 h-4" />
+            Importar XML
+          </label>
+        </div>
+      </div>
+
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* Total Spend */}
+        <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow">
+          <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:scale-110 transition-transform">
+            <TrendingUp className="w-24 h-24 text-indigo-700" />
+          </div>
+          <p className="text-[10px] font-black text-slate-600 uppercase tracking-widest mb-2">
+            {selectedCategoryName ? `Gasto no Período (${selectedCategoryName})` : "Gasto no Período (XML)"}
+          </p>
+          <h3 className="text-3xl font-black text-indigo-700 tracking-tighter">
+            {isLoading ? "Carregando..." : formatCurrency(totalExpense)}
+          </h3>
+          <p className="text-xs text-slate-500 font-bold mt-2">
+            {selectedCategoryName ? `Filtrado pela categoria "${selectedCategoryName}"` : "Data de Emissão (dhEmi) filtrada"}
+          </p>
+        </div>
+
+        {/* Invoices Amount */}
+        <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow">
+          <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:scale-110 transition-transform">
+            <FileText className="w-24 h-24 text-emerald-600" />
+          </div>
+          <p className="text-[10px] font-black text-slate-600 uppercase tracking-widest mb-2">Notas Emitidas no Período</p>
+          <h3 className="text-3xl font-black text-emerald-600 tracking-tighter">
+            {isLoading ? "..." : `${activeInvoicesCount} notas`}
+          </h3>
+          <p className="text-xs text-slate-500 font-bold mt-2">Total geral enviado: {xmlSpendings.length}</p>
+        </div>
+
+        {/* Invoice Average */}
+        <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow">
+          <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:scale-110 transition-transform">
+            <FileCheck2 className="w-24 h-24 text-blue-600" />
+          </div>
+          <p className="text-[10px] font-black text-slate-600 uppercase tracking-widest mb-2">Ticket Médio por Nota</p>
+          <h3 className="text-3xl font-black text-blue-600 tracking-tighter">
+            {isLoading ? "..." : formatCurrency(averageInvoiceValue)}
+          </h3>
+          <p className="text-xs text-slate-500 font-bold mt-2">Gasto total / notas do período</p>
+        </div>
+      </div>
+
+      {/* SEÇÃO: PRODUTOS PENDENTES DAS LISTAS DE COMPRAS */}
+      <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-6 animate-in fade-in duration-300">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-amber-50 rounded-2xl border border-amber-100 text-amber-600">
+              <ShoppingCart className="w-6 h-6" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-lg font-black text-slate-900 uppercase tracking-tight">
+                  Produtos das Listas de Compras
+                </h2>
+                {pendingListProducts.length > 0 && (
+                  <span className="px-2.5 py-0.5 bg-amber-100 text-amber-800 text-xs font-black rounded-full">
+                    {pendingListProducts.length} pendente(s)
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-500 font-bold mt-0.5">
+                Produtos checados em "Minhas Listas". Configure a categoria e o valor para confirmar e incluir nos gráficos de gastos.
+              </p>
+            </div>
+          </div>
+
+          {pendingListProducts.length > 0 && (
+            <button
+              type="button"
+              onClick={handleConfirmPendingProducts}
+              disabled={isUploading}
+              className="px-5 py-3 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black uppercase rounded-2xl transition-all shadow-md flex items-center gap-2 cursor-pointer disabled:opacity-50 font-bold"
+            >
+              <CheckCircle2 className="w-4 h-4" />
+              {selectedPendingIds.length > 0
+                ? `Confirmar ${selectedPendingIds.length} Selecionado(s)`
+                : `Confirmar Todos os ${pendingListProducts.length} Produtos`}
+            </button>
+          )}
+        </div>
+
+        {isPendingLoading ? (
+          <div className="py-8 text-center text-xs font-bold text-slate-400">
+            Carregando produtos das listas...
+          </div>
+        ) : pendingListProducts.length === 0 ? (
+          <div className="py-8 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+            <CheckCircle2 className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+            <p className="text-xs font-black text-slate-500 uppercase">Nenhum produto pendente de confirmação</p>
+            <p className="text-[11px] text-slate-400 font-bold mt-1">
+              Ao dar check num item em "Minhas Listas", ele aparecerá aqui para você definir a categoria, valor e confirmar a entrada nos gráficos.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {/* Controles em Lote */}
+            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex flex-wrap items-center justify-between gap-4">
+              <div className="flex flex-wrap items-center gap-3">
+                <label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selectedPendingIds.length > 0 && selectedPendingIds.length === pendingListProducts.length}
+                    onChange={handleToggleSelectAllPending}
+                    className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
+                  />
+                  <span>Selecionar Todos ({selectedPendingIds.length}/{pendingListProducts.length})</span>
+                </label>
+
+                <div className="h-4 w-px bg-slate-200 hidden sm:block" />
+
+                {/* Alteração em Lote: Categoria */}
+                <div className="flex items-center gap-2">
+                  <select
+                    value={bulkPendingCategory}
+                    onChange={(e) => setBulkPendingCategory(e.target.value)}
+                    className="bg-white border border-slate-200 text-slate-700 text-xs font-bold rounded-xl px-3 py-1.5 outline-none focus:border-indigo-500"
+                  >
+                    <option value="">-- Categoria em Lote --</option>
+                    {normalizedCategories.map((c: any) => (
+                      <option key={c.id} value={c.name}>{c.name}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={handleApplyBulkPendingCategory}
+                    disabled={!bulkPendingCategory || selectedPendingIds.length === 0}
+                    className="px-3 py-1.5 bg-indigo-100 text-indigo-700 hover:bg-indigo-200 disabled:opacity-40 text-xs font-black uppercase rounded-xl transition-colors cursor-pointer"
+                  >
+                    Aplicar Categoria
+                  </button>
+                </div>
+
+                {/* Alteração em Lote: Valor */}
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    step="0.01"
+                    placeholder="Valor R$ em lote"
+                    value={bulkPendingPrice}
+                    onChange={(e) => setBulkPendingPrice(e.target.value)}
+                    className="w-32 bg-white border border-slate-200 text-slate-700 text-xs font-bold rounded-xl px-3 py-1.5 outline-none focus:border-indigo-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleApplyBulkPendingPrice}
+                    disabled={!bulkPendingPrice || selectedPendingIds.length === 0}
+                    className="px-3 py-1.5 bg-indigo-100 text-indigo-700 hover:bg-indigo-200 disabled:opacity-40 text-xs font-black uppercase rounded-xl transition-colors cursor-pointer"
+                  >
+                    Aplicar Valor
+                  </button>
+                </div>
+              </div>
+
+              {/* Excluir em Lote */}
+              <button
+                type="button"
+                onClick={handlePromptBulkDeletePending}
+                disabled={selectedPendingIds.length === 0}
+                className="px-3.5 py-1.5 bg-rose-100 text-rose-700 hover:bg-rose-200 disabled:opacity-40 text-xs font-black uppercase rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer ml-auto"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Excluir Selecionados
+              </button>
+            </div>
+
+            {/* Tabela de Produtos Pendentes */}
+            <div className="overflow-x-auto border border-slate-100 rounded-2xl">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-100 text-[11px] font-black uppercase text-slate-500 tracking-wider">
+                    <th className="p-3.5 w-10 text-center">
+                      <input
+                        type="checkbox"
+                        checked={selectedPendingIds.length > 0 && selectedPendingIds.length === pendingListProducts.length}
+                        onChange={handleToggleSelectAllPending}
+                        className="w-4 h-4 text-indigo-600 rounded border-slate-300"
+                      />
+                    </th>
+                    <th className="p-3.5">Produto</th>
+                    <th className="p-3.5">Fornecedor</th>
+                    <th className="p-3.5">Origem</th>
+                    <th className="p-3.5 w-24">Qtd</th>
+                    <th className="p-3.5 w-36">Valor Unit. (R$)</th>
+                    <th className="p-3.5 w-36">Total (R$)</th>
+                    <th className="p-3.5 w-48">Categoria</th>
+                    <th className="p-3.5 w-16 text-center">Ações</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-xs">
+                  {pendingListProducts.map((p) => {
+                    const isSelected = selectedPendingIds.includes(p.id);
+                    const qty = Number(p.quantity || 1);
+                    const unitPrice = Number(p.price || 0);
+                    const totalPrice = qty * unitPrice;
+
+                    return (
+                      <tr key={p.id} className={`hover:bg-slate-50/80 transition-colors ${isSelected ? 'bg-indigo-50/40' : ''}`}>
+                        <td className="p-3.5 text-center">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => handleToggleSelectPending(p.id)}
+                            className="w-4 h-4 text-indigo-600 rounded border-slate-300"
+                          />
+                        </td>
+                        <td className="p-3.5 font-bold text-slate-900">{p.productName}</td>
+                        <td className="p-3.5 text-slate-600 font-medium">{p.supplierName}</td>
+                        <td className="p-3.5 text-slate-500 font-medium text-[11px]">{p.listName || 'Minhas Listas'}</td>
+                        <td className="p-3.5 font-bold text-slate-800">{qty}</td>
+                        <td className="p-3.5">
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={p.price !== undefined ? p.price : ''}
+                            onChange={(e) => handlePendingPriceChange(p.id, parseFloat(e.target.value) || 0)}
+                            className="w-28 bg-white border border-slate-200 text-slate-800 font-bold rounded-lg px-2.5 py-1 text-xs outline-none focus:border-indigo-500"
+                          />
+                        </td>
+                        <td className="p-3.5 font-black text-indigo-700">
+                          {formatCurrency(totalPrice)}
+                        </td>
+                        <td className="p-3.5">
+                          <select
+                            value={p.category || ''}
+                            onChange={(e) => handlePendingCategoryChange(p.id, e.target.value)}
+                            className="w-full bg-white border border-slate-200 text-slate-800 font-bold rounded-lg px-2.5 py-1 text-xs outline-none focus:border-indigo-500"
+                          >
+                            <option value="">-- Selecionar --</option>
+                            {normalizedCategories.map((c: any) => (
+                              <option key={c.id} value={c.name}>{c.name}</option>
+                            ))}
+                          </select>
+                        </td>
+                        <td className="p-3.5 text-center">
+                          <button
+                            type="button"
+                            onClick={() => handlePromptDeletePending(p.id)}
+                            title="Excluir produto pendente"
+                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer border-0 bg-transparent"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* MODAL DE CONFIRMAÇÃO DE EXCLUSÃO DE PRODUTO PENDENTE (REGRA 11) */}
+      {deletePendingConfirmModal.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white max-w-md w-full p-6 rounded-3xl shadow-xl border border-slate-100 space-y-5 animate-in zoom-in-95 duration-200">
+            <div className="flex items-center gap-3 text-rose-600">
+              <div className="p-3 bg-rose-50 rounded-2xl">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <h3 className="text-base font-black text-slate-900 uppercase tracking-tight">
+                Confirmar Exclusão
+              </h3>
+            </div>
+            <p className="text-xs text-slate-600 font-medium leading-relaxed">
+              {deletePendingConfirmModal.isBulk
+                ? `Tem certeza que deseja excluir os ${deletePendingConfirmModal.idsToDelete.length} produto(s) selecionado(s) da lista pendente? Esta ação removerá os itens permanentemente da fila.`
+                : `Tem certeza que deseja excluir este produto da lista pendente do dashboard?`}
+            </p>
+            <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setDeletePendingConfirmModal({ open: false, idsToDelete: [], isBulk: false })}
+                className="px-4 py-2.5 text-slate-600 hover:bg-slate-100 rounded-xl text-xs font-bold uppercase transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={executeDeletePending}
+                className="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black uppercase transition-colors shadow-sm cursor-pointer"
+              >
+                Sim, Excluir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Uploading & Logs Panel */}
+      {(isUploading || xmlLogs.length > 0) && (
+        <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-4 animate-in fade-in duration-300">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-black text-slate-800 uppercase tracking-wider">Histórico de Importação de XMLs</span>
+              {isUploading && (
+                <div className="flex items-center gap-1.5 px-2 py-0.5 bg-indigo-50 rounded-full">
+                  <RefreshCcw className="w-3 h-3 text-indigo-600 animate-spin" />
+                  <span className="text-[9px] font-black uppercase text-indigo-700">Analisando Arquivos...</span>
+                </div>
+              )}
+            </div>
+            {xmlLogs.length > 0 && (
+              <button 
+                onClick={() => setXmlLogs([])}
+                className="text-[10px] font-bold text-slate-400 hover:text-slate-600 border-0 bg-transparent uppercase cursor-pointer"
+              >
+                Limpar Log
+              </button>
+            )}
+          </div>
+          
+          {xmlLogs.length > 0 && (
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 max-h-48 overflow-y-auto space-y-2">
+              {xmlLogs.map((log, idx) => (
+                <div 
+                  key={idx} 
+                  className={`text-[10px] font-semibold leading-relaxed border-b border-slate-100 last:border-b-0 pb-1.5 flex items-start gap-2 ${
+                    log.type === 'error' 
+                      ? 'text-rose-600' 
+                      : log.type === 'warning' 
+                        ? 'text-amber-600 font-bold' 
+                        : 'text-emerald-700'
+                  }`}
+                >
+                  {log.type === 'error' && <XCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />}
+                  {log.type === 'warning' && <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0 animate-bounce" />}
+                  {log.type === 'success' && <FileCheck2 className="w-3.5 h-3.5 mt-0.5 shrink-0" />}
+                  <span>{log.text}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Main content sequence layout */}
+      <div className="space-y-8">
+        {/* Chart 1: Area Chart (Gasto Mensal Real XML) - Reduced height */}
+        <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm flex flex-col justify-between" ref={expenseChartRef}>
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h2 className="text-2xl font-bold text-slate-900 uppercase tracking-tight flex items-center gap-2">
+                <div className="w-2.5 h-7 bg-indigo-700 rounded-full" />
+                Gasto Mensal Real (XML)
+              </h2>
+              <p className="text-slate-600 text-[10px] font-black mt-1 uppercase tracking-wider">Histórico baseado na data de emissão das notas</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <select
+                value={selectedChartCategory}
+                onChange={(e) => setSelectedChartCategory(e.target.value)}
+                className="bg-slate-50 border-0 text-slate-700 text-[10px] font-black uppercase tracking-wider rounded-xl px-4 py-2 outline-none focus:ring-2 focus:ring-indigo-100 cursor-pointer"
+              >
+                <option value="">Todas as Categorias</option>
+                {normalizedCategories.map((c: any) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+              <button 
+                onClick={generateReport}
+                className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-700 text-[10px] font-black uppercase rounded-xl hover:bg-indigo-100 transition-colors border-0 font-bold"
+              >
+                <Download className="w-3 h-3" />
+                Gerar PDF
+              </button>
+            </div>
+          </div>
+
+          <div className="relative w-full h-[230px] min-h-[230px] min-w-0" style={{ width: '100%', height: '230px', minHeight: '230px', minWidth: '0px' }}>
+            {isLoading ? (
+              <div className="w-full h-full bg-slate-50 rounded-2xl animate-pulse flex items-center justify-center">
+                <span className="text-slate-400 text-xs font-bold uppercase tracking-wider">Carregando dados...</span>
+              </div>
+            ) : isChartReady && expenseData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={230} minWidth={0}>
+                <AreaChart data={expenseData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="colorExpense" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.3}/>
+                      <stop offset="95%" stopColor="#4f46e5" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis 
+                    dataKey="name" 
+                    axisLine={false} 
+                    tickLine={false} 
+                    tick={{ fill: '#0f172a', fontSize: 13, fontWeight: 800 }}
+                    dy={10}
+                  />
+                  <YAxis 
+                    axisLine={false} 
+                    tickLine={false} 
+                    tick={{ fill: '#0f172a', fontSize: 13, fontWeight: 800 }}
+                    tickFormatter={(val) => `R$${val}`}
+                  />
+                  <RechartsTooltip 
+                    contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', padding: '12px' }}
+                    labelStyle={{ fontWeight: 800, marginBottom: '4px', color: '#1e293b' }}
+                    itemStyle={{ color: '#0f172a', fontWeight: 800 }}
+                    formatter={(value: number) => [formatCurrency(value), 'Valor da Nota']}
+                  />
+                  <Area 
+                    type="monotone" 
+                    dataKey="valor" 
+                    stroke="#4f46e5" 
+                    strokeWidth={3}
+                    fillOpacity={1} 
+                    fill="url(#colorExpense)" 
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="w-full h-full bg-slate-50 rounded-2xl flex flex-col items-center justify-center p-8 text-center border-2 border-dashed border-slate-200">
+                <AlertCircle className="w-12 h-12 text-slate-300" />
+                <p className="text-slate-500 font-bold text-xs uppercase tracking-wide mt-2">Nenhum dado encontrado no intervalo selecionado</p>
+                <p className="text-slate-400 text-[10px] uppercase tracking-wider mt-1">Importe novos arquivos XML para visualizar os gastos.</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Chart 2: Pie Chart (Gastos por Categoria) - Positioned below Area Chart */}
+        <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm flex flex-col space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h3 className="text-2xl font-bold text-slate-900 uppercase tracking-tight flex items-center gap-2">
+                <div className="w-2.5 h-7 bg-emerald-600 rounded-full" />
+                Gastos por Categoria
+              </h3>
+              <p className="text-slate-600 text-[10px] font-black mt-1 uppercase tracking-wider">
+                Distribuição proporcional de insumos
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              {uncategorizedCount > 0 && (
+                <button
+                  onClick={() => {
+                    setPieCategoryFilter("SEM_CATEGORIA");
+                    setShowPieProductList(true);
+                  }}
+                  className="bg-amber-100 hover:bg-amber-200 text-amber-900 px-3 py-1.5 rounded-2xl text-xs font-black uppercase flex items-center gap-1.5 border border-amber-300 cursor-pointer transition-colors"
+                >
+                  ⚠️ {uncategorizedCount} Sem Categoria
+                </button>
+              )}
+
+              <button
+                onClick={() => setShowPieProductList(!showPieProductList)}
+                className="flex items-center gap-1.5 px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-black uppercase rounded-2xl transition-colors border-0 cursor-pointer"
+              >
+                <Search className="w-3.5 h-3.5" />
+                {showPieProductList ? "Ocultar Busca / Edição" : "Buscar / Alterar Categorias"}
+              </button>
+            </div>
+          </div>
+
+          {categoryPieData.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-center">
+              {/* Legenda das categorias listada à esquerda (5 colunas em desktop) */}
+              <div className="md:col-span-5 lg:col-span-5 bg-slate-50/70 dark:bg-[#1e293b] p-5 rounded-2xl border border-slate-100">
+                <p className="text-slate-500 font-black text-[11px] uppercase tracking-wider mb-3 px-1">
+                  Categorias ({categoryPieData.length})
+                </p>
+                <div className="max-h-[250px] overflow-y-auto pr-2 space-y-2.5">
+                  {(() => {
+                    const totalPieVal = categoryPieData.reduce((acc, curr) => acc + curr.value, 0);
+                    return categoryPieData.map((item, idx) => {
+                      const pct = totalPieVal > 0 ? ((item.value / totalPieVal) * 100).toFixed(1) : "0.0";
+                      const color = PIE_COLORS[idx % PIE_COLORS.length];
+                      const isSelected = selectedChartCategory === item.name;
+                      return (
+                        <div 
+                          key={item.name + idx} 
+                          onClick={() => setSelectedChartCategory(isSelected ? "" : item.name)}
+                          className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl border transition-all cursor-pointer ${
+                            isSelected 
+                              ? "bg-indigo-50 border-indigo-300 ring-2 ring-indigo-500/20 shadow-xs" 
+                              : "bg-white border-slate-100/80 shadow-2xs hover:border-slate-300"
+                          }`}
+                          title="Clique para filtrar o gráfico de Gasto Mensal por esta categoria"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                            <span 
+                              className="w-3 h-3 rounded-full shrink-0" 
+                              style={{ backgroundColor: color }} 
+                            />
+                            <span className="text-xs font-black text-slate-800 uppercase truncate">
+                              {item.name}
+                            </span>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <span className="text-xs font-black text-slate-900 block">
+                              {formatCurrency(item.value)}
+                            </span>
+                            <span className="text-[10px] font-bold text-slate-500 block">
+                              {pct}%
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    });
+                  })()}
+                </div>
+              </div>
+
+              {/* Gráfico de pizza posicionado à direita (7 colunas em desktop) */}
+              <div className="md:col-span-7 lg:col-span-7 relative w-full h-[270px] flex items-center justify-center">
+                <ResponsiveContainer width="100%" height={270}>
+                  <PieChart>
+                    <Pie
+                      data={categoryPieData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={65}
+                      outerRadius={100}
+                      paddingAngle={3}
+                      dataKey="value"
+                    >
+                      {categoryPieData.map((_entry, index) => (
+                        <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <RechartsTooltip
+                      formatter={(value: number) => {
+                        const total = categoryPieData.reduce((acc, curr) => acc + curr.value, 0);
+                        const pct = total > 0 ? ((value / total) * 100).toFixed(1) : "0.0";
+                        return [`${formatCurrency(value)} (${pct}%)`, "Gasto Total"];
+                      }}
+                      contentStyle={{ borderRadius: "16px", border: "none", boxShadow: "0 10px 15px -3px rgb(0 0 0 / 0.1)", padding: "12px" }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          ) : (
+            <div className="w-full h-[200px] bg-slate-50 rounded-2xl flex flex-col items-center justify-center p-6 text-center border-2 border-dashed border-slate-200">
+              <PieChartIcon className="w-10 h-10 text-slate-300 mb-2" />
+              <p className="text-slate-500 font-bold text-xs uppercase">Sem dados de categorias</p>
+              <p className="text-slate-400 text-[10px] uppercase mt-1">Categorize os produtos ao importar para ver o gráfico.</p>
+            </div>
+          )}
+
+          {/* Painel Integrado de Busca e Edição de Categorias de Produtos */}
+          {(showPieProductList || pieSearchQuery.trim().length > 0 || pieCategoryFilter !== "ALL") && (
+            <div className="mt-6 pt-6 border-t border-slate-100 space-y-4 animate-fadeIn">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="relative flex-1">
+                  <Search className="w-4 h-4 absolute left-3.5 top-3 text-slate-400" />
+                  <input
+                    type="text"
+                    value={pieSearchQuery}
+                    onChange={e => setPieSearchQuery(e.target.value)}
+                    placeholder="Buscar produto por nome, código, fornecedor ou categoria..."
+                    className="w-full pl-10 pr-4 py-2 text-xs bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-800 outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-[10px] font-black uppercase text-slate-400">Filtrar Categoria:</span>
+                  <select
+                    value={pieCategoryFilter}
+                    onChange={e => setPieCategoryFilter(e.target.value)}
+                    className="py-2 px-3 text-xs bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
+                  >
+                    <option value="ALL">Todas ({rangeProducts.length})</option>
+                    <option value="SEM_CATEGORIA">⚠️ Sem Categoria ({uncategorizedCount})</option>
+                    {normalizedCategories.map(c => (
+                      <option key={c.id} value={c.name}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="bg-slate-50/80 rounded-2xl border border-slate-100 p-4 max-h-[380px] overflow-y-auto space-y-2">
+                {filteredPieProducts.length === 0 ? (
+                  <div className="py-8 text-center text-slate-400 text-xs font-bold uppercase tracking-wider">
+                    Nenhum produto encontrado para o filtro digitado
+                  </div>
+                ) : (
+                  filteredPieProducts.map((p) => {
+                    const isUncat = !p.category || p.category === "Sem Categoria";
+                    return (
+                      <div
+                        key={p.key}
+                        className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-xl border transition-all ${
+                          isUncat 
+                            ? "bg-amber-50/70 border-amber-200" 
+                            : "bg-white border-slate-100 hover:border-slate-300"
+                        }`}
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-xs font-black text-slate-900 truncate" title={p.name}>
+                              {p.name}
+                            </span>
+                            {p.code && (
+                              <span className="text-[9px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+                                Ref: {p.code}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-3 mt-1 text-[10px] text-slate-500 font-bold flex-wrap">
+                            <span>🏢 {p.supplierName}</span>
+                            <span>•</span>
+                            <span>💰 Total no período: {formatCurrency(p.totalNet)}</span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-[10px] font-extrabold uppercase text-slate-500">
+                            Categoria:
+                          </span>
+                          <select
+                            value={normalizedCategories.some(c => c.name === p.category) ? p.category : (p.category !== "Sem Categoria" ? "__CUSTOM__" : "Sem Categoria")}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              if (val === "__ADD_NEW__") {
+                                const customCat = prompt("Digite o nome da nova categoria:");
+                                if (customCat && customCat.trim()) {
+                                  handleUpdateProductCategory(p.code, p.name, customCat.trim());
+                                }
+                              } else if (val !== "__CUSTOM__") {
+                                handleUpdateProductCategory(p.code, p.name, val);
+                              }
+                            }}
+                            className={`text-xs font-black px-3 py-1.5 rounded-xl border outline-none cursor-pointer ${
+                              isUncat
+                                ? "bg-amber-100 text-amber-900 border-amber-300 focus:ring-2 focus:ring-amber-500"
+                                : "bg-slate-100 text-slate-800 border-slate-200 focus:ring-2 focus:ring-emerald-500"
+                            }`}
+                          >
+                            <option value="Sem Categoria">⚠️ Sem Categoria</option>
+                            {normalizedCategories.map(c => (
+                              <option key={c.id} value={c.name}>{c.name}</option>
+                            ))}
+                            {!normalizedCategories.some(c => c.name === p.category) && p.category && p.category !== "Sem Categoria" && (
+                              <option value="__CUSTOM__">{p.category}</option>
+                            )}
+                            <option value="__ADD_NEW__">＋ Criar Nova Categoria...</option>
+                          </select>
+
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteProduct(p.code, p.name)}
+                            title="Excluir produto"
+                            className="p-1.5 text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition-colors border border-rose-200/80 bg-white cursor-pointer flex items-center justify-center shrink-0"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Painel de Logs do Sistema */}
+          {systemLogs.length > 0 && (
+            <div className="mt-6 pt-6 border-t border-slate-100 space-y-3 animate-fadeIn">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <h4 className="text-xs font-black uppercase text-slate-800 tracking-wider">
+                    📋 Logs de Ações no Sistema ({systemLogs.length})
+                  </h4>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSystemLogs([])}
+                  className="text-[10px] font-bold text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                >
+                  Limpar Logs
+                </button>
+              </div>
+
+              <div className="bg-slate-900 text-slate-100 p-3.5 rounded-2xl font-mono text-[11px] max-h-[180px] overflow-y-auto space-y-2 border border-slate-800">
+                {systemLogs.map((log) => (
+                  <div key={log.id} className="flex items-start gap-2 border-b border-slate-800/60 pb-1.5 last:border-0 last:pb-0">
+                    <span className="text-slate-500 text-[10px] shrink-0 font-bold">[{log.timestamp}]</span>
+                    {log.type === 'category' ? (
+                      <span className="px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-emerald-950 text-emerald-400 border border-emerald-800/50 shrink-0">
+                        CATEGORIA
+                      </span>
+                    ) : log.type === 'delete' ? (
+                      <span className="px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-rose-950 text-rose-400 border border-rose-800/50 shrink-0">
+                        EXCLUSÃO
+                      </span>
+                    ) : (
+                      <span className="px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-slate-800 text-slate-300 shrink-0">
+                        INFO
+                      </span>
+                    )}
+                    <span className="text-slate-300 leading-snug">{log.message}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Tabela Temporária de Produtos com Aumento de Preço */}
+        <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tight flex items-center gap-2">
+                <div className="w-2.5 h-7 bg-amber-500 rounded-full animate-pulse" />
+                Produtos com Aumento na Nota Atual
+              </h2>
+              <p className="text-slate-600 text-xs font-bold mt-1 uppercase tracking-wider">
+                Comparação automática da última compra com a penúltima compra registrada para cada produto
+              </p>
+            </div>
+            
+            <div className="flex items-center gap-3">
+              {selectedIncreases.length > 0 && (
+                <button
+                  onClick={handleBulkDeleteIncreases}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-black uppercase rounded-2xl transition-colors border-0 cursor-pointer font-bold"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Excluir Selecionados ({selectedIncreases.length})
+                </button>
+              )}
+              <button
+                onClick={fetchPriceIncreases}
+                disabled={isPriceIncreasesLoading}
+                className="flex items-center gap-1.5 px-4 py-2.5 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-black uppercase rounded-2xl transition-colors border-0 cursor-pointer font-bold"
+              >
+                <RefreshCcw className={`w-3.5 h-3.5 ${isPriceIncreasesLoading ? 'animate-spin' : ''}`} />
+                Atualizar Lista
+              </button>
+            </div>
+          </div>
+
+          {isPriceIncreasesLoading && priceIncreases.length === 0 ? (
+            <div className="bg-slate-50 rounded-2xl p-8 text-center animate-pulse flex items-center justify-center">
+              <span className="text-slate-400 text-xs font-bold uppercase tracking-wider">Carregando aumentos...</span>
+            </div>
+          ) : priceIncreases.length === 0 ? (
+            <div className="bg-slate-50 rounded-2xl p-10 text-center flex flex-col items-center justify-center border-2 border-dashed border-slate-200">
+              <FileCheck2 className="w-12 h-12 text-slate-300" />
+              <p className="text-slate-500 font-bold text-xs uppercase tracking-wide mt-3">Nenhum aumento pendente nesta lista</p>
+              <p className="text-slate-400 text-[10px] uppercase tracking-wider mt-1">Os aumentos identificados nos próximos XMLs importados aparecerão aqui e persistirão até que você os exclua.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-100 pb-2">
+                    <th className="py-3 pl-3 w-10">
+                      <input
+                        type="checkbox"
+                        checked={priceIncreases.length > 0 && selectedIncreases.length === priceIncreases.length}
+                        onChange={handleToggleSelectAll}
+                        className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer"
+                      />
+                    </th>
+                    <th className="text-[10px] font-black uppercase text-slate-400 py-3">Produto</th>
+                    <th className="text-[10px] font-black uppercase text-slate-400 py-3">Fornecedor</th>
+                    <th className="text-[10px] font-black uppercase text-slate-400 py-3 text-right">Preço Penúltimo</th>
+                    <th className="text-[10px] font-black uppercase text-slate-400 py-3 text-right">Preço Último</th>
+                    <th className="text-[10px] font-black uppercase text-slate-400 py-3 text-right">Aumento</th>
+                    <th className="text-[10px] font-black uppercase text-slate-400 py-3 text-center">Data Importação</th>
+                    <th className="text-[10px] font-black uppercase text-slate-400 py-3 text-right pr-3">Ações</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {priceIncreases.map((item) => {
+                    let formattedDate = item.invoiceDate || "";
+                    try {
+                      if (formattedDate) {
+                        const datePart = formattedDate.split('T')[0];
+                        const parts = datePart.split('-');
+                        if (parts.length === 3) {
+                          formattedDate = `${parts[2]}/${parts[1]}/${parts[0]}`;
+                        }
+                      }
+                    } catch {}
+
+                    return (
+                      <tr key={item.id} className="hover:bg-slate-50/50 transition-colors group">
+                        <td className="py-3.5 pl-3">
+                          <input
+                            type="checkbox"
+                            checked={selectedIncreases.includes(item.id)}
+                            onChange={() => handleToggleSelect(item.id)}
+                            className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer"
+                          />
+                        </td>
+                        <td className="py-3.5 pr-2">
+                          <div className="font-bold text-slate-900 text-sm">
+                            {item.productName}
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2 mt-1">
+                            <span className="text-[9px] bg-slate-100 dark:bg-[#1e293b] text-slate-600 px-1.5 py-0.5 rounded font-mono font-bold">
+                              CÓD: {item.productCode}
+                            </span>
+                            {item.alreadyImported && (
+                              <span className="inline-flex items-center gap-1 text-[9px] font-black text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
+                                <AlertCircle className="w-3 h-3 text-amber-600 shrink-0" />
+                                NOTA JÁ IMPORTADA ANTERIORMENTE
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-3.5 text-slate-700 font-bold text-xs">
+                          {item.supplierName}
+                        </td>
+                        <td className="py-3.5 text-right font-mono text-sm text-slate-500 font-bold">
+                          {formatCurrency(item.oldPrice)}
+                        </td>
+                        <td className="py-3.5 text-right font-mono text-sm font-black text-slate-900">
+                          {formatCurrency(item.newPrice)}
+                        </td>
+                        <td className="py-3.5 text-right">
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-red-50 dark:bg-[#1e293b] text-red-700 rounded-lg text-xs font-black tracking-tight">
+                            <ArrowUpRight className="w-3.5 h-3.5 text-red-600 shrink-0" />
+                            +{item.percentIncrease.toFixed(1)}%
+                          </span>
+                        </td>
+                        <td className="py-3.5 text-center text-slate-700 font-bold text-xs whitespace-nowrap">
+                          {formattedDate}
+                        </td>
+                        <td className="py-3.5 text-right pr-3">
+                          <button
+                            onClick={() => handleDeleteIncrease(item.id)}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all border-0 cursor-pointer bg-transparent"
+                            title="Excluir da lista"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* Painel de Análise de Preços de Produtos */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          
+          {/* TOP 10 MAIORES AUMENTOS */}
+          <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h2 className="text-xl font-bold text-slate-900 uppercase tracking-tight flex items-center gap-2">
+                    <div className="w-2.5 h-6 bg-rose-600 rounded-full" />
+                    Top 10 Maiores Aumentos (%)
+                  </h2>
+                  <p className="text-slate-500 text-[10px] font-bold mt-1 uppercase tracking-wider">
+                    Produtos com maior aumento histórico baseado nos XMLs
+                  </p>
+                </div>
+                {isPriceLoading && <span className="text-[10px] bg-indigo-50 text-indigo-700 px-2 py-1 rounded font-black uppercase tracking-wider animate-pulse">Atualizando...</span>}
+              </div>
+
+              {priceAnalysis.topIncreases.length === 0 ? (
+                <div className="bg-slate-50 rounded-2xl p-8 text-center flex flex-col items-center justify-center border-2 border-dashed border-slate-200">
+                  <TrendingUp className="w-10 h-10 text-slate-300" />
+                  <p className="text-slate-500 font-bold text-[11px] uppercase tracking-wide mt-2">Nenhum aumento de preço detectado ainda</p>
+                  <p className="text-slate-400 text-[9px] uppercase tracking-wider mt-1">É necessário ter pelo menos 2 compras de um produto com preços diferentes para calcular a variação.</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="border-b border-slate-100 pb-2">
+                        <th className="text-[10px] font-black uppercase text-slate-400 py-3">Produto</th>
+                        <th className="text-[10px] font-black uppercase text-slate-400 py-3 text-right">Preço Antigo</th>
+                        <th className="text-[10px] font-black uppercase text-slate-400 py-3 text-right">Preço Novo</th>
+                        <th className="text-[10px] font-black uppercase text-slate-400 py-3 text-right">Aumento</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50">
+                      {priceAnalysis.topIncreases.map((prod, idx) => (
+                        <tr key={idx} className="hover:bg-slate-50/50 transition-colors group">
+                          <td className="py-3.5 pr-2">
+                            <div className="font-bold text-slate-900 text-sm lines-clamp-1 group-hover:text-indigo-700 transition-colors">
+                              {prod.name}
+                            </div>
+                            <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">
+                              {prod.suppliers[0] || 'Desconhecido'}
+                            </div>
+                          </td>
+                          <td className="py-3.5 text-right font-mono text-sm text-slate-500">
+                            {formatCurrency(prod.oldestPrice)}
+                          </td>
+                          <td className="py-3.5 text-right font-mono text-sm font-bold text-slate-900">
+                            {formatCurrency(prod.currentPrice)}
+                          </td>
+                          <td className="py-3.5 text-right">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-red-50 dark:bg-[#1e293b] text-red-700 rounded-lg text-xs font-black tracking-tight">
+                              <ArrowUpRight className="w-3.5 h-3.5 text-red-600 shrink-0" />
+                              +{prod.totalPercentChange.toFixed(1)}%
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+            
+            <div className="pt-4 border-t border-slate-50 flex justify-between items-center mt-6">
+              <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Total analisado: {priceAnalysis.allProducts.length} produtos</span>
+              <button 
+                onClick={() => fetchPricingData(true)} 
+                type="button" 
+                disabled={isPriceLoading}
+                className="flex items-center gap-1.5 text-[10px] font-black text-indigo-700 hover:text-indigo-950 uppercase cursor-pointer bg-transparent border-0 disabled:opacity-50 font-bold transition-colors"
+              >
+                <RefreshCcw className={`w-3 h-3 ${isPriceLoading ? 'animate-spin' : ''}`} />
+                Sincronizar base
+              </button>
+            </div>
+          </div>
+
+          {/* SISTEMA DE PESQUISA E CONSULTA HISTÓRICA */}
+          <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm flex flex-col justify-between">
+            <div>
+              <div className="mb-6 flex flex-col md:flex-row md:items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-xl font-bold text-slate-900 uppercase tracking-tight flex items-center gap-2">
+                    <div className="w-2.5 h-6 bg-indigo-700 rounded-full" />
+                    Pesquisa Histórica de Preço
+                  </h2>
+                  <p className="text-slate-500 text-[10px] font-bold mt-1 uppercase tracking-wider">
+                    Consulte a oscliação de qualquer produto nas últimas 5 compras
+                  </p>
+                </div>
+                <div className="flex flex-col gap-1 md:items-end">
+                  <label className="text-[10px] font-black text-slate-500 uppercase">Filtrar por Ano</label>
+                  <select
+                    className="h-9 text-xs font-bold bg-slate-50 border border-slate-200 text-slate-700 rounded-xl px-3 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all uppercase"
+                    value={priceSearchYear}
+                    onChange={(e) => setPriceSearchYear(e.target.value)}
+                  >
+                    <option value="all">Todos os Anos</option>
+                    {availableYears.map(y => (
+                      <option key={y} value={y}>{y}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Barra de Busca de Preços */}
+              <div className="relative mb-6">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                  <Search className="h-4 w-4 text-slate-400" />
+                </div>
+                <input
+                  type="text"
+                  placeholder="DIGITE O NOME DO PRODUTO PARA BUSCAR..."
+                  value={priceSearchQuery}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setPriceSearchQuery(value);
+                    if (!value) {
+                      setSelectedProduct(null);
+                      setShowSearchDropdown(false);
+                    } else {
+                      setShowSearchDropdown(true);
+                    }
+                  }}
+                  onFocus={() => {
+                    if (priceSearchQuery.trim()) {
+                      setShowSearchDropdown(true);
+                    }
+                  }}
+                  onBlur={() => {
+                    // Small delay to allow clicking suggestions before hiding dropdown
+                    setTimeout(() => {
+                      setShowSearchDropdown(false);
+                    }, 200);
+                  }}
+                  className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold text-slate-850 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 uppercase tracking-wide transition-all"
+                />
+
+                {/* Dropdown de sugestões */}
+                {showSearchDropdown && parsedSearchSuggestions.length > 0 && (
+                  <div className="absolute z-10 w-full mt-2 bg-white border border-slate-100 rounded-2xl shadow-xl overflow-hidden max-h-60 overflow-y-auto">
+                    {parsedSearchSuggestions.map((prod, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onMouseDown={(e) => {
+                          e.preventDefault(); // Previne o desfoque imediato que causa o fechamento precoce do dropdown
+                          setSelectedProduct(prod);
+                          setPriceSearchQuery(prod.name);
+                          setShowSearchDropdown(false);
+                        }}
+                        className="w-full text-left px-4 py-3 hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-b-0 flex justify-between items-center group cursor-pointer"
+                      >
+                        <div className="truncate max-w-[70%]">
+                          <div className="font-bold text-slate-800 text-xs truncate group-hover:text-indigo-700">
+                            {prod.name}
+                          </div>
+                          <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-0.5 truncate">
+                            {prod.suppliers.join(', ')}
+                          </div>
+                        </div>
+                        <span className={`text-[11px] font-black px-2.5 py-1 rounded-lg whitespace-nowrap ${
+                          prod.totalPercentChange > 0 
+                            ? 'bg-red-50 dark:bg-[#1e293b] text-red-700' 
+                            : prod.totalPercentChange < 0 
+                              ? 'bg-emerald-50 dark:bg-[#1e293b] text-emerald-700' 
+                              : 'bg-slate-100 dark:bg-[#1e293b] text-slate-600'
+                        }`}>
+                          {prod.totalPercentChange > 0 ? '+' : ''}
+                          {prod.totalPercentChange.toFixed(1)}%
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Tabela das 5 Últimas compras do produto selecionado */}
+              {selectedProduct ? (
+                <div className="space-y-4">
+                  <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex justify-between items-center">
+                    <div className="max-w-[70%]">
+                      <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Produto Selecionado</div>
+                      <div className="font-black text-slate-900 text-sm mt-0.5 truncate">{selectedProduct.name}</div>
+                      <div className="text-[11px] text-slate-500 font-bold mt-1 uppercase truncate">Fornecedores: {selectedProduct.suppliers.join(', ')}</div>
+                    </div>
+                    <div className="text-right whitespace-nowrap">
+                      <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Variação Geral</div>
+                      <div className={`text-lg font-black tracking-tight mt-0.5 ${
+                        selectedProduct.totalPercentChange > 0 
+                          ? 'text-red-600' 
+                          : selectedProduct.totalPercentChange < 0 
+                            ? 'text-emerald-700' 
+                            : 'text-slate-600'
+                      }`}>
+                        {selectedProduct.totalPercentChange > 0 ? '▲ +' : selectedProduct.totalPercentChange < 0 ? '▼ ' : ''}
+                        {selectedProduct.totalPercentChange.toFixed(1)}%
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="text-[11px] font-black text-slate-400 uppercase tracking-wider mb-2">Histórico (Até 5 últimas compras)</div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className="border-b border-slate-100 pb-1">
+                            <th className="text-[10px] font-black uppercase text-slate-400 py-2">Data</th>
+                            <th className="text-[10px] font-black uppercase text-slate-400 py-2">Fornecedor</th>
+                            <th className="text-[10px] font-black uppercase text-slate-400 py-2 text-right">Qtd</th>
+                            <th className="text-[10px] font-black uppercase text-slate-400 py-2 text-right">Preço Un.</th>
+                            <th className="text-[10px] font-black uppercase text-slate-400 py-2 text-right">Var %</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-50">
+                          {selectedProduct.history.slice(-5).reverse().map((hist: any, hIdx: number) => {
+                            let formattedDate = hist.date;
+                            try {
+                              if (hist.date) {
+                                const datePart = hist.date.split('T')[0];
+                                const parts = datePart.split('-');
+                                if (parts.length === 3) {
+                                  formattedDate = `${parts[2]}/${parts[1]}/${parts[0]}`;
+                                }
+                              }
+                            } catch {}
+
+                            return (
+                              <tr key={hIdx} className="hover:bg-slate-50/35 transition-colors">
+                                <td className="py-2.5 font-bold text-slate-800 text-xs whitespace-nowrap">{formattedDate}</td>
+                                <td className="py-2.5 text-slate-600 text-xs truncate max-w-[120px]">{hist.supplierName}</td>
+                                <td className="py-2.5 text-right text-slate-500 font-mono text-xs">{hist.quantity}</td>
+                                <td className="py-2.5 text-right text-slate-900 font-mono font-bold text-sm">{formatCurrency(hist.price)}</td>
+                                <td className="py-2.5 text-right pr-1">
+                                  {hist.percentChange === 0 ? (
+                                    <span className="text-xs font-black text-slate-400">-</span>
+                                  ) : (
+                                    <span className={`inline-flex items-center gap-0.5 text-xs font-black ${
+                                      hist.percentChange > 0 
+                                        ? 'text-red-600' 
+                                        : 'text-emerald-700'
+                                    }`}>
+                                      {hist.percentChange > 0 ? (
+                                        <>
+                                          <ArrowUpRight className="w-3.5 h-3.5 stroke-[2.5]" />
+                                          +{hist.percentChange.toFixed(1)}%
+                                        </>
+                                      ) : (
+                                        <>
+                                          <ArrowDownRight className="w-3.5 h-3.5 stroke-[2.5]" />
+                                          {hist.percentChange.toFixed(1)}%
+                                        </>
+                                      )}
+                                    </span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-slate-50 rounded-2xl p-10 text-center flex flex-col items-center justify-center border-2 border-dashed border-slate-200">
+                  <Search className="w-10 h-10 text-slate-300 animate-bounce" />
+                  <p className="text-slate-500 font-bold text-[11px] uppercase tracking-wide mt-3">Pronto para pesquisar</p>
+                  <p className="text-slate-400 text-[9px] uppercase tracking-wider mt-1">Busque qualquer produto acima para carregar o histórico de compras.</p>
+                </div>
+              )}
+            </div>
+            
+            <div className="pt-4 border-t border-slate-50 flex justify-between items-center mt-6">
+              <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Dica: Selecione as sugestões rápidas enquanto digita</span>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  );
+};

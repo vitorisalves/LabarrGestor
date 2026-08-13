@@ -1,0 +1,20 @@
+{
+  "short_name": "GestorProd",
+  "name": "Gestor de Produção e Compras",
+  "icons": [
+    {
+      "src": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTF8VmLyweYpbSL_D3D1F-hsvmGwm9EHcPi5A&s",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+        "src": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTF8VmLyweYpbSL_D3D1F-hsvmGwm9EHcPi5A&s",
+        "type": "image/png",
+        "sizes": "512x512"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#4f46e5",
+  "background_color": "#ffffff"
+}
