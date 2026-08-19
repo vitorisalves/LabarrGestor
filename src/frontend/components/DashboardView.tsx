@@ -8,15 +8,11 @@ import {
   TrendingUp,
   Calendar as CalendarIcon,
   AlertCircle,
-  Clock,
   RefreshCcw,
   Upload,
-  FileText,
   Trash2,
   XCircle,
-  FileCheck2,
-  HelpCircle,
-  Briefcase
+  FileCheck2
 } from 'lucide-react';
 import { format, isWithinInterval, startOfMonth, endOfMonth, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -24,7 +20,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { domToCanvas } from 'modern-screenshot';
 
-import { formatCurrency, safeStringify } from '../utils';
+import { formatCurrency } from '../utils';
 import { SavedList } from '../types';
 import { useTestMode } from '../context/TestModeContext';
 import { analyzePrices } from '../utils/priceAnalysis';
