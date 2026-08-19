@@ -50,6 +50,8 @@ import { formatCurrency, safeStringify, handleFirestoreError, OperationType } fr
 import { SavedList } from '../types';
 import { useTestMode } from '../context/TestModeContext';
 import { analyzePrices } from '../utils/priceAnalysis';
+import { DashboardStatsCards } from './dashboard/DashboardStatsCards';
+import { SystemLogsPanel } from './dashboard/SystemLogsPanel';
 
 const PIE_COLORS = ['#4f46e5', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#06b6d4', '#f97316', '#64748b'];
 
@@ -1813,48 +1815,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
         </div>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Total Spend */}
-        <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow">
-          <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:scale-110 transition-transform">
-            <TrendingUp className="w-24 h-24 text-indigo-700" />
-          </div>
-          <p className="text-[10px] font-black text-slate-600 uppercase tracking-widest mb-2">
-            {selectedCategoryName ? `Gasto no Período (${selectedCategoryName})` : "Gasto no Período (XML)"}
-          </p>
-          <h3 className="text-3xl font-black text-indigo-700 tracking-tighter">
-            {isLoading ? "Carregando..." : formatCurrency(totalExpense)}
-          </h3>
-          <p className="text-xs text-slate-500 font-bold mt-2">
-            {selectedCategoryName ? `Filtrado pela categoria "${selectedCategoryName}"` : "Data de Emissão (dhEmi) filtrada"}
-          </p>
-        </div>
-
-        {/* Invoices Amount */}
-        <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow">
-          <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:scale-110 transition-transform">
-            <FileText className="w-24 h-24 text-emerald-600" />
-          </div>
-          <p className="text-[10px] font-black text-slate-600 uppercase tracking-widest mb-2">Notas Emitidas no Período</p>
-          <h3 className="text-3xl font-black text-emerald-600 tracking-tighter">
-            {isLoading ? "..." : `${activeInvoicesCount} notas`}
-          </h3>
-          <p className="text-xs text-slate-500 font-bold mt-2">Total geral enviado: {xmlSpendings.length}</p>
-        </div>
-
-        {/* Invoice Average */}
-        <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow">
-          <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:scale-110 transition-transform">
-            <FileCheck2 className="w-24 h-24 text-blue-600" />
-          </div>
-          <p className="text-[10px] font-black text-slate-600 uppercase tracking-widest mb-2">Ticket Médio por Nota</p>
-          <h3 className="text-3xl font-black text-blue-600 tracking-tighter">
-            {isLoading ? "..." : formatCurrency(averageInvoiceValue)}
-          </h3>
-          <p className="text-xs text-slate-500 font-bold mt-2">Gasto total / notas do período</p>
-        </div>
-      </div>
+      <DashboardStatsCards
+        totalExpense={totalExpense}
+        activeInvoicesCount={activeInvoicesCount}
+        averageInvoiceValue={averageInvoiceValue}
+        isLoading={isLoading}
+        selectedCategoryName={selectedCategoryName}
+        xmlSpendings={xmlSpendings}
+      />
 
       {/* SEÇÃO: PRODUTOS PENDENTES DAS LISTAS DE COMPRAS */}
       <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-6 animate-in fade-in duration-300">
@@ -2526,48 +2494,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
             </div>
           )}
 
-          {/* Painel de Logs do Sistema */}
-          {systemLogs.length > 0 && (
-            <div className="mt-6 pt-6 border-t border-slate-100 space-y-3 animate-fadeIn">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                  <h4 className="text-xs font-black uppercase text-slate-800 tracking-wider">
-                    📋 Logs de Ações no Sistema ({systemLogs.length})
-                  </h4>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setSystemLogs([])}
-                  className="text-[10px] font-bold text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
-                >
-                  Limpar Logs
-                </button>
-              </div>
-
-              <div className="bg-slate-900 text-slate-100 p-3.5 rounded-2xl font-mono text-[11px] max-h-[180px] overflow-y-auto space-y-2 border border-slate-800">
-                {systemLogs.map((log) => (
-                  <div key={log.id} className="flex items-start gap-2 border-b border-slate-800/60 pb-1.5 last:border-0 last:pb-0">
-                    <span className="text-slate-500 text-[10px] shrink-0 font-bold">[{log.timestamp}]</span>
-                    {log.type === 'category' ? (
-                      <span className="px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-emerald-950 text-emerald-400 border border-emerald-800/50 shrink-0">
-                        CATEGORIA
-                      </span>
-                    ) : log.type === 'delete' ? (
-                      <span className="px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-rose-950 text-rose-400 border border-rose-800/50 shrink-0">
-                        EXCLUSÃO
-                      </span>
-                    ) : (
-                      <span className="px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-slate-800 text-slate-300 shrink-0">
-                        INFO
-                      </span>
-                    )}
-                    <span className="text-slate-300 leading-snug">{log.message}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+          <SystemLogsPanel systemLogs={systemLogs} onClearLogs={() => setSystemLogs([])} />
         </div>
 
         {/* Tabela Temporária de Produtos com Aumento de Preço */}
