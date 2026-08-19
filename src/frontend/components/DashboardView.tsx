@@ -24,8 +24,6 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { domToCanvas } from 'modern-screenshot';
 
-import { db } from '../firebase';
-import { collection, onSnapshot, doc, setDoc, deleteDoc, getDocs } from 'firebase/firestore';
 import { formatCurrency, safeStringify, handleFirestoreError, OperationType } from '../utils';
 import { SavedList } from '../types';
 import { useTestMode } from '../context/TestModeContext';
@@ -40,6 +38,7 @@ import { PriceAnalysisPanel } from './dashboard/PriceAnalysisPanel';
 import { CategoryEditorPanel } from './dashboard/CategoryEditorPanel';
 import { PendingListProductsPanel } from './dashboard/PendingListProductsPanel';
 import { usePendingListProductsPanel } from '../hooks/usePendingListProductsPanel';
+import { useXmlSpendings } from '../hooks/useXmlSpendings';
 
 const parseDateSafe = (dateStr: any): Date | null => {
   if (!dateStr) return null;
@@ -76,25 +75,21 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
   const [startDate, setStartDate] = useState<string>(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
   const [endDate, setEndDate] = useState<string>(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
   const [isChartReady, setIsChartReady] = useState(false);
-  
-  // Real-time XML Spendings State with localStorage caching
-  const [xmlSpendings, setXmlSpendings] = useState<any[]>(() => {
-    try {
-      const cached = localStorage.getItem('cached_dashboard_xml_spendings');
-      return cached ? JSON.parse(cached) : [];
-    } catch {
-      return [];
-    }
-  });
-  const [isLoading, setIsLoading] = useState(() => {
-    try {
-      const cached = localStorage.getItem('cached_dashboard_xml_spendings');
-      return cached ? false : true;
-    } catch {
-      return true;
-    }
-  });
-  
+
+  const {
+    xmlSpendings,
+    suppliers,
+    invoices,
+    isLoading,
+    isPriceLoading,
+    fetchSpendings,
+    fetchPricingData,
+    handleDeleteXmlSpending,
+    setXmlSpendings,
+    setInvoices,
+    setSuppliers,
+  } = useXmlSpendings();
+
   // Upload state
   const [isUploading, setIsUploading] = useState(false);
   const [xmlLogs, setXmlLogs] = useState<{ type: 'success' | 'warning' | 'error', text: string }[]>([]);
@@ -142,26 +137,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
   }, [categories, propCategories]);
 
 
-  // States of invoices and suppliers for pricing dashboard
-  const [invoices, setInvoices] = useState<any[]>(() => {
-    try {
-      const cached = localStorage.getItem('cached_dashboard_invoices');
-      return cached ? JSON.parse(cached) : [];
-    } catch {
-      return [];
-    }
-  });
-
-  const [suppliers, setSuppliers] = useState<any[]>(() => {
-    try {
-      const cached = localStorage.getItem('cached_dashboard_suppliers');
-      return cached ? JSON.parse(cached) : [];
-    } catch {
-      return [];
-    }
-  });
-
-  const [isPriceLoading, setIsPriceLoading] = useState(false);
   const [priceSearchQuery, setPriceSearchQuery] = useState('');
   const [priceSearchYear, setPriceSearchYear] = useState<string>('all');
   const [selectedProduct, setSelectedProduct] = useState<any | null>(null);
@@ -321,54 +296,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
     setDeleteProductConfirmModal({ open: false });
   };
 
-  const fetchPricingData = async (force = false) => {
-    const now = Date.now();
-
-    setIsPriceLoading(true);
-    try {
-      const urlInvoices = force ? '/api/xml/invoices?fresh=true' : '/api/xml/invoices';
-      const urlSuppliers = force ? '/api/xml/suppliers?fresh=true' : '/api/xml/suppliers';
-      const fetchOpts = force ? { headers: { 'Cache-Control': 'no-cache' } } : undefined;
-
-      // Fetch invoices from backend cache
-      const invoicesRes = await fetch(urlInvoices, fetchOpts);
-      let invoicesData: any[] = [];
-      if (invoicesRes.ok) {
-        invoicesData = await invoicesRes.json();
-      }
-
-      // Fetch suppliers from backend cache with client-side fallback
-      let suppliersData: any[] = [];
-      try {
-        const suppliersRes = await fetch(urlSuppliers, fetchOpts);
-        if (suppliersRes.ok) {
-          suppliersData = await suppliersRes.json();
-        } else {
-          const errData = await suppliersRes.json().catch(() => ({}));
-          throw new Error(`Backend suppliers failed: ${errData.message || errData.error || suppliersRes.statusText}`);
-        }
-      } catch (backendErr) {
-        console.warn("Falling back to client-side Firestore for suppliers:", backendErr);
-        const suppSnap = await getDocs(collection(db, 'suppliers'));
-        suppSnap.forEach(doc => {
-          suppliersData.push({ id: doc.id, ...doc.data() });
-        });
-      }
-
-      setInvoices(invoicesData);
-      setSuppliers(suppliersData);
-      localStorage.setItem('cached_dashboard_invoices', JSON.stringify(invoicesData));
-      localStorage.setItem('cached_dashboard_suppliers', JSON.stringify(suppliersData));
-      localStorage.setItem('dashboard_last_fetch', String(now));
-    } catch (err) {
-      console.error("Erro ao carregar dados de preços:", err);
-    } finally {
-      setIsPriceLoading(false);
-    }
-  };
-
   useEffect(() => {
-    fetchPricingData();
     fetchPriceIncreases();
   }, []);
 
@@ -377,55 +305,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
       setIsChartReady(true);
     }, 150);
     return () => clearTimeout(timer);
-  }, []);
-
-  // Fetch xml_spendings with caching
-  const fetchSpendings = async (force = false) => {
-    const cached = localStorage.getItem('cached_dashboard_xml_spendings');
-    const now = Date.now();
-
-    setIsLoading(true);
-    try {
-      let items: any[] = [];
-      try {
-        const url = force ? '/api/xml/spendings?fresh=true' : '/api/xml/spendings';
-        const fetchOpts = force ? { headers: { 'Cache-Control': 'no-cache' } } : undefined;
-        const spendingsRes = await fetch(url, fetchOpts);
-        if (spendingsRes.ok) {
-          items = await spendingsRes.json();
-        } else {
-          const errData = await spendingsRes.json().catch(() => ({}));
-          throw new Error(`Backend spendings failed: ${errData.message || errData.error || spendingsRes.statusText}`);
-        }
-      } catch (backendErr) {
-        console.warn("Falling back to client-side Firestore for spendings:", backendErr);
-        const q = collection(db, 'xml_spendings');
-        const snapshot = await getDocs(q);
-        snapshot.forEach((doc) => {
-          items.push({ id: doc.id, ...doc.data() });
-        });
-      }
-
-      setXmlSpendings(items);
-      localStorage.setItem('cached_dashboard_xml_spendings', JSON.stringify(items));
-      localStorage.setItem('xml_spendings_last_fetch', String(now));
-    } catch (err: any) {
-      console.error("Erro ao carregar dados XML de gastos:", err);
-      if (cached) {
-        try {
-          setXmlSpendings(JSON.parse(cached));
-        } catch (e) {
-          console.error(e);
-        }
-      }
-      handleFirestoreError(err, OperationType.GET, 'xml_spendings');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchSpendings();
   }, []);
 
   const pendingPanel = usePendingListProductsPanel(addSystemLog, fetchPricingData, fetchSpendings, setIsUploading);
@@ -696,29 +575,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
       setXmlLogs(prev => [...logs, ...prev]);
     } finally {
       setIsUploading(false);
-    }
-  };
-
-  const handleDeleteXmlSpending = async (id: string) => {
-    if (!window.confirm("Tem certeza que deseja excluir este registro de gasto?")) return;
-    try {
-      if (!isTestMode) {
-        await deleteDoc(doc(db, 'xml_spendings', id));
-        try {
-          await fetch(`/api/xml/invoices/${id}`, {
-            method: 'DELETE'
-          });
-        } catch (apiErr) {
-          console.error("Erro ao deletar fatura do banco de preços central:", apiErr);
-        }
-      }
-      setXmlSpendings(prev => prev.filter(item => item.id !== id));
-      setInvoices(prev => prev.filter(item => item.id !== id));
-      await fetchPricingData(true);
-      await fetchSpendings(true);
-    } catch (err) {
-      console.error("Erro ao deletar gasto XML:", err);
-      handleFirestoreError(err, OperationType.DELETE, `xml_spendings/${id}`);
     }
   };
 
