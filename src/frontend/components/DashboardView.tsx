@@ -18,8 +18,6 @@ import {
   HelpCircle,
   Briefcase,
   Search,
-  ArrowUpRight,
-  ArrowDownRight,
   ShoppingCart,
   CheckCircle2
 } from 'lucide-react';
