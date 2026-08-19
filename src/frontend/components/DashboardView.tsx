@@ -40,8 +40,6 @@ import { SystemLogsPanel } from './dashboard/SystemLogsPanel';
 import { MonthlySpendChart } from './dashboard/MonthlySpendChart';
 import { CategoryPieChart } from './dashboard/CategoryPieChart';
 
-const PIE_COLORS = ['#4f46e5', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#06b6d4', '#f97316', '#64748b'];
-
 const parseDateSafe = (dateStr: any): Date | null => {
   if (!dateStr) return null;
   if (dateStr instanceof Date) return isNaN(dateStr.getTime()) ? null : dateStr;
