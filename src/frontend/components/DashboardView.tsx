@@ -24,7 +24,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { domToCanvas } from 'modern-screenshot';
 
-import { formatCurrency, safeStringify, handleFirestoreError, OperationType } from '../utils';
+import { formatCurrency, safeStringify } from '../utils';
 import { SavedList } from '../types';
 import { useTestMode } from '../context/TestModeContext';
 import { analyzePrices } from '../utils/priceAnalysis';
