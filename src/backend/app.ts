@@ -579,6 +579,25 @@ app.get("/api/xml/spendings", handleCacheAndEtag("xml_spendings"), asyncHandler(
   }
 }));
 
+app.delete("/api/xml/spendings/:id", asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  if (!id) {
+    return res.status(400).json({ status: 'error', error: 'ID not provided' });
+  }
+
+  const docRef = await fsOps.doc('xml_spendings', id);
+  const docSnapshot = await fsOps.getDoc(docRef, 'xml_spendings/' + id);
+  const exists = typeof docSnapshot.exists === 'function' ? docSnapshot.exists() : !!docSnapshot.exists;
+
+  if (exists) {
+    await fsOps.delete(docRef, 'xml_spendings/' + id);
+    fsOps.invalidateCache('xml_spendings');
+    res.json({ status: 'deleted', id });
+  } else {
+    res.json({ status: 'not_found', message: `Spending ${id} not found but checked.` });
+  }
+}));
+
 app.get("/api/xml/categories", handleCacheAndEtag("categories"), asyncHandler(async (req: Request, res: Response) => {
   try {
     const forceNoCache = req.query.fresh === 'true' || req.headers['cache-control'] === 'no-cache' || req.headers['pragma'] === 'no-cache';
