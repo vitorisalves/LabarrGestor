@@ -132,6 +132,16 @@ export const useCart = (
     }).filter(item => item.quantity > 0));
   };
 
+  const setCartQuantity = (name: string, supplierName: string, newQuantity: number) => {
+    setCart(prev => prev.map(item => {
+      if (item.name === name && item.supplierName === supplierName) {
+        const qty = Math.max(0, isNaN(newQuantity) ? 0 : newQuantity);
+        return { ...item, quantity: qty };
+      }
+      return item;
+    }));
+  };
+
   const removeFromCart = (name: string, supplierName: string) => {
     setCart(prev => prev.filter(item => !(item.name === name && item.supplierName === supplierName)));
   };
@@ -329,6 +339,7 @@ export const useCart = (
     refreshLists,
     addToCart,
     updateCartQuantity,
+    setCartQuantity,
     removeFromCart,
     clearCart,
     finalizeList,

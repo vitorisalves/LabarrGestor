@@ -270,6 +270,81 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
     isBulk: boolean;
   }>({ open: false, idsToDelete: [], isBulk: false });
 
+  const [deleteProductConfirmModal, setDeleteProductConfirmModal] = useState<{
+    open: boolean;
+    productKey?: string;
+    invKey?: string;
+    productName?: string;
+    productCode?: string;
+    supplierName?: string;
+    invNumber?: string;
+    dateStr?: string;
+    totalNet?: number;
+    productIndex?: number;
+  }>({ open: false });
+
+  const confirmDeleteProductItem = async () => {
+    if (!deleteProductConfirmModal.invKey) return;
+
+    const targetInvKey = deleteProductConfirmModal.invKey;
+    const targetIndex = deleteProductConfirmModal.productIndex;
+    const targetCode = String(deleteProductConfirmModal.productCode || "").trim();
+    const normStr = (s: string) => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+    const targetName = normStr(deleteProductConfirmModal.productName || "");
+
+    let invoicesChanged = false;
+    const nextInvoices = invoices.map((inv: any) => {
+      const invKey = inv.chNFe || inv.nfeKey || inv.id;
+      if (invKey === targetInvKey || inv.id === targetInvKey || (targetInvKey && invKey && String(invKey).includes(targetInvKey))) {
+        let invChanged = false;
+        const updatedProducts = (inv.products || []).map((p: any, idx: number) => {
+          const pCode = String(p.code !== undefined && p.code !== null && p.code !== "" ? p.code : (p.cProd !== undefined && p.cProd !== null ? p.cProd : "")).trim();
+          const pName = normStr(p.name || p.xProd || "");
+
+          const matchesIndex = targetIndex !== undefined && idx === targetIndex;
+          const matchesIdentity = (targetCode && pCode && targetCode === pCode) || (targetName && pName && targetName === pName);
+
+          if (matchesIndex || matchesIdentity) {
+            invChanged = true;
+            invoicesChanged = true;
+            return { ...p, deleted: true };
+          }
+          return p;
+        });
+
+        if (invChanged) {
+          return { ...inv, products: updatedProducts };
+        }
+      }
+      return inv;
+    });
+
+    if (invoicesChanged) {
+      setInvoices(nextInvoices);
+      localStorage.setItem("cached_dashboard_invoices", JSON.stringify(nextInvoices));
+    }
+
+    if (!isTestMode) {
+      try {
+        await fetch("/api/xml/products/delete-item", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            invKey: targetInvKey,
+            productIndex: targetIndex,
+            code: targetCode,
+            name: deleteProductConfirmModal.productName
+          })
+        }).catch(console.error);
+      } catch (err) {
+        console.error("Erro ao enviar exclusão do item para o servidor:", err);
+      }
+    }
+
+    addSystemLog('delete', `Produto "${deleteProductConfirmModal.productName}" removido da Nota Fiscal ${deleteProductConfirmModal.invNumber || ''} (${deleteProductConfirmModal.supplierName || ''}).`);
+    setDeleteProductConfirmModal({ open: false });
+  };
+
   const fetchPendingListProducts = async (force = false) => {
     setIsPendingLoading(true);
     try {
@@ -292,6 +367,20 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
 
   const handlePendingPriceChange = async (id: string, newPrice: number) => {
     const updated = pendingListProducts.map(p => p.id === id ? { ...p, price: newPrice } : p);
+    setPendingListProducts(updated);
+    const target = updated.find(p => p.id === id);
+    if (target) {
+      await fetch('/api/xml/pending-list-products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ item: target })
+      }).catch(console.error);
+    }
+  };
+
+  const handlePendingQuantityChange = async (id: string, newQuantity: number) => {
+    const qty = Math.max(1, newQuantity || 1);
+    const updated = pendingListProducts.map(p => p.id === id ? { ...p, quantity: qty } : p);
     setPendingListProducts(updated);
     const target = updated.find(p => p.id === id);
     if (target) {
@@ -1019,23 +1108,19 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
     const start = new Date(startDate + "T00:00:00");
     const end = new Date(endDate + "T23:59:59");
 
-    const map = new Map<string, {
-      key: string;
-      code: string;
-      name: string;
-      category: string;
-      supplierName: string;
-      totalNet: number;
-      occurrences: number;
-    }>();
+    const items: any[] = [];
 
-    invoices.forEach(inv => {
+    invoices.forEach((inv: any, invIdx: number) => {
       const dateStr = inv.date || inv.dhEmi || inv.createdAt;
       if (!dateStr) return;
       const spendingDate = parseDateSafe(dateStr);
       if (spendingDate && isWithinInterval(spendingDate, { start, end })) {
         const suppName = inv.supplierName || inv.emitName || inv.fornecedor || "Fornecedor";
-        (inv.products || []).filter((p: any) => !p.deleted).forEach((p: any) => {
+        const invNumber = inv.nNF || inv.invoiceNumber || inv.number || inv.chNFe?.substring(25, 34) || (inv.id ? String(inv.id).slice(-8) : `NF-${invIdx + 1}`);
+        const invKey = inv.chNFe || inv.nfeKey || inv.id || `inv_${invIdx}`;
+        const formattedDate = format(spendingDate, 'dd/MM/yyyy');
+
+        (inv.products || []).filter((p: any) => !p.deleted).forEach((p: any, pIdx: number) => {
           const name = String(p.name || p.xProd || "Produto sem nome");
           const code = String(p.code ?? p.cProd ?? "");
           const rawCat = p.categoryId || p.category || "";
@@ -1056,8 +1141,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
           );
           const cat = foundCat ? foundCat.name : (rawCat || "Sem Categoria");
 
-          const key = (code ? `CODE_${code}` : `NAME_${String(name).toLowerCase().trim()}`);
-
           let baseVal = 0;
           if (p.totalNet !== undefined) {
             baseVal = p.totalNet;
@@ -1067,29 +1150,31 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
             baseVal = (p.vUnCom || p.price || 0) * (p.quantity || 1);
           }
 
-          if (!map.has(key)) {
-            map.set(key, {
-              key,
-              code,
-              name,
-              category: cat,
-              supplierName: suppName,
-              totalNet: baseVal,
-              occurrences: 1
-            });
-          } else {
-            const item = map.get(key)!;
-            item.totalNet += baseVal;
-            item.occurrences += 1;
-            if (cat !== "Sem Categoria") {
-              item.category = cat;
-            }
-          }
+          const qty = p.quantity || p.qCom || 1;
+          const unitPrice = p.vUnCom || p.price || (qty ? baseVal / qty : baseVal);
+
+          items.push({
+            key: `${invKey}_p_${pIdx}_${code || name}`,
+            invId: inv.id || invKey,
+            invKey,
+            invNumber,
+            dateStr: formattedDate,
+            rawDate: spendingDate,
+            code,
+            name,
+            category: cat,
+            supplierName: suppName,
+            quantity: qty,
+            unitPrice,
+            totalNet: baseVal,
+            productIndexInInvoice: pIdx,
+            invoiceObj: inv
+          });
         });
       }
     });
 
-    return Array.from(map.values()).sort((a, b) => b.totalNet - a.totalNet);
+    return items.sort((a, b) => b.rawDate.getTime() - a.rawDate.getTime() || b.totalNet - a.totalNet);
   }, [invoices, startDate, endDate, normalizedCategories]);
 
   const uncategorizedCount = useMemo(() => {
@@ -1103,12 +1188,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
       const pCode = String(p.code || "").toLowerCase();
       const pCat = String(p.category || "").toLowerCase();
       const pSupp = String(p.supplierName || "").toLowerCase();
+      const pInv = String(p.invNumber || "").toLowerCase();
+      const pDate = String(p.dateStr || "").toLowerCase();
 
       const matchQuery = !q || 
         pName.includes(q) || 
         pCode.includes(q) || 
         pCat.includes(q) || 
-        pSupp.includes(q);
+        pSupp.includes(q) ||
+        pInv.includes(q) ||
+        pDate.includes(q);
 
       if (!matchQuery) return false;
 
@@ -1933,7 +2022,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
                         <td className="p-3.5 font-bold text-slate-900">{p.productName}</td>
                         <td className="p-3.5 text-slate-600 font-medium">{p.supplierName}</td>
                         <td className="p-3.5 text-slate-500 font-medium text-[11px]">{p.listName || 'Minhas Listas'}</td>
-                        <td className="p-3.5 font-bold text-slate-800">{qty}</td>
+                        <td className="p-3.5 font-bold text-slate-800">
+                          <input
+                            type="number"
+                            min="1"
+                            step="1"
+                            value={p.quantity !== undefined ? p.quantity : 1}
+                            onChange={(e) => handlePendingQuantityChange(p.id, parseInt(e.target.value, 10) || 1)}
+                            className="w-16 bg-white border border-slate-200 text-slate-800 font-bold rounded-lg px-2 py-1 text-xs outline-none focus:border-indigo-500 text-center"
+                          />
+                        </td>
                         <td className="p-3.5">
                           <input
                             type="number"
@@ -2024,7 +2122,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
               {isUploading && (
                 <div className="flex items-center gap-1.5 px-2 py-0.5 bg-indigo-50 rounded-full">
                   <RefreshCcw className="w-3 h-3 text-indigo-600 animate-spin" />
-                  <span className="text-[9px] font-black uppercase text-indigo-700">Analisando Arquivos...</span>
+                  <span className="text-[9px] font-black uppercase text-indigo-700">Processando e Analisando Arquivos XML...</span>
                 </div>
               )}
             </div>
@@ -2037,6 +2135,24 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
               </button>
             )}
           </div>
+
+          {/* Barra de Carregamento Animada */}
+          {isUploading && (
+            <div className="space-y-2 bg-indigo-50/60 p-3.5 rounded-2xl border border-indigo-100/80">
+              <div className="flex items-center justify-between text-[11px] font-bold text-indigo-900">
+                <span className="flex items-center gap-1.5">
+                  <Upload className="w-3.5 h-3.5 text-indigo-600 animate-bounce" />
+                  Importando e processando notas fiscais XML...
+                </span>
+                <span className="text-[10px] font-black uppercase tracking-wider text-indigo-600">Aguarde...</span>
+              </div>
+              <div className="w-full bg-indigo-100/70 h-2.5 rounded-full overflow-hidden relative">
+                <div className="h-full bg-gradient-to-r from-indigo-500 via-indigo-600 to-indigo-500 rounded-full w-full animate-pulse relative overflow-hidden">
+                  <div className="absolute inset-0 bg-white/30 skew-x-12 animate-[shimmer_1.5s_infinite_linear]" style={{ backgroundImage: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.6), transparent)' }} />
+                </div>
+              </div>
+            </div>
+          )}
           
           {xmlLogs.length > 0 && (
             <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 max-h-48 overflow-y-auto space-y-2">
@@ -2302,7 +2418,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
                 </div>
               </div>
 
-              <div className="bg-slate-50/80 rounded-2xl border border-slate-100 p-4 max-h-[380px] overflow-y-auto space-y-2">
+              <div className="bg-[#1e293b] rounded-2xl border border-slate-800 p-4 max-h-[380px] overflow-y-auto space-y-2">
                 {filteredPieProducts.length === 0 ? (
                   <div className="py-8 text-center text-slate-400 text-xs font-bold uppercase tracking-wider">
                     Nenhum produto encontrado para o filtro digitado
@@ -2313,32 +2429,42 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
                     return (
                       <div
                         key={p.key}
-                        className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-xl border transition-all ${
+                        className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl border transition-all ${
                           isUncat 
-                            ? "bg-amber-50/70 border-amber-200" 
-                            : "bg-white border-slate-100 hover:border-slate-300"
+                            ? "bg-[#1e293b] border-amber-500/50" 
+                            : "bg-[#1e293b] border-slate-700 hover:border-slate-600"
                         }`}
                       >
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-xs font-black text-slate-900 truncate" title={p.name}>
+                            <span className="text-sm font-black text-slate-100 truncate" title={p.name}>
                               {p.name}
                             </span>
                             {p.code && (
-                              <span className="text-[9px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+                              <span className="text-[10px] font-bold text-slate-300 bg-slate-800 px-2 py-0.5 rounded border border-slate-700">
                                 Ref: {p.code}
                               </span>
                             )}
+                            <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/60">
+                              NF: {p.invNumber}
+                            </span>
                           </div>
-                          <div className="flex items-center gap-3 mt-1 text-[10px] text-slate-500 font-bold flex-wrap">
-                            <span>🏢 {p.supplierName}</span>
+
+                          <div className="flex items-center gap-2.5 mt-1.5 text-[11px] text-slate-400 font-medium flex-wrap">
+                            <span>🏢 <strong className="text-slate-300">{p.supplierName}</strong></span>
                             <span>•</span>
-                            <span>💰 Total no período: {formatCurrency(p.totalNet)}</span>
+                            <span>📅 <strong className="text-slate-300">{p.dateStr}</strong></span>
+                            <span>•</span>
+                            <span>📦 Qtd: <strong className="text-slate-200">{p.quantity}</strong></span>
+                            <span>•</span>
+                            <span>💰 Un: <strong className="text-slate-200">{formatCurrency(p.unitPrice)}</strong></span>
+                            <span>•</span>
+                            <span>Total: <strong className="text-emerald-400">{formatCurrency(p.totalNet)}</strong></span>
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-2 shrink-0">
-                          <span className="text-[10px] font-extrabold uppercase text-slate-500">
+                        <div className="flex items-center gap-2.5 shrink-0">
+                          <span className="text-[10px] font-extrabold uppercase text-slate-400">
                             Categoria:
                           </span>
                           <select
@@ -2356,8 +2482,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
                             }}
                             className={`text-xs font-black px-3 py-1.5 rounded-xl border outline-none cursor-pointer ${
                               isUncat
-                                ? "bg-amber-100 text-amber-900 border-amber-300 focus:ring-2 focus:ring-amber-500"
-                                : "bg-slate-100 text-slate-800 border-slate-200 focus:ring-2 focus:ring-emerald-500"
+                                ? "bg-amber-950/80 text-amber-300 border-amber-700/80 focus:ring-2 focus:ring-amber-500"
+                                : "bg-slate-800 text-slate-200 border-slate-700 focus:ring-2 focus:ring-emerald-500"
                             }`}
                           >
                             <option value="Sem Categoria">⚠️ Sem Categoria</option>
@@ -2372,11 +2498,24 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
 
                           <button
                             type="button"
-                            onClick={() => handleDeleteProduct(p.code, p.name)}
-                            title="Excluir produto"
-                            className="p-1.5 text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition-colors border border-rose-200/80 bg-white cursor-pointer flex items-center justify-center shrink-0"
+                            onClick={() => {
+                              setDeleteProductConfirmModal({
+                                open: true,
+                                productKey: p.key,
+                                invKey: p.invKey,
+                                productName: p.name,
+                                productCode: p.code,
+                                supplierName: p.supplierName,
+                                invNumber: p.invNumber,
+                                dateStr: p.dateStr,
+                                totalNet: p.totalNet,
+                                productIndex: p.productIndexInInvoice
+                              });
+                            }}
+                            title="Excluir este lançamento de produto da NF"
+                            className="p-2 text-rose-400 hover:text-rose-200 hover:bg-rose-900/60 rounded-xl transition-all border border-rose-800/60 bg-slate-800 cursor-pointer flex items-center justify-center shrink-0"
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
+                            <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
                       </div>
@@ -2856,6 +2995,53 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
 
         </div>
       </div>
+
+      {deleteProductConfirmModal.open && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[300] flex items-center justify-center p-4 animate-fadeIn">
+          <div className="bg-[#1e293b] border border-slate-700 w-full max-w-md rounded-2xl p-6 shadow-2xl text-slate-100 space-y-4">
+            <div className="flex items-center gap-3 text-rose-400">
+              <div className="w-10 h-10 rounded-xl bg-rose-950/80 border border-rose-800/60 flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5 text-rose-400" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-100">Confirmar Exclusão de Item</h3>
+                <p className="text-xs text-slate-400">Remover lançamento específico de Nota Fiscal</p>
+              </div>
+            </div>
+
+            <div className="text-xs text-slate-300 space-y-2 bg-slate-900/60 p-3.5 rounded-xl border border-slate-800">
+              <p className="font-semibold text-slate-200">Tem certeza que deseja remover este lançamento do produto?</p>
+              <div className="mt-2 text-xs text-slate-300 space-y-1.5 border-t border-slate-800 pt-2.5">
+                <p>📌 <strong className="text-slate-100">Produto:</strong> {deleteProductConfirmModal.productName}</p>
+                <p>🏢 <strong className="text-slate-100">Fornecedor:</strong> {deleteProductConfirmModal.supplierName}</p>
+                <p>📄 <strong className="text-slate-100">Nota Fiscal:</strong> {deleteProductConfirmModal.invNumber}</p>
+                <p>📅 <strong className="text-slate-100">Data da Compra:</strong> {deleteProductConfirmModal.dateStr}</p>
+                <p>💰 <strong className="text-slate-100">Valor Total:</strong> <span className="text-emerald-400 font-bold">{formatCurrency(deleteProductConfirmModal.totalNet || 0)}</span></p>
+              </div>
+              <p className="text-[11px] text-amber-400 font-semibold mt-2.5">
+                ⚠️ Lançamentos deste mesmo produto em outras notas fiscais serão mantidos.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeleteProductConfirmModal({ open: false })}
+                className="px-4 py-2 text-xs font-bold text-slate-300 hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteProductItem}
+                className="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-500 rounded-xl transition-colors shadow-lg shadow-rose-950/50 cursor-pointer"
+              >
+                Sim, Excluir Lançamento
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

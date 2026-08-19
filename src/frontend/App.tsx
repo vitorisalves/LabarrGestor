@@ -115,6 +115,7 @@ export default function App() {
     refreshLists,
     addToCart,
     updateCartQuantity,
+    setCartQuantity,
     removeFromCart,
     clearCart,
     finalizeList,
@@ -791,6 +792,7 @@ export default function App() {
         shippingFee={shippingFee}
         setShippingFee={setShippingFee}
         updateCartQuantity={handleUpdateCartQuantity}
+        setCartQuantity={setCartQuantity}
         updateProductPrice={handleUpdateProductPrice}
         removeFromCart={removeFromCart}
         finalizeList={onFinalizeList}

@@ -912,6 +912,56 @@ app.post("/api/xml/products/delete", asyncHandler(async (req: Request, res: Resp
   res.json({ status: "success" });
 }));
 
+app.post("/api/xml/products/delete-item", asyncHandler(async (req: Request, res: Response) => {
+  const { invKey, productIndex, code, name } = req.body;
+  if (!invKey) {
+    return res.status(400).json({ error: "invKey é obrigatório" });
+  }
+
+  const normStr = (s: string) => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+  const targetCode = String(code || "").trim();
+  const targetName = normStr(name);
+
+  try {
+    const invSnapshot = await fsOps.getDocs('invoices', 'invoices', true);
+    const invoices = invSnapshot.docs.map((doc: any) => {
+      const d = typeof doc.data === 'function' ? doc.data() : doc.data;
+      return { id: doc.id, ...d };
+    });
+
+    for (const inv of invoices) {
+      const currentKey = inv.chNFe || inv.nfeKey || inv.id;
+      if (currentKey === invKey || inv.id === invKey || (invKey && currentKey && String(currentKey).includes(invKey))) {
+        if (!Array.isArray(inv.products)) continue;
+        let invChanged = false;
+        inv.products = inv.products.map((p: any, idx: number) => {
+          const pCode = String(p.code !== undefined && p.code !== null && p.code !== "" ? p.code : (p.cProd !== undefined && p.cProd !== null ? p.cProd : "")).trim();
+          const pName = normStr(p.name || p.xProd || "");
+
+          const matchesIdx = productIndex !== undefined && idx === productIndex;
+          const matchesIdentity = (targetCode && pCode && targetCode === pCode) || (targetName && pName && targetName === pName);
+
+          if (matchesIdx || matchesIdentity) {
+            invChanged = true;
+            return { ...p, deleted: true };
+          }
+          return p;
+        });
+
+        if (invChanged && inv.id) {
+          const docRef = fsOps.doc('invoices', inv.id);
+          await fsOps.set(docRef, inv, 'invoices/' + inv.id);
+        }
+      }
+    }
+    fsOps.invalidateCache('invoices');
+    res.json({ status: "success" });
+  } catch (err: any) {
+    console.error("Erro ao deletar item especifico de invoice:", err);
+    res.status(500).json({ error: "Erro ao deletar produto", message: err.message });
+  }
+}));
+
 // --- ROTAS DE PRODUTOS PENDENTES DE LISTAS DE COMPRAS ---
 app.get("/api/xml/pending-list-products", handleCacheAndEtag("pending_list_products"), asyncHandler(async (req: Request, res: Response) => {
   const forceNoCache = req.query.fresh === 'true' || req.headers['cache-control'] === 'no-cache';

@@ -13,6 +13,7 @@ interface CartModalProps {
   shippingFee: number;
   setShippingFee: (fee: number) => void;
   updateCartQuantity: (name: string, supplier: string, delta: number) => void;
+  setCartQuantity?: (name: string, supplier: string, quantity: number) => void;
   updateProductPrice: (name: string, supplier: string, newPrice: number) => void;
   removeFromCart: (name: string, supplier: string) => void;
   finalizeList: () => void;
@@ -29,6 +30,7 @@ export const CartModal: React.FC<CartModalProps> = ({
   shippingFee,
   setShippingFee,
   updateCartQuantity,
+  setCartQuantity,
   updateProductPrice,
   removeFromCart,
   finalizeList,
@@ -128,11 +130,41 @@ export const CartModal: React.FC<CartModalProps> = ({
                       </div>
                       <div className="flex items-center gap-4">
                         <div className="flex items-center gap-2 bg-slate-50 px-2 py-1.5 rounded-lg border border-slate-100">
-                          <button onClick={() => updateCartQuantity(item.name, item.supplierName, -1)} className="text-slate-400 hover:text-red-500 transition-colors p-0.5">
+                          <button onClick={() => updateCartQuantity(item.name, item.supplierName, -1)} className="text-slate-400 hover:text-red-500 transition-colors p-0.5 cursor-pointer">
                             <Minus className="w-3 h-3" />
                           </button>
-                          <span className="w-6 text-center font-bold text-slate-700 text-sm tabular-nums">{item.quantity}</span>
-                          <button onClick={() => updateCartQuantity(item.name, item.supplierName, 1)} className="text-slate-400 hover:text-green-600 transition-colors p-0.5">
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            className="w-12 text-center font-bold text-slate-800 text-sm tabular-nums bg-white border border-slate-200 rounded px-1 py-0.5 outline-none focus:ring-2 focus:ring-indigo-500"
+                            value={item.quantity === 0 ? '' : item.quantity}
+                            onChange={(e) => {
+                              const raw = e.target.value.replace(',', '.');
+                              if (raw === '') {
+                                if (setCartQuantity) {
+                                  setCartQuantity(item.name, item.supplierName, 0);
+                                }
+                              } else if (!isNaN(Number(raw))) {
+                                const val = Number(raw);
+                                if (setCartQuantity) {
+                                  setCartQuantity(item.name, item.supplierName, val);
+                                } else {
+                                  const delta = val - item.quantity;
+                                  updateCartQuantity(item.name, item.supplierName, delta);
+                                }
+                              }
+                            }}
+                            onBlur={() => {
+                              if (!item.quantity || item.quantity <= 0) {
+                                if (setCartQuantity) {
+                                  setCartQuantity(item.name, item.supplierName, 1);
+                                } else {
+                                  updateCartQuantity(item.name, item.supplierName, 1 - item.quantity);
+                                }
+                              }
+                            }}
+                          />
+                          <button onClick={() => updateCartQuantity(item.name, item.supplierName, 1)} className="text-slate-400 hover:text-green-600 transition-colors p-0.5 cursor-pointer">
                             <Plus className="w-3 h-3" />
                           </button>
                         </div>
