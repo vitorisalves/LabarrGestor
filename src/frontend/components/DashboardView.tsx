@@ -16,9 +16,7 @@ import {
   XCircle,
   FileCheck2,
   HelpCircle,
-  Briefcase,
-  ShoppingCart,
-  CheckCircle2
+  Briefcase
 } from 'lucide-react';
 import { format, isWithinInterval, startOfMonth, endOfMonth, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -40,6 +38,8 @@ import { BatchImportPreviewModal } from './dashboard/BatchImportPreviewModal';
 import { PriceIncreasesTable } from './dashboard/PriceIncreasesTable';
 import { PriceAnalysisPanel } from './dashboard/PriceAnalysisPanel';
 import { CategoryEditorPanel } from './dashboard/CategoryEditorPanel';
+import { PendingListProductsPanel } from './dashboard/PendingListProductsPanel';
+import { usePendingListProductsPanel } from '../hooks/usePendingListProductsPanel';
 
 const parseDateSafe = (dateStr: any): Date | null => {
   if (!dateStr) return null;
@@ -246,18 +246,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
     );
   };
 
-  // --- PRODUTOS PENDENTES DE LISTAS DE COMPRAS ---
-  const [pendingListProducts, setPendingListProducts] = useState<any[]>([]);
-  const [isPendingLoading, setIsPendingLoading] = useState(false);
-  const [selectedPendingIds, setSelectedPendingIds] = useState<string[]>([]);
-  const [bulkPendingCategory, setBulkPendingCategory] = useState('');
-  const [bulkPendingPrice, setBulkPendingPrice] = useState('');
-  const [deletePendingConfirmModal, setDeletePendingConfirmModal] = useState<{
-    open: boolean;
-    idsToDelete: string[];
-    isBulk: boolean;
-  }>({ open: false, idsToDelete: [], isBulk: false });
-
   const [deleteProductConfirmModal, setDeleteProductConfirmModal] = useState<{
     open: boolean;
     productKey?: string;
@@ -331,199 +319,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
 
     addSystemLog('delete', `Produto "${deleteProductConfirmModal.productName}" removido da Nota Fiscal ${deleteProductConfirmModal.invNumber || ''} (${deleteProductConfirmModal.supplierName || ''}).`);
     setDeleteProductConfirmModal({ open: false });
-  };
-
-  const fetchPendingListProducts = async (force = false) => {
-    setIsPendingLoading(true);
-    try {
-      const url = force ? '/api/xml/pending-list-products?fresh=true' : '/api/xml/pending-list-products';
-      const res = await fetch(url, force ? { headers: { 'Cache-Control': 'no-cache' } } : undefined);
-      if (res.ok) {
-        const data = await res.json();
-        setPendingListProducts(data || []);
-      }
-    } catch (err) {
-      console.error("Erro ao buscar produtos pendentes das listas:", err);
-    } finally {
-      setIsPendingLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchPendingListProducts();
-  }, []);
-
-  const handlePendingPriceChange = async (id: string, newPrice: number) => {
-    const updated = pendingListProducts.map(p => p.id === id ? { ...p, price: newPrice } : p);
-    setPendingListProducts(updated);
-    const target = updated.find(p => p.id === id);
-    if (target) {
-      await fetch('/api/xml/pending-list-products', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ item: target })
-      }).catch(console.error);
-    }
-  };
-
-  const handlePendingQuantityChange = async (id: string, newQuantity: number) => {
-    const qty = Math.max(1, newQuantity || 1);
-    const updated = pendingListProducts.map(p => p.id === id ? { ...p, quantity: qty } : p);
-    setPendingListProducts(updated);
-    const target = updated.find(p => p.id === id);
-    if (target) {
-      await fetch('/api/xml/pending-list-products', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ item: target })
-      }).catch(console.error);
-    }
-  };
-
-  const handlePendingCategoryChange = async (id: string, newCategory: string) => {
-    const updated = pendingListProducts.map(p => p.id === id ? { ...p, category: newCategory } : p);
-    setPendingListProducts(updated);
-    const target = updated.find(p => p.id === id);
-    if (target) {
-      await fetch('/api/xml/pending-list-products', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ item: target })
-      }).catch(console.error);
-    }
-  };
-
-  const handleToggleSelectAllPending = () => {
-    if (selectedPendingIds.length === pendingListProducts.length) {
-      setSelectedPendingIds([]);
-    } else {
-      setSelectedPendingIds(pendingListProducts.map(p => p.id));
-    }
-  };
-
-  const handleToggleSelectPending = (id: string) => {
-    setSelectedPendingIds(prev =>
-      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
-    );
-  };
-
-  const handleApplyBulkPendingCategory = async () => {
-    if (!bulkPendingCategory || selectedPendingIds.length === 0) return;
-    const updatedItems: any[] = [];
-    const nextList = pendingListProducts.map(p => {
-      if (selectedPendingIds.includes(p.id)) {
-        const item = { ...p, category: bulkPendingCategory };
-        updatedItems.push(item);
-        return item;
-      }
-      return p;
-    });
-    setPendingListProducts(nextList);
-    setBulkPendingCategory('');
-    await fetch('/api/xml/pending-list-products', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ items: updatedItems })
-    }).catch(console.error);
-  };
-
-  const handleApplyBulkPendingPrice = async () => {
-    const priceNum = parseFloat(bulkPendingPrice);
-    if (isNaN(priceNum) || priceNum < 0 || selectedPendingIds.length === 0) return;
-    const updatedItems: any[] = [];
-    const nextList = pendingListProducts.map(p => {
-      if (selectedPendingIds.includes(p.id)) {
-        const item = { ...p, price: priceNum };
-        updatedItems.push(item);
-        return item;
-      }
-      return p;
-    });
-    setPendingListProducts(nextList);
-    setBulkPendingPrice('');
-    await fetch('/api/xml/pending-list-products', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ items: updatedItems })
-    }).catch(console.error);
-  };
-
-  const handlePromptDeletePending = (id: string) => {
-    setDeletePendingConfirmModal({
-      open: true,
-      idsToDelete: [id],
-      isBulk: false
-    });
-  };
-
-  const handlePromptBulkDeletePending = () => {
-    if (selectedPendingIds.length === 0) return;
-    setDeletePendingConfirmModal({
-      open: true,
-      idsToDelete: selectedPendingIds,
-      isBulk: true
-    });
-  };
-
-  const executeDeletePending = async () => {
-    const ids = deletePendingConfirmModal.idsToDelete;
-    if (ids.length === 0) return;
-
-    try {
-      const res = await fetch('/api/xml/pending-list-products/delete', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids })
-      });
-      if (res.ok) {
-        setPendingListProducts(prev => prev.filter(p => !ids.includes(p.id)));
-        setSelectedPendingIds(prev => prev.filter(id => !ids.includes(id)));
-        addSystemLog('delete', `${ids.length} produto(s) pendente(s) removido(s) da lista do dashboard.`);
-      }
-    } catch (err) {
-      console.error("Erro ao deletar produto(s) pendente(s):", err);
-    } finally {
-      setDeletePendingConfirmModal({ open: false, idsToDelete: [], isBulk: false });
-    }
-  };
-
-  const handleConfirmPendingProducts = async () => {
-    const itemsToConfirm = selectedPendingIds.length > 0
-      ? pendingListProducts.filter(p => selectedPendingIds.includes(p.id))
-      : pendingListProducts;
-
-    if (itemsToConfirm.length === 0) return;
-
-    try {
-      setIsUploading(true);
-      const res = await fetch('/api/xml/pending-list-products/confirm', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: itemsToConfirm })
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        const confirmedIds = itemsToConfirm.map(p => p.id);
-        setPendingListProducts(prev => prev.filter(p => !confirmedIds.includes(p.id)));
-        setSelectedPendingIds(prev => prev.filter(id => !confirmedIds.includes(id)));
-
-        addSystemLog('info', `${data.confirmedCount || itemsToConfirm.length} produto(s) de listas de compras confirmado(s) e adicionado(s) aos gráficos.`);
-
-        // Refresh all charts & invoices instantly
-        await fetchPricingData(true);
-        await fetchSpendings(true);
-        await fetchPendingListProducts(true);
-      } else {
-        const errData = await res.json().catch(() => ({}));
-        alert(`Erro ao confirmar produtos: ${errData.message || errData.error || res.statusText}`);
-      }
-    } catch (err: any) {
-      console.error("Erro ao confirmar produtos das listas:", err);
-      alert("Falha na comunicação ao confirmar os produtos.");
-    } finally {
-      setIsUploading(false);
-    }
   };
 
   const fetchPricingData = async (force = false) => {
@@ -632,6 +427,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
   useEffect(() => {
     fetchSpendings();
   }, []);
+
+  const pendingPanel = usePendingListProductsPanel(addSystemLog, fetchPricingData, fetchSpendings, setIsUploading);
 
   const expenseChartRef = useRef<HTMLDivElement>(null);
 
@@ -1657,262 +1454,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
         xmlSpendings={xmlSpendings}
       />
 
-      {/* SEÇÃO: PRODUTOS PENDENTES DAS LISTAS DE COMPRAS */}
-      <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-6 animate-in fade-in duration-300">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-amber-50 rounded-2xl border border-amber-100 text-amber-600">
-              <ShoppingCart className="w-6 h-6" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-lg font-black text-slate-900 uppercase tracking-tight">
-                  Produtos das Listas de Compras
-                </h2>
-                {pendingListProducts.length > 0 && (
-                  <span className="px-2.5 py-0.5 bg-amber-100 text-amber-800 text-xs font-black rounded-full">
-                    {pendingListProducts.length} pendente(s)
-                  </span>
-                )}
-              </div>
-              <p className="text-xs text-slate-500 font-bold mt-0.5">
-                Produtos checados em "Minhas Listas". Configure a categoria e o valor para confirmar e incluir nos gráficos de gastos.
-              </p>
-            </div>
-          </div>
-
-          {pendingListProducts.length > 0 && (
-            <button
-              type="button"
-              onClick={handleConfirmPendingProducts}
-              disabled={isUploading}
-              className="px-5 py-3 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black uppercase rounded-2xl transition-all shadow-md flex items-center gap-2 cursor-pointer disabled:opacity-50 font-bold"
-            >
-              <CheckCircle2 className="w-4 h-4" />
-              {selectedPendingIds.length > 0
-                ? `Confirmar ${selectedPendingIds.length} Selecionado(s)`
-                : `Confirmar Todos os ${pendingListProducts.length} Produtos`}
-            </button>
-          )}
-        </div>
-
-        {isPendingLoading ? (
-          <div className="py-8 text-center text-xs font-bold text-slate-400">
-            Carregando produtos das listas...
-          </div>
-        ) : pendingListProducts.length === 0 ? (
-          <div className="py-8 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200">
-            <CheckCircle2 className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-            <p className="text-xs font-black text-slate-500 uppercase">Nenhum produto pendente de confirmação</p>
-            <p className="text-[11px] text-slate-400 font-bold mt-1">
-              Ao dar check num item em "Minhas Listas", ele aparecerá aqui para você definir a categoria, valor e confirmar a entrada nos gráficos.
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {/* Controles em Lote */}
-            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex flex-wrap items-center justify-between gap-4">
-              <div className="flex flex-wrap items-center gap-3">
-                <label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={selectedPendingIds.length > 0 && selectedPendingIds.length === pendingListProducts.length}
-                    onChange={handleToggleSelectAllPending}
-                    className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
-                  />
-                  <span>Selecionar Todos ({selectedPendingIds.length}/{pendingListProducts.length})</span>
-                </label>
-
-                <div className="h-4 w-px bg-slate-200 hidden sm:block" />
-
-                {/* Alteração em Lote: Categoria */}
-                <div className="flex items-center gap-2">
-                  <select
-                    value={bulkPendingCategory}
-                    onChange={(e) => setBulkPendingCategory(e.target.value)}
-                    className="bg-white border border-slate-200 text-slate-700 text-xs font-bold rounded-xl px-3 py-1.5 outline-none focus:border-indigo-500"
-                  >
-                    <option value="">-- Categoria em Lote --</option>
-                    {normalizedCategories.map((c: any) => (
-                      <option key={c.id} value={c.name}>{c.name}</option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={handleApplyBulkPendingCategory}
-                    disabled={!bulkPendingCategory || selectedPendingIds.length === 0}
-                    className="px-3 py-1.5 bg-indigo-100 text-indigo-700 hover:bg-indigo-200 disabled:opacity-40 text-xs font-black uppercase rounded-xl transition-colors cursor-pointer"
-                  >
-                    Aplicar Categoria
-                  </button>
-                </div>
-
-                {/* Alteração em Lote: Valor */}
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    step="0.01"
-                    placeholder="Valor R$ em lote"
-                    value={bulkPendingPrice}
-                    onChange={(e) => setBulkPendingPrice(e.target.value)}
-                    className="w-32 bg-white border border-slate-200 text-slate-700 text-xs font-bold rounded-xl px-3 py-1.5 outline-none focus:border-indigo-500"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleApplyBulkPendingPrice}
-                    disabled={!bulkPendingPrice || selectedPendingIds.length === 0}
-                    className="px-3 py-1.5 bg-indigo-100 text-indigo-700 hover:bg-indigo-200 disabled:opacity-40 text-xs font-black uppercase rounded-xl transition-colors cursor-pointer"
-                  >
-                    Aplicar Valor
-                  </button>
-                </div>
-              </div>
-
-              {/* Excluir em Lote */}
-              <button
-                type="button"
-                onClick={handlePromptBulkDeletePending}
-                disabled={selectedPendingIds.length === 0}
-                className="px-3.5 py-1.5 bg-rose-100 text-rose-700 hover:bg-rose-200 disabled:opacity-40 text-xs font-black uppercase rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer ml-auto"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                Excluir Selecionados
-              </button>
-            </div>
-
-            {/* Tabela de Produtos Pendentes */}
-            <div className="overflow-x-auto border border-slate-100 rounded-2xl">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-slate-50 border-b border-slate-100 text-[11px] font-black uppercase text-slate-500 tracking-wider">
-                    <th className="p-3.5 w-10 text-center">
-                      <input
-                        type="checkbox"
-                        checked={selectedPendingIds.length > 0 && selectedPendingIds.length === pendingListProducts.length}
-                        onChange={handleToggleSelectAllPending}
-                        className="w-4 h-4 text-indigo-600 rounded border-slate-300"
-                      />
-                    </th>
-                    <th className="p-3.5">Produto</th>
-                    <th className="p-3.5">Fornecedor</th>
-                    <th className="p-3.5">Origem</th>
-                    <th className="p-3.5 w-24">Qtd</th>
-                    <th className="p-3.5 w-36">Valor Unit. (R$)</th>
-                    <th className="p-3.5 w-36">Total (R$)</th>
-                    <th className="p-3.5 w-48">Categoria</th>
-                    <th className="p-3.5 w-16 text-center">Ações</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 text-xs">
-                  {pendingListProducts.map((p) => {
-                    const isSelected = selectedPendingIds.includes(p.id);
-                    const qty = Number(p.quantity || 1);
-                    const unitPrice = Number(p.price || 0);
-                    const totalPrice = qty * unitPrice;
-
-                    return (
-                      <tr key={p.id} className={`hover:bg-slate-50/80 transition-colors ${isSelected ? 'bg-indigo-50/40' : ''}`}>
-                        <td className="p-3.5 text-center">
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => handleToggleSelectPending(p.id)}
-                            className="w-4 h-4 text-indigo-600 rounded border-slate-300"
-                          />
-                        </td>
-                        <td className="p-3.5 font-bold text-slate-900">{p.productName}</td>
-                        <td className="p-3.5 text-slate-600 font-medium">{p.supplierName}</td>
-                        <td className="p-3.5 text-slate-500 font-medium text-[11px]">{p.listName || 'Minhas Listas'}</td>
-                        <td className="p-3.5 font-bold text-slate-800">
-                          <input
-                            type="number"
-                            min="1"
-                            step="1"
-                            value={p.quantity !== undefined ? p.quantity : 1}
-                            onChange={(e) => handlePendingQuantityChange(p.id, parseInt(e.target.value, 10) || 1)}
-                            className="w-16 bg-white border border-slate-200 text-slate-800 font-bold rounded-lg px-2 py-1 text-xs outline-none focus:border-indigo-500 text-center"
-                          />
-                        </td>
-                        <td className="p-3.5">
-                          <input
-                            type="number"
-                            step="0.01"
-                            value={p.price !== undefined ? p.price : ''}
-                            onChange={(e) => handlePendingPriceChange(p.id, parseFloat(e.target.value) || 0)}
-                            className="w-28 bg-white border border-slate-200 text-slate-800 font-bold rounded-lg px-2.5 py-1 text-xs outline-none focus:border-indigo-500"
-                          />
-                        </td>
-                        <td className="p-3.5 font-black text-indigo-700">
-                          {formatCurrency(totalPrice)}
-                        </td>
-                        <td className="p-3.5">
-                          <select
-                            value={p.category || ''}
-                            onChange={(e) => handlePendingCategoryChange(p.id, e.target.value)}
-                            className="w-full bg-white border border-slate-200 text-slate-800 font-bold rounded-lg px-2.5 py-1 text-xs outline-none focus:border-indigo-500"
-                          >
-                            <option value="">-- Selecionar --</option>
-                            {normalizedCategories.map((c: any) => (
-                              <option key={c.id} value={c.name}>{c.name}</option>
-                            ))}
-                          </select>
-                        </td>
-                        <td className="p-3.5 text-center">
-                          <button
-                            type="button"
-                            onClick={() => handlePromptDeletePending(p.id)}
-                            title="Excluir produto pendente"
-                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer border-0 bg-transparent"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* MODAL DE CONFIRMAÇÃO DE EXCLUSÃO DE PRODUTO PENDENTE (REGRA 11) */}
-      {deletePendingConfirmModal.open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white max-w-md w-full p-6 rounded-3xl shadow-xl border border-slate-100 space-y-5 animate-in zoom-in-95 duration-200">
-            <div className="flex items-center gap-3 text-rose-600">
-              <div className="p-3 bg-rose-50 rounded-2xl">
-                <Trash2 className="w-6 h-6" />
-              </div>
-              <h3 className="text-base font-black text-slate-900 uppercase tracking-tight">
-                Confirmar Exclusão
-              </h3>
-            </div>
-            <p className="text-xs text-slate-600 font-medium leading-relaxed">
-              {deletePendingConfirmModal.isBulk
-                ? `Tem certeza que deseja excluir os ${deletePendingConfirmModal.idsToDelete.length} produto(s) selecionado(s) da lista pendente? Esta ação removerá os itens permanentemente da fila.`
-                : `Tem certeza que deseja excluir este produto da lista pendente do dashboard?`}
-            </p>
-            <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={() => setDeletePendingConfirmModal({ open: false, idsToDelete: [], isBulk: false })}
-                className="px-4 py-2.5 text-slate-600 hover:bg-slate-100 rounded-xl text-xs font-bold uppercase transition-colors cursor-pointer"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={executeDeletePending}
-                className="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black uppercase transition-colors shadow-sm cursor-pointer"
-              >
-                Sim, Excluir
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <PendingListProductsPanel
+        {...pendingPanel}
+        isUploading={isUploading}
+        normalizedCategories={normalizedCategories}
+      />
 
       {/* Uploading & Logs Panel */}
       {(isUploading || xmlLogs.length > 0) && (
