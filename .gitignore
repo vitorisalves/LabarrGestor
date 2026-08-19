@@ -8,6 +8,7 @@ coverage/
 !.env.example
 firestore_cache_*.json
 firestore_quota_exceeded_flag.json
+test-data/
 *.sh
 *.cjs
 test*.js

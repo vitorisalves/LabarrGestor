@@ -10,3 +10,8 @@ export const getCollectionPrefix = () => {
   const store = requestContext.getStore();
   return store?.isTestMode ? 'test_' : '';
 };
+
+export const isTestModeActive = () => {
+  const store = requestContext.getStore();
+  return !!store?.isTestMode;
+};

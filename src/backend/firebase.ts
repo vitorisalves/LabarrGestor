@@ -1,10 +1,10 @@
-import { 
-  getFirestore, 
-  collection, 
-  getDocs, 
-  doc, 
-  updateDoc, 
-  setDoc, 
+import {
+  getFirestore,
+  collection,
+  getDocs,
+  doc,
+  updateDoc,
+  setDoc,
   deleteDoc,
   getDoc,
   query,
@@ -12,9 +12,10 @@ import {
 } from 'firebase/firestore/lite';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirebaseConfig, IS_VERCEL } from './config.js';
-import { getCollectionPrefix } from './context.js';
+import { getCollectionPrefix, isTestModeActive } from './context.js';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 
 /**
  * Tipos de operação para logs
@@ -39,7 +40,7 @@ let initPromise: Promise<void> | null = null;
 
 export const initFirebase = async () => {
   if (initPromise) return initPromise;
-  
+
   initPromise = (async () => {
     const firebaseConfig = await getFirebaseConfig();
 
@@ -61,7 +62,7 @@ export const initFirebase = async () => {
         } catch (dbErr) {
           adminDb = getAdminFirestore();
         }
-        
+
         // Quick health check for Admin SDK
         try {
           await adminDb.collection('_health_check').limit(1).get();
@@ -87,7 +88,7 @@ export const initFirebase = async () => {
       }
     }
   })();
-  
+
   return initPromise;
 };
 
@@ -99,7 +100,7 @@ export const getDb = async () => {
     await initFirebase();
   }
   if (adminDb && !adminDisabled) return adminDb;
-  
+
   if (!clientDb) {
     console.warn("[Firebase] clientDb está nulo em getDb(), tentando inicialização forçada de recuperação...");
     try {
@@ -173,7 +174,7 @@ function setQuotaExceededActive() {
     g_quotaExceededActive = true;
     g_quotaExceededTime = Date.now();
     console.warn("[FirestoreCache] Circuito Aberto: Limite de Cota do Firestore Excedido. Ativando bypass automatico de cache offline.");
-    
+
     if (!IS_VERCEL) {
       try {
         const flagFile = path.join(process.cwd(), 'firestore_quota_exceeded_flag.json');
@@ -193,10 +194,10 @@ export const handleFirestoreError = (error: unknown, operationType: OperationTyp
     operationType,
     path
   };
-  
+
   const errStr = errInfo.error.toLowerCase();
   const isQuota = errStr.includes('quota') || errStr.includes('resource-exhausted') || errStr.includes('limit') || errStr.includes('permission_denied') || errStr.includes('insufficient permissions');
-  
+
   if (isQuota) {
     setQuotaExceededActive();
     console.log(`[FirestoreCache] Operacao restrita (${operationType}) em ${path} tratada com bypass offline por limite de cota.`);
@@ -208,7 +209,7 @@ export const handleFirestoreError = (error: unknown, operationType: OperationTyp
     console.warn('[FirestoreWarn]', safeStringify(errInfo));
     return errInfo;
   }
-  
+
   console.error('[FirestoreError]', safeStringify(errInfo));
   return errInfo;
 };
@@ -404,6 +405,60 @@ function deleteCacheDoc(pathStr: string) {
 }
 
 /**
+ * Armazenamento 100% local (disco) para o Modo de Teste.
+ * Enquanto o Modo de Teste está ativo, nenhuma leitura/escrita toca o Firestore
+ * real - tudo fica em arquivos JSON locais, evitando consumir a cota do banco.
+ */
+interface LocalTestDoc {
+  id: string;
+  data: any;
+}
+
+function getTestDataDir(): string {
+  return IS_VERCEL ? path.join(os.tmpdir(), 'test-data') : path.join(process.cwd(), 'test-data');
+}
+
+function getTestDataFilePath(realColl: string): string {
+  const dir = getTestDataDir();
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+  return path.join(dir, `${realColl.replace(/[^a-zA-Z0-9_-]/g, '_')}.json`);
+}
+
+function loadLocalTestCollection(realColl: string): LocalTestDoc[] {
+  try {
+    const filePath = getTestDataFilePath(realColl);
+    if (fs.existsSync(filePath)) {
+      const parsed = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (err) {
+    console.warn(`[TestMode] Erro ao ler dados locais de teste para ${realColl}`, err);
+  }
+  return [];
+}
+
+function saveLocalTestCollection(realColl: string, docs: LocalTestDoc[]) {
+  try {
+    fs.writeFileSync(getTestDataFilePath(realColl), JSON.stringify(docs, null, 2), 'utf-8');
+  } catch (err) {
+    console.warn(`[TestMode] Erro ao gravar dados locais de teste para ${realColl}`, err);
+  }
+}
+
+export function clearLocalTestCollection(realColl: string): number {
+  const docs = loadLocalTestCollection(realColl);
+  try {
+    const filePath = getTestDataFilePath(realColl);
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+  } catch (err) {
+    console.warn(`[TestMode] Erro ao limpar dados locais de teste para ${realColl}`, err);
+  }
+  return docs.length;
+}
+
+/**
  * Wrapper de operações comuns do Firestore com Cache e Tolerância a Falha (Quota)
  */
 export const fsOps = {
@@ -414,9 +469,18 @@ export const fsOps = {
     return db.collection ? db.collection(realColl) : collection(db, realColl);
   },
   getDocsWithLimit: async (coll: string, limitCount: number, forceNoCache: boolean = false) => {
-    const db: any = await getDb();
     const prefix = getCollectionPrefix();
     const realColl = prefix && !coll.startsWith(prefix) ? prefix + coll : coll;
+
+    if (isTestModeActive()) {
+      const docs = loadLocalTestCollection(realColl).slice(0, limitCount);
+      return {
+        docs: docs.map(d => ({ id: d.id, data: () => d.data, exists: () => true })),
+        empty: docs.length === 0
+      };
+    }
+
+    const db: any = await getDb();
     const cacheKey = `${realColl}_limit_${limitCount}`;
     let collOrQuery;
     if (db.collection) {
@@ -428,11 +492,20 @@ export const fsOps = {
   },
   getDocs: async (collOrQuery: any, path: string = 'unknown', forceNoCache: boolean = false) => {
     const prefix = getCollectionPrefix();
+
+    if (isTestModeActive() && typeof collOrQuery === 'string') {
+      const realColl = prefix && !collOrQuery.startsWith(prefix) ? prefix + collOrQuery : collOrQuery;
+      const docs = loadLocalTestCollection(realColl);
+      return {
+        docs: docs.map(d => ({ id: d.id, data: () => d.data, exists: () => true })),
+        empty: docs.length === 0
+      };
+    }
     let cacheKey = typeof collOrQuery === 'string' ? collOrQuery : (path.split('/')[0] || 'query');
     if (cacheKey !== 'query' && prefix && !cacheKey.startsWith(prefix)) {
       cacheKey = prefix + cacheKey;
     }
-    
+
     let realCollOrQuery = collOrQuery;
     if (typeof collOrQuery === 'string') {
       realCollOrQuery = prefix && !collOrQuery.startsWith(prefix) ? prefix + collOrQuery : collOrQuery;
@@ -496,7 +569,7 @@ export const fsOps = {
           else rawSnap = await getDocs(realCollOrQuery);
         }
       }
-      
+
       const res = {
         docs: rawSnap.docs.map((doc: any) => {
             const dData = typeof doc.data === 'function' ? doc.data() : (doc.data || {});
@@ -528,12 +601,24 @@ export const fsOps = {
     }
   },
   update: async (refPromise: any, data: any, path: string = 'unknown') => {
+    const ref = await refPromise;
+    if (ref && ref.__local) {
+      const docs = loadLocalTestCollection(ref.collection);
+      const idx = docs.findIndex(d => d.id === ref.id);
+      if (idx >= 0) {
+        docs[idx] = { id: ref.id, data: { ...docs[idx].data, ...data } };
+      } else {
+        docs.push({ id: ref.id, data });
+      }
+      saveLocalTestCollection(ref.collection, docs);
+      return;
+    }
+
     const prefix = getCollectionPrefix();
     const realPath = path !== 'unknown' && prefix && !path.startsWith(prefix) ? prefix + path : path;
     const existing = g_docCache[realPath]?.data || {};
     updateCacheWithDoc(realPath, { ...existing, ...data });
     try {
-      const ref = await refPromise;
       return ref.update ? await ref.update(data) : await updateDoc(ref, data);
     } catch (err: any) {
       handleFirestoreError(err, OperationType.UPDATE, realPath);
@@ -545,12 +630,26 @@ export const fsOps = {
     }
   },
   doc: async (coll: string, id: string) => {
-    const db: any = await getDb();
     const prefix = getCollectionPrefix();
     const realColl = prefix && !coll.startsWith(prefix) ? prefix + coll : coll;
+    if (isTestModeActive()) {
+      return { __local: true, collection: realColl, id };
+    }
+    const db: any = await getDb();
     return db.collection ? db.collection(realColl).doc(id) : doc(db, realColl, id);
   },
   getDoc: async (refPromise: any, path: string = 'unknown', forceNoCache: boolean = false) => {
+    const ref = await refPromise;
+    if (ref && ref.__local) {
+      const docs = loadLocalTestCollection(ref.collection);
+      const found = docs.find(d => d.id === ref.id);
+      return {
+        exists: () => !!found,
+        data: () => (found ? found.data : {}),
+        id: ref.id
+      };
+    }
+
     const prefix = getCollectionPrefix();
     const realPath = path !== 'unknown' && prefix && !path.startsWith(prefix) ? prefix + path : path;
     const cacheKey = realPath;
@@ -585,9 +684,8 @@ export const fsOps = {
     }
 
     try {
-      const ref = await refPromise;
       const rawDoc = ref.get ? await ref.get() : await getDoc(ref);
-      
+
       const existsVal = typeof rawDoc.exists === 'function' ? rawDoc.exists() : !!rawDoc.exists;
       const dData = typeof rawDoc.data === 'function' ? rawDoc.data() : (rawDoc.data || {});
       const res = {
@@ -595,7 +693,7 @@ export const fsOps = {
         data: () => dData,
         id: rawDoc.id
       };
-      
+
       if (res.exists()) {
         g_docCache[cacheKey] = {
           timestamp: Date.now(),
@@ -622,11 +720,24 @@ export const fsOps = {
     }
   },
   set: async (refPromise: any, data: any, path: string = 'unknown') => {
+    const ref = await refPromise;
+    if (ref && ref.__local) {
+      const docs = loadLocalTestCollection(ref.collection);
+      const idx = docs.findIndex(d => d.id === ref.id);
+      const docItem = { id: ref.id, data };
+      if (idx >= 0) {
+        docs[idx] = docItem;
+      } else {
+        docs.push(docItem);
+      }
+      saveLocalTestCollection(ref.collection, docs);
+      return;
+    }
+
     const prefix = getCollectionPrefix();
     const realPath = path !== 'unknown' && prefix && !path.startsWith(prefix) ? prefix + path : path;
     updateCacheWithDoc(realPath, data);
     try {
-      const ref = await refPromise;
       return ref.set ? await ref.set(data) : await setDoc(ref, data);
     } catch (err: any) {
       if (typeof err.message === 'string' && (err.message.toLowerCase().includes('not found') || err.message.includes('404'))) {
@@ -642,11 +753,17 @@ export const fsOps = {
     }
   },
   delete: async (refPromise: any, path: string = 'unknown') => {
+    const ref = await refPromise;
+    if (ref && ref.__local) {
+      const docs = loadLocalTestCollection(ref.collection).filter(d => d.id !== ref.id);
+      saveLocalTestCollection(ref.collection, docs);
+      return;
+    }
+
     const prefix = getCollectionPrefix();
     const realPath = path !== 'unknown' && prefix && !path.startsWith(prefix) ? prefix + path : path;
     deleteCacheDoc(realPath);
     try {
-      const ref = await refPromise;
       console.log(`[Firestore] Deleting doc at path: ${realPath}`);
       const result =  ref.delete ? await ref.delete() : await deleteDoc(ref);
       console.log(`[Firestore] Delete successful for path: ${realPath}`);

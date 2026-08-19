@@ -3,6 +3,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 interface TestModeContextType {
   isTestMode: boolean;
   toggleTestMode: () => void;
+  resetTestData: () => Promise<void>;
 }
 
 const TestModeContext = createContext<TestModeContextType | undefined>(undefined);
@@ -76,8 +77,19 @@ export const TestModeProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setIsTestMode(prev => !prev);
   };
 
+  const resetTestData = async () => {
+    const response = await fetch('/api/test-mode/reset', {
+      method: 'POST',
+      headers: { 'X-Test-Mode': 'true' }
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error || 'Falha ao resetar os dados de teste.');
+    }
+  };
+
   return (
-    <TestModeContext.Provider value={{ isTestMode, toggleTestMode }}>
+    <TestModeContext.Provider value={{ isTestMode, toggleTestMode, resetTestData }}>
       {children}
     </TestModeContext.Provider>
   );

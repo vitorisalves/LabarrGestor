@@ -1,5 +1,5 @@
 import express, { Request, Response, NextFunction } from "express";
-import { initFirebase, fsOps } from "./firebase.js";
+import { initFirebase, fsOps, clearLocalTestCollection } from "./firebase.js";
 import { EXTERNAL_API_CONFIG, IS_VERCEL, PUSH_CONFIG, getFirebaseConfig } from "./config.js";
 import { AIService } from "./services/aiService.js";
 import { PushService } from "./services/pushService.js";
@@ -667,6 +667,39 @@ app.post("/api/xml/cache/invalidate", asyncHandler(async (req: Request, res: Res
   } else {
     res.status(400).json({ error: 'Collection not specified' });
   }
+}));
+
+// --- RESET DE DADOS DO MODO DE TESTE ---
+const TEST_MODE_COLLECTIONS = [
+  'invoices',
+  'xml_spendings',
+  'price_increases',
+  'product_categories',
+  'suppliers',
+  'authorized_users',
+  'categories',
+  'delivered_products',
+  'reminders',
+  'shopping_lists',
+  'pending_list_products',
+  'push_subscriptions'
+];
+
+app.post("/api/test-mode/reset", asyncHandler(async (req: Request, res: Response) => {
+  const isTestMode = req.headers['x-test-mode'] === 'true';
+  if (!isTestMode) {
+    return res.status(400).json({ error: 'Reset só pode ser executado com o Modo de Teste ativo (cabeçalho X-Test-Mode ausente).' });
+  }
+
+  const deletedCounts: Record<string, number> = {};
+
+  for (const collectionName of TEST_MODE_COLLECTIONS) {
+    deletedCounts[collectionName] = clearLocalTestCollection(`test_${collectionName}`);
+    fsOps.invalidateCache(collectionName);
+  }
+
+  console.log('[Test Mode Reset] Dados de teste apagados:', deletedCounts);
+  res.json({ status: 'ok', deletedCounts });
 }));
 
 // --- AUXILIAR DE DELEÇÃO DE FATURA ---
