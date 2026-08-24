@@ -6,7 +6,7 @@
 import { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, getDocs, addDoc, query, orderBy, deleteDoc, doc, updateDoc, limit } from 'firebase/firestore';
-import { Product, SavedList } from '../types';
+import { Product, SavedList, CartItem } from '../types';
 import { extractErrorMessage, safeStringify, handleFirestoreError, OperationType, cleanObject } from '../utils';
 
 export const useCart = (
@@ -15,7 +15,7 @@ export const useCart = (
   loggedName: string,
   addAppNotification: (title: string, message: string) => void
 ) => {
-  const [cart, setCart] = useState<(Product & { supplierName: string; quantity: number })[]>(() => {
+  const [cart, setCart] = useState<CartItem[]>(() => {
     const cached = localStorage.getItem('cache_cart');
     return cached ? JSON.parse(cached) : [];
   });
@@ -108,17 +108,18 @@ export const useCart = (
     await loadLists(true);
   };
 
-  const addToCart = (product: Product, supplierName: string, quantity: number = 1) => {
+  const addToCart = (product: Product, supplierName: string, quantity: number = 1, category: string) => {
+    const { categories, ...productWithoutCategories } = product;
     setCart(prev => {
       const existing = prev.find(item => item.name === product.name && item.supplierName === supplierName);
       if (existing) {
-        return prev.map(item => 
-          item.name === product.name && item.supplierName === supplierName 
-            ? { ...item, quantity: item.quantity + quantity }
+        return prev.map(item =>
+          item.name === product.name && item.supplierName === supplierName
+            ? { ...item, quantity: item.quantity + quantity, category }
             : item
         );
       }
-      return [...prev, { ...product, supplierName, quantity }];
+      return [...prev, { ...productWithoutCategories, supplierName, quantity, category }];
     });
   };
 
@@ -236,10 +237,11 @@ export const useCart = (
     }
   };
 
-  const addItemToList = async (listId: string, product: Product, supplierName: string, quantity: number) => {
+  const addItemToList = async (listId: string, product: Product, supplierName: string, quantity: number, category: string) => {
     const list = savedLists.find(l => l.id === listId);
     if (!list) return;
 
+    const { categories, ...productWithoutCategories } = product;
     const existingItemIndex = list.items.findIndex(item => item.name === product.name && item.supplierName === supplierName);
     let updatedItems = [...list.items];
 
@@ -250,10 +252,11 @@ export const useCart = (
       };
     } else {
       updatedItems.push({
-        ...product,
+        ...productWithoutCategories,
         supplierName,
         quantity,
-        bought: false
+        bought: false,
+        category
       });
     }
 

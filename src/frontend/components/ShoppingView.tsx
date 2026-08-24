@@ -17,6 +17,8 @@ import {
 } from 'lucide-react';
 import { Supplier, Product } from '../types';
 import { formatCurrency, normalizeText } from '../utils';
+import { getProductCategories } from '../utils/productCategories';
+import { PurchaseCategoryPicker } from './products/PurchaseCategoryPicker';
 
 interface ShoppingViewProps {
   suppliers: Supplier[];
@@ -24,8 +26,9 @@ interface ShoppingViewProps {
   setSearchTerm: (term: string) => void;
   shoppingQuantities: Record<string, number | string>;
   setShoppingQuantities: React.Dispatch<React.SetStateAction<Record<string, number | string>>>;
-  addToCart: (product: Product, supplierName: string, quantity: number) => void;
+  addToCart: (product: Product, supplierName: string, quantity: number, category: string) => void;
   onEditProduct: (product: Product, supplierName: string) => void;
+  allCategories: string[];
 }
 
 /**
@@ -42,10 +45,12 @@ export const ShoppingView: React.FC<ShoppingViewProps> = ({
   shoppingQuantities,
   setShoppingQuantities,
   addToCart,
-  onEditProduct
+  onEditProduct,
+  allCategories
 }) => {
   // Estado para controlar qual categoria está expandida no momento
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
+  const [purchaseCategories, setPurchaseCategories] = useState<Record<string, string>>({});
 
   /**
    * Processa e agrupa os produtos por categoria, filtrando pelo termo de busca.
@@ -57,15 +62,18 @@ export const ShoppingView: React.FC<ShoppingViewProps> = ({
 
     suppliers.forEach(supplier => {
       supplier.products.forEach(product => {
-        const matchesSearch = 
+        const cats = getProductCategories(product);
+        const matchesSearch =
           normalizeText(product.name).includes(normalizedSearch) ||
           normalizeText(supplier.name).includes(normalizedSearch) ||
-          normalizeText(product.category || "").includes(normalizedSearch);
+          cats.some(c => normalizeText(c).includes(normalizedSearch));
 
         if (matchesSearch) {
-          const category = product.category || 'Fornecedor';
-          if (!acc[category]) acc[category] = [];
-          acc[category].push({ ...product, supplierName: supplier.name });
+          const groups = cats.length > 0 ? cats : ['Sem Categoria'];
+          groups.forEach(category => {
+            if (!acc[category]) acc[category] = [];
+            acc[category].push({ ...product, supplierName: supplier.name });
+          });
         }
       });
     });
@@ -115,7 +123,8 @@ export const ShoppingView: React.FC<ShoppingViewProps> = ({
     if (isNaN(qty) || qty <= 0) {
       qty = 1;
     }
-    addToCart(product, product.supplierName, qty);
+    const category = purchaseCategories[uniqueId] || allCategories[0] || '';
+    addToCart(product, product.supplierName, qty, category);
     setShoppingQuantities(prev => ({ ...prev, [uniqueId]: '1' }));
   };
 
@@ -266,7 +275,14 @@ export const ShoppingView: React.FC<ShoppingViewProps> = ({
                                   <Plus className="w-3.5 h-3.5" />
                                 </button>
                               </div>
-                              
+
+                              <PurchaseCategoryPicker
+                                product={product}
+                                categories={allCategories}
+                                value={purchaseCategories[uniqueId] || ''}
+                                onChange={(cat) => setPurchaseCategories(prev => ({ ...prev, [uniqueId]: cat }))}
+                              />
+
                               {/* Botão de Adição ao Carrinho */}
                               <button
                                 onClick={() => handleAddToCart(product, uniqueId)}

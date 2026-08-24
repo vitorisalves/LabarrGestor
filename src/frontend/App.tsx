@@ -307,12 +307,12 @@ export default function App() {
   const [activeTargetListId, setActiveTargetListId] = useState<string | null>(null);
   const [activeTargetListName, setActiveTargetListName] = useState<string | null>(null);
 
-  const handleAddToCart = React.useCallback((product: Product, supplierName: string, quantity: number) => {
+  const handleAddToCart = React.useCallback((product: Product, supplierName: string, quantity: number, category: string) => {
     if (activeTargetListId) {
-      addItemToList(activeTargetListId, product, supplierName, quantity);
+      addItemToList(activeTargetListId, product, supplierName, quantity, category);
       addNotification(`Adicionado à lista ${activeTargetListName}`, quantity, 'info');
     } else {
-      addToCart(product, supplierName, quantity);
+      addToCart(product, supplierName, quantity, category);
       addNotification(product.name, quantity, 'cart');
     }
   }, [activeTargetListId, activeTargetListName, addItemToList, addNotification, addToCart]);
@@ -687,6 +687,7 @@ export default function App() {
               setShoppingQuantities={setShoppingQuantities}
               addToCart={handleAddToCart}
               onEditProduct={onEditProductFromShopping}
+              allCategories={categories}
             />
           )}
           {currentPage === 'history' && (

@@ -31,6 +31,7 @@ import { SearchBar, QuantitySelector, EmptyState } from './common';
 import { XmlImportTab, ImportRow } from './suppliers/XmlImportTab';
 import { useXmlImport } from '../hooks/useXmlImport';
 import { ProductsTab } from './products/ProductsTab';
+import { PurchaseCategoryPicker } from './products/PurchaseCategoryPicker';
 
 interface SuppliersViewProps {
   suppliers: Supplier[];
@@ -43,7 +44,7 @@ interface SuppliersViewProps {
   setIsAdding: (adding: boolean) => void;
   handleEditSupplier: (supplier: Supplier) => void;
   setSupplierToDelete: (id: string | null) => void;
-  addToCart: (product: Product, supplierName: string, quantity: number) => void;
+  addToCart: (product: Product, supplierName: string, quantity: number, category: string) => void;
   handleExportExcel: () => void;
   handleImportExcel: (e: React.ChangeEvent<HTMLInputElement>) => void;
   handleSyncSheets?: () => void;
@@ -107,6 +108,7 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
 
   const [expandedSupplier, setExpandedSupplier] = React.useState<string | null>(null);
   const [quantities, setQuantities] = React.useState<Record<string, string>>({});
+  const [purchaseCategories, setPurchaseCategories] = React.useState<Record<string, string>>({});
 
   const handleQuantityChange = (key: string, value: string) => {
     // Permite vazio, números inteiros ou decimais com ponto ou vírgula
@@ -143,7 +145,8 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
     if (isNaN(qty) || qty <= 0) {
       qty = 1;
     }
-    addToCart(product, supplierName, qty);
+    const category = purchaseCategories[key] || availableCategories[0] || '';
+    addToCart(product, supplierName, qty, category);
     setQuantities(prev => ({ ...prev, [key]: '1' }));
   };
 
@@ -410,6 +413,12 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
                                   onDecrement={() => adjustQuantity(qKey, -1)}
                                   onEnter={() => onAddToCart(product, supplier.name, qKey)}
                                   idPrefix={qKey}
+                                />
+                                <PurchaseCategoryPicker
+                                  product={product}
+                                  categories={availableCategories}
+                                  value={purchaseCategories[qKey] || ''}
+                                  onChange={(cat) => setPurchaseCategories(prev => ({ ...prev, [qKey]: cat }))}
                                 />
                                 <button
                                   id={`add-${qKey}`}

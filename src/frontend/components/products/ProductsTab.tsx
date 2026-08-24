@@ -9,6 +9,7 @@ import { Product } from '../../types';
 import { formatCurrency, normalizeText } from '../../utils';
 import { SearchBar, QuantitySelector, EmptyState } from '../common';
 import { CategoryMultiSelect } from './CategoryMultiSelect';
+import { PurchaseCategoryPicker } from './PurchaseCategoryPicker';
 import { useProductCatalog } from '../../hooks/useProductCatalog';
 import { Supplier } from '../../types';
 import { getProductCategories } from '../../utils/productCategories';
@@ -20,7 +21,7 @@ interface ProductsTabProps {
   searchTerm: string;
   setSearchTerm: (v: string) => void;
   onEditProduct: (product: Product, supplierName: string) => void;
-  onAddToCart: (product: Product, supplierName: string, quantity: number) => void;
+  onAddToCart: (product: Product, supplierName: string, quantity: number, category: string) => void;
 }
 
 export const ProductsTab: React.FC<ProductsTabProps> = ({
@@ -35,6 +36,7 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
   const { catalog, updateProductCategories } = useProductCatalog(suppliers, saveSupplier);
   const [categoryFilter, setCategoryFilter] = React.useState('ALL');
   const [quantities, setQuantities] = React.useState<Record<string, string>>({});
+  const [purchaseCategories, setPurchaseCategories] = React.useState<Record<string, string>>({});
 
   const filtered = React.useMemo(() => {
     const normalizedSearch = normalizeText(searchTerm);
@@ -129,11 +131,17 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
                     onQuantityBlur={() => handleQuantityBlur(qKey)}
                     onIncrement={() => adjustQuantity(qKey, 1)}
                     onDecrement={() => adjustQuantity(qKey, -1)}
-                    onEnter={() => onAddToCart(row.product, row.supplierName, parseFloat((quantities[qKey] ?? '1').replace(',', '.')) || 1)}
+                    onEnter={() => onAddToCart(row.product, row.supplierName, parseFloat((quantities[qKey] ?? '1').replace(',', '.')) || 1, purchaseCategories[qKey] || categories[0] || '')}
                     idPrefix={qKey}
                   />
+                  <PurchaseCategoryPicker
+                    product={row.product}
+                    categories={categories}
+                    value={purchaseCategories[qKey] || ''}
+                    onChange={(cat) => setPurchaseCategories(prev => ({ ...prev, [qKey]: cat }))}
+                  />
                   <button
-                    onClick={() => onAddToCart(row.product, row.supplierName, parseFloat((quantities[qKey] ?? '1').replace(',', '.')) || 1)}
+                    onClick={() => onAddToCart(row.product, row.supplierName, parseFloat((quantities[qKey] ?? '1').replace(',', '.')) || 1, purchaseCategories[qKey] || categories[0] || '')}
                     className="flex-1 h-11 bg-slate-900 text-white rounded-xl font-bold text-[10px] sm:text-xs hover:bg-indigo-600 transition-all active:scale-95"
                   >
                     Adicionar
