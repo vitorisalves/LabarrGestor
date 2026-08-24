@@ -197,7 +197,7 @@ export const useCart = (
     }
   };
 
-  const toggleSavedListItemBought = async (listId: string, productName: string, supplierName: string, updates: Partial<{ bought: boolean; deliveryId?: string; invoiceId?: string; boughtAt?: string }> = {}) => {
+  const toggleSavedListItemBought = async (listId: string, productName: string, supplierName: string, updates: Partial<{ bought: boolean; deliveryId?: string; invoiceId?: string; boughtAt?: string; previousLastPurchaseDate?: string }> = {}) => {
     const list = savedLists.find(l => l.id === listId);
     if (!list) return;
 

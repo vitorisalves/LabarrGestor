@@ -98,8 +98,8 @@ export const MonthlySpendChart: React.FC<MonthlySpendChartProps> = ({
               />
               <RechartsTooltip
                 contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', padding: '12px' }}
-                labelStyle={{ fontWeight: 800, marginBottom: '4px', color: '#1e293b' }}
-                itemStyle={{ color: '#0f172a', fontWeight: 800 }}
+                labelStyle={{ fontWeight: 800, marginBottom: '4px' }}
+                itemStyle={{ fontWeight: 800 }}
                 formatter={(value: number) => [formatCurrency(value), 'Valor da Nota']}
               />
               <Area

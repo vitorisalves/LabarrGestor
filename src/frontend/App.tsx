@@ -180,11 +180,17 @@ export default function App() {
     };
     const newDeliveryId = becomingBought ? sanitizeForId(`${productName}-${supplierName}-${now.getTime()}`) : undefined;
 
+    // Ao marcar: guarda a data de compra atual do produto antes de sobrescrevê-la,
+    // para poder restaurá-la caso o checkbox seja desmarcado depois.
+    const supplierForDate = suppliers.find(s => s.name === supplierName);
+    const currentProductLastPurchaseDate = supplierForDate?.products.find(p => p.name === productName)?.lastPurchaseDate;
+
     // Atualiza o estado da UI instantaneamente (optimistic)
-    toggleSavedListItemBought(listId, productName, supplierName, { 
-      bought: becomingBought, 
+    toggleSavedListItemBought(listId, productName, supplierName, {
+      bought: becomingBought,
       deliveryId: newDeliveryId,
-      boughtAt: becomingBought ? now.toISOString() : undefined
+      boughtAt: becomingBought ? now.toISOString() : undefined,
+      previousLastPurchaseDate: becomingBought ? currentProductLastPurchaseDate : undefined
     });
 
     if (becomingBought) {
@@ -252,6 +258,27 @@ export default function App() {
         console.error("Erro ao criar produto pendente:", err);
       }
     } else {
+      // Se for desmarcar, restaura a data de compra anterior do produto (guardada ao marcar)
+      if (item.previousLastPurchaseDate !== undefined) {
+        const supplier = suppliers.find(s => s.name === supplierName);
+        if (supplier) {
+          const productIndex = supplier.products.findIndex(p => p.name === productName);
+          if (productIndex !== -1) {
+            const updatedSupplier = { ...supplier };
+            updatedSupplier.products = [...updatedSupplier.products];
+            updatedSupplier.products[productIndex] = {
+              ...updatedSupplier.products[productIndex],
+              lastPurchaseDate: item.previousLastPurchaseDate
+            };
+            try {
+              saveSupplier(updatedSupplier);
+            } catch (err) {
+              console.error("Erro ao restaurar data de compra:", err);
+            }
+          }
+        }
+      }
+
       // Se for desmarcar, remove dos entregues se existir o deliveryId ou se encontrar nos produtos entregues
       const productsToDelete = [];
       if (item.deliveryId) {

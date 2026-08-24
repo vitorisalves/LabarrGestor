@@ -109,6 +109,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         className="flex-1 px-4 py-2.5 bg-slate-50 border border-slate-100 focus:border-indigo-500 focus:bg-white rounded-xl outline-none transition-all font-medium text-sm"
                         value={newCategoryName}
                         onChange={(e) => setNewCategoryName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleAddCategory();
+                          }
+                        }}
                       />
                       <button
                         onClick={handleAddCategory}

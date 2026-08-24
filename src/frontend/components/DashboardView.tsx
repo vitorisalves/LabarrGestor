@@ -15,6 +15,7 @@ import {
   FileCheck2
 } from 'lucide-react';
 import { format, isWithinInterval, startOfMonth, endOfMonth, parseISO } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { domToCanvas } from 'modern-screenshot';
@@ -687,20 +688,28 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
     const catMap = new Map<string, number>();
     const start = new Date(startDate + 'T00:00:00');
     const end = new Date(endDate + 'T23:59:59');
+    const processedInvoiceIds = new Set<string>();
 
     invoices.forEach(inv => {
       const dateStr = inv.date || inv.dhEmi || inv.createdAt;
       if (!dateStr) return;
       const spendingDate = parseDateSafe(dateStr);
       if (spendingDate && isWithinInterval(spendingDate, { start, end })) {
+        if (inv.id) processedInvoiceIds.add(inv.id);
         const prods = (inv.products || []).filter((p: any) => !p.deleted);
-        
+
         // Calculate gross sum of products in invoice to check for unallocated invoice-level discount
         const prodGrossTotal = prods.reduce((acc: number, p: any) => acc + ((p.vUnComGross || p.vUnCom || p.price || 0) * (p.quantity || 1)), 0);
         const invTotal = typeof inv.vTotTrib === 'number' && inv.vTotTrib > 0 ? inv.vTotTrib : (inv.vNF || inv.total || 0);
         const discountRatio = (prodGrossTotal > 0 && invTotal > 0 && invTotal < prodGrossTotal)
           ? (invTotal / prodGrossTotal)
           : 1;
+
+        // Soma o valor calculado por produto nesta nota, para reconciliar com o total
+        // real da nota (invTotal) abaixo — a diferença (ex: notas sem itens conciliados,
+        // taxas no nível da nota) vai para "Sem Categoria", garantindo que a soma do
+        // gráfico de categorias sempre bata com o Gasto Mensal.
+        let invoiceProductsSum = 0;
 
         prods.forEach((p: any) => {
           const normalizeCatStr = (str: string) =>
@@ -731,13 +740,37 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
           }
 
           catMap.set(catName, (catMap.get(catName) || 0) + val);
+          invoiceProductsSum += val;
         });
+
+        // Diferença entre o total real da nota e a soma dos produtos categorizados
+        // (ex: nota sem itens, taxas não distribuídas) vira "Sem Categoria".
+        const invoiceValid = invTotal > 0 ? invTotal : invoiceProductsSum;
+        const shortfall = invoiceValid - invoiceProductsSum;
+        if (shortfall > 0.01) {
+          catMap.set('Sem Categoria', (catMap.get('Sem Categoria') || 0) + shortfall);
+        }
+      }
+    });
+
+    // Mesmo fallback usado no Gasto Mensal: notas em xmlSpendings sem correspondência
+    // em invoices também entram, agrupadas em "Sem Categoria".
+    xmlSpendings.forEach(spending => {
+      if (spending.id && processedInvoiceIds.has(spending.id)) return;
+      const dateStr = spending.dhEmi || spending.date || spending.createdAt;
+      if (!dateStr) return;
+      const spendingDate = parseDateSafe(dateStr);
+      if (spendingDate && isWithinInterval(spendingDate, { start, end })) {
+        const val = Number(spending.vTotTrib || spending.vNF || spending.total || 0);
+        if (val > 0) {
+          catMap.set('Sem Categoria', (catMap.get('Sem Categoria') || 0) + val);
+        }
       }
     });
 
     const result = Array.from(catMap.entries()).map(([name, value]) => ({ name, value }));
     return result.filter(r => r.value > 0).sort((a, b) => b.value - a.value);
-  }, [invoices, startDate, endDate, normalizedCategories]);
+  }, [invoices, xmlSpendings, startDate, endDate, normalizedCategories]);
 
 
   const rangeProducts = useMemo(() => {
@@ -1231,11 +1264,33 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
 
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex flex-wrap items-center gap-2">
+            <select
+              value=""
+              onChange={(e) => {
+                if (!e.target.value) return;
+                const [y, m] = e.target.value.split('-').map(Number);
+                const monthDate = new Date(y, m - 1, 1);
+                setStartDate(format(startOfMonth(monthDate), 'yyyy-MM-dd'));
+                setEndDate(format(endOfMonth(monthDate), 'yyyy-MM-dd'));
+              }}
+              className="bg-slate-50 border border-slate-100 text-slate-700 text-[10px] font-black uppercase tracking-wider rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-indigo-100 cursor-pointer"
+              title="Preencher início/fim com um mês inteiro"
+            >
+              <option value="">Selecionar Mês</option>
+              {Array.from({ length: 24 }, (_, i) => {
+                const d = new Date();
+                d.setDate(1);
+                d.setMonth(d.getMonth() - i);
+                const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                const label = format(d, 'MMMM/yyyy', { locale: ptBR });
+                return <option key={value} value={value}>{label.charAt(0).toUpperCase() + label.slice(1)}</option>;
+              })}
+            </select>
             <div className="flex items-center gap-3 bg-slate-50 p-2 rounded-2xl border border-slate-100 shadow-inner">
               <div className="flex items-center gap-2 px-3">
                 <CalendarIcon className="w-4 h-4 text-indigo-500" />
-                <input 
-                  type="date" 
+                <input
+                  type="date"
                   value={startDate}
                   onChange={(e) => setStartDate(e.target.value)}
                   className="bg-transparent border-0 text-sm font-black text-slate-900 focus:outline-none uppercase cursor-pointer"
