@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback } from 'react';
 import { Product, Supplier } from '../types';
+import { getProductCategories } from '../utils/productCategories';
 
 export const useSupplierForm = (
     suppliers: Supplier[],
@@ -13,7 +14,7 @@ export const useSupplierForm = (
         productName: '',
         productCode: '',
         productPrice: '',
-        productCategory: '',
+        productCategories: [] as string[],
         productLastPurchaseDate: '',
         productPaymentMethod: '',
     });
@@ -29,7 +30,7 @@ export const useSupplierForm = (
             phone: '',
             productName: '',
             productPrice: '',
-            productCategory: '',
+            productCategories: [] as string[],
             productLastPurchaseDate: '',
             productPaymentMethod: '',
             productCode: '',
@@ -56,7 +57,7 @@ export const useSupplierForm = (
                     name: formState.productName.trim(),
                     code: formState.productCode.trim(),
                     price: parsePrice(formState.productPrice),
-                    category: formState.productCategory.trim() || 'Fornecedor',
+                    categories: formState.productCategories.length > 0 ? formState.productCategories : ['Fornecedor'],
                     lastPurchaseDate: formState.productLastPurchaseDate.trim(),
                     paymentMethod: formState.productPaymentMethod.trim()
                 };
@@ -67,7 +68,7 @@ export const useSupplierForm = (
                     name: formState.productName.trim(),
                     code: formState.productCode.trim(),
                     price: parsePrice(formState.productPrice),
-                    category: formState.productCategory.trim() || 'Fornecedor',
+                    categories: formState.productCategories.length > 0 ? formState.productCategories : ['Fornecedor'],
                     lastPurchaseDate: formState.productLastPurchaseDate.trim(),
                     paymentMethod: formState.productPaymentMethod.trim()
                 };
@@ -79,7 +80,7 @@ export const useSupplierForm = (
                 productName: '',
                 productCode: '',
                 productPrice: '',
-                productCategory: '',
+                productCategories: [] as string[],
                 productLastPurchaseDate: '',
                 productPaymentMethod: '',
             }));
@@ -95,7 +96,7 @@ export const useSupplierForm = (
                 productName: '',
                 productCode: '',
                 productPrice: '',
-                productCategory: '',
+                productCategories: [] as string[],
                 productLastPurchaseDate: '',
                 productPaymentMethod: ''
             }));
@@ -107,7 +108,7 @@ export const useSupplierForm = (
             productName: p.name,
             productCode: p.code || '',
             productPrice: p.price.toString(),
-            productCategory: p.category,
+            productCategories: getProductCategories(p),
             productLastPurchaseDate: p.lastPurchaseDate || '',
             productPaymentMethod: p.paymentMethod || ''
         }));
@@ -125,7 +126,7 @@ export const useSupplierForm = (
                     productName: '',
                     productCode: '',
                     productPrice: '',
-                    productCategory: '',
+                    productCategories: [] as string[],
                     productLastPurchaseDate: '',
                     productPaymentMethod: '',
                 }));
@@ -152,7 +153,7 @@ export const useSupplierForm = (
                     name: formState.productName.trim(),
                     code: formState.productCode.trim(),
                     price: parsePrice(formState.productPrice),
-                    category: formState.productCategory.trim() || 'Fornecedor',
+                    categories: formState.productCategories.length > 0 ? formState.productCategories : ['Fornecedor'],
                     lastPurchaseDate: formState.productLastPurchaseDate.trim(),
                     paymentMethod: formState.productPaymentMethod.trim()
                 };
@@ -211,7 +212,7 @@ export const useSupplierForm = (
             phone: supplier.phone,
             productName: '',
             productPrice: '',
-            productCategory: '',
+            productCategories: [],
             productLastPurchaseDate: '',
             productPaymentMethod: '',
             productCode: '',

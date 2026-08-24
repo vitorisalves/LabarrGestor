@@ -8,6 +8,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { RefreshCcw, PlusCircle, BellRing, X } from 'lucide-react';
 import { db } from './firebase';
 import { setDoc, doc, deleteDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { getProductCategories } from './utils/productCategories';
 
 // Hooks
 import { useAuth } from './hooks/useAuth';
@@ -529,7 +530,7 @@ export default function App() {
         phone: supplier.phone,
         productName: product.name,
         productPrice: product.price.toString(),
-        productCategory: product.category || '',
+        productCategories: getProductCategories(product),
         productLastPurchaseDate: product.lastPurchaseDate || '',
         productPaymentMethod: product.paymentMethod || '',
         productCode: product.code || ''
@@ -770,8 +771,8 @@ export default function App() {
         setNewProductPrice={(productPrice) => setFormState(prev => ({ ...prev, productPrice }))}
         newProductCode={formState.productCode}
         setNewProductCode={(productCode) => setFormState(prev => ({ ...prev, productCode }))}
-        newProductCategory={formState.productCategory}
-        setNewProductCategory={(productCategory) => setFormState(prev => ({ ...prev, productCategory }))}
+        newProductCategories={formState.productCategories}
+        setNewProductCategories={(productCategories) => setFormState(prev => ({ ...prev, productCategories }))}
         newProductLastPurchaseDate={formState.productLastPurchaseDate}
         setNewProductLastPurchaseDate={(productLastPurchaseDate) => setFormState(prev => ({ ...prev, productLastPurchaseDate }))}
         newProductPaymentMethod={formState.productPaymentMethod}

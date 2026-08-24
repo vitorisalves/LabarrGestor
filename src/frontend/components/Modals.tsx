@@ -27,8 +27,8 @@ interface ModalsProps {
   setNewProductPrice: (price: string) => void;
   newProductCode: string;
   setNewProductCode: (code: string) => void;
-  newProductCategory: string;
-  setNewProductCategory: (cat: string) => void;
+  newProductCategories: string[];
+  setNewProductCategories: (cats: string[]) => void;
   newProductLastPurchaseDate: string;
   setNewProductLastPurchaseDate: (date: string) => void;
   newProductPaymentMethod: string;
@@ -114,8 +114,8 @@ export const Modals: React.FC<ModalsProps> = (props) => {
         setProductPrice={props.setNewProductPrice}
         productCode={props.newProductCode}
         setProductCode={props.setNewProductCode}
-        productCategory={props.newProductCategory}
-        setProductCategory={props.setNewProductCategory}
+        productCategories={props.newProductCategories}
+        setProductCategories={props.setNewProductCategories}
         productLastPurchaseDate={props.newProductLastPurchaseDate}
         setProductLastPurchaseDate={props.setNewProductLastPurchaseDate}
         productPaymentMethod={props.newProductPaymentMethod}

@@ -3,6 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, Package, Pencil, Plus, Trash2, Search, Check, Loader2 } from 'lucide-react';
 import { Product } from '../../types';
 import { formatCurrency } from '../../utils';
+import { getProductCategories } from '../../utils/productCategories';
+import { CategoryMultiSelect } from '../products/CategoryMultiSelect';
 
 interface SupplierModalProps {
   isOpen: boolean;
@@ -17,8 +19,8 @@ interface SupplierModalProps {
   setProductName: (name: string) => void;
   productPrice: string;
   setProductPrice: (price: string) => void;
-  productCategory: string;
-  setProductCategory: (cat: string) => void;
+  productCategories: string[];
+  setProductCategories: (cats: string[]) => void;
   productCode: string;
   setProductCode: (code: string) => void;
   productLastPurchaseDate: string;
@@ -48,8 +50,8 @@ export const SupplierModal: React.FC<SupplierModalProps> = ({
   setProductName,
   productPrice,
   setProductPrice,
-  productCategory,
-  setProductCategory,
+  productCategories,
+  setProductCategories,
   productLastPurchaseDate,
   setProductLastPurchaseDate,
   productPaymentMethod,
@@ -77,9 +79,9 @@ export const SupplierModal: React.FC<SupplierModalProps> = ({
     if (!localSearch.trim()) return productList;
     const lower = localSearch.toLowerCase();
     return productList.map((p, originalIndex) => ({ ...p, originalIndex }))
-      .filter(p => 
-        p.name.toLowerCase().includes(lower) || 
-        p.category.toLowerCase().includes(lower)
+      .filter(p =>
+        p.name.toLowerCase().includes(lower) ||
+        getProductCategories(p).some(c => c.toLowerCase().includes(lower))
       );
   }, [productList, localSearch]);
 
@@ -183,16 +185,11 @@ export const SupplierModal: React.FC<SupplierModalProps> = ({
                       value={productPrice}
                       onChange={(e) => setProductPrice(e.target.value)}
                     />
-                    <select
-                      className="px-4 py-3 bg-white border border-slate-200 focus:border-indigo-500 rounded-xl outline-none transition-all font-medium text-sm appearance-none"
-                      value={productCategory}
-                      onChange={(e) => setProductCategory(e.target.value)}
-                    >
-                      <option value="">Categoria</option>
-                      {Array.from(new Set(categories)).map((cat, idx) => (
-                        <option key={`${cat}-${idx}`} value={cat}>{cat}</option>
-                      ))}
-                    </select>
+                    <CategoryMultiSelect
+                      value={productCategories}
+                      onChange={setProductCategories}
+                      options={Array.from(new Set(categories))}
+                    />
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <input
@@ -264,15 +261,12 @@ export const SupplierModal: React.FC<SupplierModalProps> = ({
                                       }}
                                     />
                                   </div>
-                                  <select
-                                    className="px-2 py-1 bg-indigo-50 border border-indigo-200 rounded-lg text-[10px] font-bold text-indigo-600 outline-none"
-                                    value={productCategory}
-                                    onChange={(e) => setProductCategory(e.target.value)}
-                                  >
-                                    {Array.from(new Set(categories)).map((cat, idx) => (
-                                      <option key={`${cat}-${idx}`} value={cat}>{cat}</option>
-                                    ))}
-                                  </select>
+                                  <CategoryMultiSelect
+                                    className="w-40"
+                                    value={productCategories}
+                                    onChange={setProductCategories}
+                                    options={Array.from(new Set(categories))}
+                                  />
                                 </div>
                                 <div className="grid grid-cols-3 gap-2 mt-2">
                                   <input
@@ -325,7 +319,7 @@ export const SupplierModal: React.FC<SupplierModalProps> = ({
                                 </div>
                                 <div className="flex items-center gap-3 mt-1">
                                   <span className="text-xs font-black text-indigo-600">{formatCurrency(p.price)}</span>
-                                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{p.category}</span>
+                                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{getProductCategories(p).join(', ') || 'Sem Categoria'}</span>
                                 </div>
                               </>
                             )}
