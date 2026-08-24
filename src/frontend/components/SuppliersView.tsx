@@ -30,6 +30,7 @@ import { getProductCategories } from '../utils/productCategories';
 import { SearchBar, QuantitySelector, EmptyState } from './common';
 import { XmlImportTab, ImportRow } from './suppliers/XmlImportTab';
 import { useXmlImport } from '../hooks/useXmlImport';
+import { ProductsTab } from './products/ProductsTab';
 
 interface SuppliersViewProps {
   suppliers: Supplier[];
@@ -46,8 +47,8 @@ interface SuppliersViewProps {
   handleExportExcel: () => void;
   handleImportExcel: (e: React.ChangeEvent<HTMLInputElement>) => void;
   handleSyncSheets?: () => void;
-  activeTab?: 'fornecedores' | 'mercado' | 'materiais' | 'importar_xml';
-  onTabChange?: (tab: 'fornecedores' | 'mercado' | 'materiais' | 'importar_xml') => void;
+  activeTab?: 'fornecedores' | 'produtos' | 'importar_xml';
+  onTabChange?: (tab: 'fornecedores' | 'produtos' | 'importar_xml') => void;
   addNotification?: (message: string, count: number, type?: 'cart' | 'info') => void;
   onEditProduct: (product: Product, supplierName: string) => void;
   saveSupplier: (supplier: Supplier) => Promise<void>;
@@ -74,7 +75,7 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
   onEditProduct,
   saveSupplier
 }) => {
-  const [internalTab, setInternalTab] = React.useState<'fornecedores' | 'mercado' | 'materiais' | 'importar_xml'>('fornecedores');
+  const [internalTab, setInternalTab] = React.useState<'fornecedores' | 'produtos' | 'importar_xml'>('fornecedores');
   const activeSubTab = externalTab || internalTab;
   const setActiveSubTab = onTabChange || setInternalTab;
 
@@ -106,24 +107,6 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
 
   const [expandedSupplier, setExpandedSupplier] = React.useState<string | null>(null);
   const [quantities, setQuantities] = React.useState<Record<string, string>>({});
-
-  const marketSupplier = allSuppliers.find(s => s.name.toUpperCase() === 'MERCADO');
-  const materialsSupplier = allSuppliers.find(s => s.name.toUpperCase() === 'MATERIAIS');
-
-  const handleAddChannelProduct = (channel: 'MERCADO' | 'MATERIAIS') => {
-    const existingSupplier = allSuppliers.find(s => s.name.toUpperCase() === channel);
-    if (existingSupplier) {
-      handleEditSupplier(existingSupplier);
-    } else {
-      // Create a virtual supplier for this channel if it doesn't exist
-      handleEditSupplier({
-        id: `CHANNEL_${channel}`,
-        name: channel,
-        phone: '00000000000',
-        products: []
-      });
-    }
-  };
 
   const handleQuantityChange = (key: string, value: string) => {
     // Permite vazio, números inteiros ou decimais com ponto ou vírgula
@@ -203,8 +186,7 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
       <div className="flex items-center gap-2 overflow-x-auto pb-3 scrollbar-hide -mx-4 px-4 md:mx-0 md:px-0">
           {[
           { id: 'fornecedores', label: 'Fornecedores' },
-          { id: 'mercado', label: 'Mercado' },
-          { id: 'materiais', label: 'Materiais' },
+          { id: 'produtos', label: 'Produtos' },
           { id: 'importar_xml', label: 'Importar XML' }
         ].map((tab) => (
           <button
@@ -450,238 +432,16 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
         </div>
       )}
 
-      {activeSubTab === 'mercado' && (
-        <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-bold text-slate-800 uppercase tracking-tight">Produtos de Mercado</h2>
-            <button
-              onClick={() => handleAddChannelProduct('MERCADO')}
-              className="flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-md active:scale-95 text-xs"
-            >
-              <Plus className="w-4 h-4" />
-              Gerenciar Produtos
-            </button>
-          </div>
-
-          <SearchBar
-            value={searchTerm}
-            onChange={setSearchTerm}
-            placeholder="Buscar produtos no mercado..."
-          />
-
-          {!marketSupplier || marketSupplier.products.length === 0 ? (
-            <EmptyState title="Canal Mercado" message="Nenhum produto cadastrado no mercado ainda." />
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-              {marketSupplier.products
-                .filter(p => {
-                  const normalizedSearch = normalizeText(searchTerm);
-                  return normalizeText(p.name).includes(normalizedSearch) ||
-                    getProductCategories(p).some(c => normalizeText(c).includes(normalizedSearch));
-                })
-                .sort((a, b) => a.name.localeCompare(b.name))
-                .map((product, idx) => {
-                  const qKey = `MERCADO-${String(product.name)}-${idx}`;
-                  return (
-                    <div key={qKey} className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col justify-between group hover:border-indigo-200 transition-all">
-                      <div>
-                        <div className="flex justify-between items-start mb-4">
-                          <div className="flex flex-wrap gap-1">
-                            {getProductCategories(product).length > 0 ? (
-                              getProductCategories(product).map(cat => (
-                                <span key={cat} className="px-2 py-0.5 bg-slate-100 text-slate-500 rounded-full text-[9px] font-black uppercase tracking-wider">
-                                  {cat}
-                                </span>
-                              ))
-                            ) : (
-                              <span className="px-2 py-0.5 bg-amber-50 text-amber-600 rounded-full text-[9px] font-black uppercase tracking-wider">
-                                Sem Categoria
-                              </span>
-                            )}
-                          </div>
-                          <div className='flex gap-2 items-center'>
-                            <button onClick={() => onEditProduct(product, 'MERCADO')} className='p-1 hover:bg-slate-100 rounded-md'>
-                              <Pencil className="w-3 h-3 text-slate-400 hover:text-indigo-600" />
-                            </button>
-                            <span className="text-xl font-black text-indigo-600">
-                              {formatCurrency(product.price)}
-                            </span>
-                          </div>
-                        </div>
-                        <h4 
-                          className={`text-lg font-bold mb-3 uppercase tracking-tight transition-colors ${isLink(product.name) ? 'text-indigo-600 hover:underline cursor-pointer' : 'text-slate-700'}`}
-                          onClick={(e) => {
-                            if (isLink(product.name)) {
-                              e.stopPropagation();
-                              handleCopy(product.name, 'Link');
-                            }
-                          }}
-                        >
-                          {product.name}
-                        </h4>
-                        <div className="space-y-1.5 mb-6">
-                          <div className="flex items-center gap-2 bg-indigo-50/50 px-2 py-1 rounded-lg border border-indigo-100/50">
-                            <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full" />
-                            <span className="text-[11px] text-slate-500 font-bold uppercase">Código:</span>
-                            <span className="text-[11px] text-indigo-700 font-mono font-black uppercase tracking-wider">{product.code || 'Não associado'}</span>
-                          </div>
-                          {product.lastPurchaseDate && (
-                            <div className="flex items-center gap-2 bg-indigo-50/50 px-2 py-1 rounded-lg border border-indigo-100/50">
-                              <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full" />
-                              <span className="text-[11px] text-slate-500 font-bold uppercase">Última Compra:</span>
-                              <span className="text-[11px] text-indigo-700 font-black">{product.lastPurchaseDate}</span>
-                            </div>
-                          )}
-                          {product.paymentMethod && (
-                            <div className="flex items-center gap-2 bg-emerald-50/50 px-2 py-1 rounded-lg border border-emerald-100/50">
-                              <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
-                              <span className="text-[11px] text-slate-500 font-bold uppercase">Pagamento:</span>
-                              <span className="text-[11px] text-emerald-700 font-black">{product.paymentMethod}</span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                        <div className="flex flex-col sm:flex-row gap-2 mt-auto">
-                          <QuantitySelector
-                            quantity={quantities[qKey] ?? '1'}
-                            onQuantityChange={(val) => handleQuantityChange(qKey, val)}
-                            onQuantityBlur={() => handleQuantityBlur(qKey)}
-                            onIncrement={() => adjustQuantity(qKey, 1)}
-                            onDecrement={() => adjustQuantity(qKey, -1)}
-                            onEnter={() => onAddToCart(product, 'MERCADO', qKey)}
-                            idPrefix={qKey}
-                          />
-                          <button
-                            id={`add-${qKey}`}
-                            onClick={() => onAddToCart(product, 'MERCADO', qKey)}
-                            className="flex-1 h-11 bg-slate-900 text-white rounded-xl font-bold uppercase text-[10px] tracking-widest hover:bg-indigo-600 transition-all shadow-sm"
-                          >
-                            Adicionar
-                          </button>
-                        </div>
-                    </div>
-                  );
-                })}
-            </div>
-          )}
-        </div>
-      )}
-
-      {activeSubTab === 'materiais' && (
-        <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-bold text-slate-800 uppercase tracking-tight">Produtos de Materiais</h2>
-            <button
-              onClick={() => handleAddChannelProduct('MATERIAIS')}
-              className="flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-md active:scale-95 text-xs"
-            >
-              <Plus className="w-4 h-4" />
-              Gerenciar Produtos
-            </button>
-          </div>
-
-          <SearchBar
-            value={searchTerm}
-            onChange={setSearchTerm}
-            placeholder="Buscar materiais..."
-          />
-
-          {!materialsSupplier || materialsSupplier.products.length === 0 ? (
-            <EmptyState title="Canal Materiais" message="Nenhum produto cadastrado em materiais ainda." />
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-              {materialsSupplier.products
-                .filter(p => {
-                  const normalizedSearch = normalizeText(searchTerm);
-                  return normalizeText(p.name).includes(normalizedSearch) ||
-                    getProductCategories(p).some(c => normalizeText(c).includes(normalizedSearch));
-                })
-                .sort((a, b) => a.name.localeCompare(b.name))
-                .map((product, idx) => {
-                  const qKey = `MATERIAIS-${String(product.name)}-${idx}`;
-                  return (
-                    <div key={qKey} className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col justify-between group hover:border-indigo-100 transition-all">
-                      <div>
-                        <div className="flex justify-between items-start mb-4">
-                          <div className="flex flex-wrap gap-1">
-                            {getProductCategories(product).length > 0 ? (
-                              getProductCategories(product).map(cat => (
-                                <span key={cat} className="px-2 py-0.5 bg-slate-100 text-slate-500 rounded-full text-[9px] font-black uppercase tracking-wider">
-                                  {cat}
-                                </span>
-                              ))
-                            ) : (
-                              <span className="px-2 py-0.5 bg-amber-50 text-amber-600 rounded-full text-[9px] font-black uppercase tracking-wider">
-                                Sem Categoria
-                              </span>
-                            )}
-                          </div>
-                          <div className='flex gap-2 items-center'>
-                            <button onClick={() => onEditProduct(product, 'MATERIAIS')} className='p-1 hover:bg-slate-100 rounded-md'>
-                              <Pencil className="w-3 h-3 text-slate-400 hover:text-indigo-600" />
-                            </button>
-                            <span className="text-xl font-black text-indigo-600">
-                              {formatCurrency(product.price)}
-                            </span>
-                          </div>
-                        </div>
-                        <h4 
-                          className={`text-lg font-bold mb-3 uppercase tracking-tight transition-colors ${isLink(product.name) ? 'text-indigo-600 hover:underline cursor-pointer' : 'text-slate-700'}`}
-                          onClick={(e) => {
-                            if (isLink(product.name)) {
-                              e.stopPropagation();
-                              handleCopy(product.name, 'Link');
-                            }
-                          }}
-                        >
-                          {product.name}
-                        </h4>
-                        <div className="space-y-1.5 mb-6">
-                          <div className="flex items-center gap-2 bg-indigo-50/50 px-2 py-1 rounded-lg border border-indigo-100/50">
-                            <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full" />
-                            <span className="text-[11px] text-slate-500 font-bold uppercase">Código:</span>
-                            <span className="text-[11px] text-indigo-700 font-mono font-black uppercase tracking-wider">{product.code || 'Não associado'}</span>
-                          </div>
-                          {product.lastPurchaseDate && (
-                            <div className="flex items-center gap-2 bg-indigo-50/50 px-2 py-1 rounded-lg border border-indigo-100/50">
-                              <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full" />
-                              <span className="text-[11px] text-slate-500 font-bold uppercase">Última Compra:</span>
-                              <span className="text-[11px] text-indigo-700 font-black">{product.lastPurchaseDate}</span>
-                            </div>
-                          )}
-                          {product.paymentMethod && (
-                            <div className="flex items-center gap-2 bg-emerald-50/50 px-2 py-1 rounded-lg border border-emerald-100/50">
-                              <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
-                              <span className="text-[11px] text-slate-500 font-bold uppercase">Pagamento:</span>
-                              <span className="text-[11px] text-emerald-700 font-black">{product.paymentMethod}</span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                        <div className="flex flex-col sm:flex-row gap-2 mt-auto">
-                          <QuantitySelector
-                            quantity={quantities[qKey] ?? '1'}
-                            onQuantityChange={(val) => handleQuantityChange(qKey, val)}
-                            onQuantityBlur={() => handleQuantityBlur(qKey)}
-                            onIncrement={() => adjustQuantity(qKey, 1)}
-                            onDecrement={() => adjustQuantity(qKey, -1)}
-                            onEnter={() => onAddToCart(product, 'MATERIAIS', qKey)}
-                            idPrefix={qKey}
-                          />
-                          <button
-                            id={`add-${qKey}`}
-                            onClick={() => onAddToCart(product, 'MATERIAIS', qKey)}
-                            className="flex-1 h-11 bg-slate-900 text-white rounded-xl font-bold uppercase text-[10px] tracking-widest hover:bg-indigo-600 transition-all shadow-sm"
-                          >
-                            Adicionar
-                          </button>
-                        </div>
-                    </div>
-                  );
-                })}
-            </div>
-          )}
-        </div>
+      {activeSubTab === 'produtos' && (
+        <ProductsTab
+          suppliers={allSuppliers}
+          saveSupplier={saveSupplier}
+          categories={availableCategories}
+          searchTerm={searchTerm}
+          setSearchTerm={setSearchTerm}
+          onEditProduct={onEditProduct}
+          onAddToCart={addToCart}
+        />
       )}
 
       {activeSubTab === 'importar_xml' && (
