@@ -62,6 +62,10 @@ interface ModalsProps {
   newCategoryName: string;
   setNewCategoryName: (name: string) => void;
   handleAddCategory: () => void;
+  setores: string[];
+  newSetorName: string;
+  setNewSetorName: (name: string) => void;
+  handleAddSetor: () => void;
   authorizedUsers: AuthorizedUser[];
   updateUserStatus: (uid: string, status: 'approved' | 'denied') => void;
   removeUserRequest?: (uid: string) => void;
@@ -84,6 +88,10 @@ interface ModalsProps {
   categoryToDelete: string | null;
   setCategoryToDelete: (id: string | null) => void;
   confirmDeleteCategory: () => void;
+
+  setorToDelete: string | null;
+  setSetorToDelete: (id: string | null) => void;
+  confirmDeleteSetor: () => void;
 
   userToDelete: string | null;
   setUserToDelete: (id: string | null) => void;
@@ -154,9 +162,14 @@ export const Modals: React.FC<ModalsProps> = (props) => {
         newCategoryName={props.newCategoryName}
         setNewCategoryName={props.setNewCategoryName}
         handleAddCategory={props.handleAddCategory}
+        setores={props.setores}
+        newSetorName={props.newSetorName}
+        setNewSetorName={props.setNewSetorName}
+        handleAddSetor={props.handleAddSetor}
         authorizedUsers={props.authorizedUsers}
         updateUserStatus={props.updateUserStatus}
         setCategoryToDelete={props.setCategoryToDelete}
+        setSetorToDelete={props.setSetorToDelete}
         setUserToDelete={props.setUserToDelete}
         isDarkMode={props.isDarkMode}
         setIsDarkMode={props.setIsDarkMode}
@@ -195,7 +208,15 @@ export const Modals: React.FC<ModalsProps> = (props) => {
         message={`Deseja remover a categoria "${props.categoryToDelete}"? Isso não afetará os produtos já cadastrados.`}
       />
 
-      <ConfirmationModal 
+      <ConfirmationModal
+        isOpen={!!props.setorToDelete}
+        onClose={() => props.setSetorToDelete(null)}
+        onConfirm={props.confirmDeleteSetor}
+        title="Excluir Setor?"
+        message={`Deseja remover o setor "${props.setorToDelete}"? Isso não afetará compras já registradas.`}
+      />
+
+      <ConfirmationModal
         isOpen={!!props.userToDelete}
         onClose={() => props.setUserToDelete(null)}
         onConfirm={props.confirmDeleteUser}

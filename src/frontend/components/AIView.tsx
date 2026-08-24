@@ -426,7 +426,7 @@ export const AIView: React.FC<AIViewProps> = ({
           const found = flatProducts.find(p => p.name === item.name && (!item.supplierName || p.supplier.name === item.supplierName));
 
           if (found) {
-            addToCart(found, found.supplier.name, item.quantity, getProductCategories(found)[0] || 'AI');
+            addToCart(found, found.supplier.name, item.quantity, 'AI');
           } else {
             // Se não existe, cria um "fantasma" para a lista
             addToCart({ name: item.name, price: 0, categories: ['AI'], code: '' }, item.supplierName || 'AI', item.quantity, 'AI');

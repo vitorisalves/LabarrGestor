@@ -18,7 +18,7 @@ import {
 import { Supplier, Product } from '../types';
 import { formatCurrency, normalizeText } from '../utils';
 import { getProductCategories } from '../utils/productCategories';
-import { PurchaseCategoryPicker } from './products/PurchaseCategoryPicker';
+import { PurchaseSetorPicker } from './products/PurchaseSetorPicker';
 
 interface ShoppingViewProps {
   suppliers: Supplier[];
@@ -26,9 +26,9 @@ interface ShoppingViewProps {
   setSearchTerm: (term: string) => void;
   shoppingQuantities: Record<string, number | string>;
   setShoppingQuantities: React.Dispatch<React.SetStateAction<Record<string, number | string>>>;
-  addToCart: (product: Product, supplierName: string, quantity: number, category: string) => void;
+  addToCart: (product: Product, supplierName: string, quantity: number, setor: string) => void;
   onEditProduct: (product: Product, supplierName: string) => void;
-  allCategories: string[];
+  allSetores: string[];
 }
 
 /**
@@ -46,11 +46,11 @@ export const ShoppingView: React.FC<ShoppingViewProps> = ({
   setShoppingQuantities,
   addToCart,
   onEditProduct,
-  allCategories
+  allSetores
 }) => {
   // Estado para controlar qual categoria está expandida no momento
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
-  const [purchaseCategories, setPurchaseCategories] = useState<Record<string, string>>({});
+  const [purchaseSetores, setPurchaseSetores] = useState<Record<string, string>>({});
 
   /**
    * Processa e agrupa os produtos por categoria, filtrando pelo termo de busca.
@@ -123,8 +123,8 @@ export const ShoppingView: React.FC<ShoppingViewProps> = ({
     if (isNaN(qty) || qty <= 0) {
       qty = 1;
     }
-    const category = purchaseCategories[uniqueId] || allCategories[0] || '';
-    addToCart(product, product.supplierName, qty, category);
+    const setor = purchaseSetores[uniqueId] || allSetores[0] || '';
+    addToCart(product, product.supplierName, qty, setor);
     setShoppingQuantities(prev => ({ ...prev, [uniqueId]: '1' }));
   };
 
@@ -276,11 +276,10 @@ export const ShoppingView: React.FC<ShoppingViewProps> = ({
                                 </button>
                               </div>
 
-                              <PurchaseCategoryPicker
-                                product={product}
-                                categories={allCategories}
-                                value={purchaseCategories[uniqueId] || ''}
-                                onChange={(cat) => setPurchaseCategories(prev => ({ ...prev, [uniqueId]: cat }))}
+                              <PurchaseSetorPicker
+                                setores={allSetores}
+                                value={purchaseSetores[uniqueId] || ''}
+                                onChange={(setor) => setPurchaseSetores(prev => ({ ...prev, [uniqueId]: setor }))}
                               />
 
                               {/* Botão de Adição ao Carrinho */}

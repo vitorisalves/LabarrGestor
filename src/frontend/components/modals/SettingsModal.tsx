@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Settings, Package, Trash2, UserPlus, User, Check, Moon, Sun } from 'lucide-react';
+import { X, Settings, Package, Building2, Trash2, UserPlus, User, Check, Moon, Sun } from 'lucide-react';
 import { AuthorizedUser } from '../../types';
 
 interface SettingsModalProps {
@@ -10,9 +10,14 @@ interface SettingsModalProps {
   newCategoryName: string;
   setNewCategoryName: (name: string) => void;
   handleAddCategory: () => void;
+  setores: string[];
+  newSetorName: string;
+  setNewSetorName: (name: string) => void;
+  handleAddSetor: () => void;
   authorizedUsers: AuthorizedUser[];
   updateUserStatus: (uid: string, status: 'approved' | 'denied') => void;
   setCategoryToDelete: (cat: string) => void;
+  setSetorToDelete: (setor: string) => void;
   setUserToDelete: (uid: string) => void;
   isDarkMode?: boolean;
   setIsDarkMode?: (dark: boolean) => void;
@@ -26,9 +31,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   newCategoryName,
   setNewCategoryName,
   handleAddCategory,
+  setores,
+  newSetorName,
+  setNewSetorName,
+  handleAddSetor,
   authorizedUsers,
   updateUserStatus,
   setCategoryToDelete,
+  setSetorToDelete,
   setUserToDelete,
   isDarkMode = false,
   setIsDarkMode,
@@ -129,6 +139,49 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           {cat}
                           <button
                             onClick={() => setCategoryToDelete(cat)}
+                            className="p-0.5 text-black hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
+                            title="Excluir"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+
+                  {/* Setores */}
+                  <section className="space-y-4">
+                    <h3 className="text-sm font-black text-slate-800 flex items-center gap-3 uppercase tracking-wider">
+                      <Building2 className="w-4 h-4 text-indigo-600" />
+                      Setores
+                    </h3>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        placeholder="Novo setor..."
+                        className="flex-1 px-4 py-2.5 bg-slate-50 border border-slate-100 focus:border-indigo-500 focus:bg-white rounded-xl outline-none transition-all font-medium text-sm"
+                        value={newSetorName}
+                        onChange={(e) => setNewSetorName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleAddSetor();
+                          }
+                        }}
+                      />
+                      <button
+                        onClick={handleAddSetor}
+                        className="px-6 py-2.5 bg-slate-900 text-white rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-slate-800 transition-all shadow-sm"
+                      >
+                        Adicionar
+                      </button>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {Array.from(new Set(setores)).map((setor, idx) => (
+                        <div key={`${setor}-${idx}`} className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 text-slate-600 rounded-lg text-xs font-bold border border-slate-100 group">
+                          {setor}
+                          <button
+                            onClick={() => setSetorToDelete(setor)}
                             className="p-0.5 text-black hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
                             title="Excluir"
                           >

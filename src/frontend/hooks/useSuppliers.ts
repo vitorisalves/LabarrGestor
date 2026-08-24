@@ -18,6 +18,10 @@ export const useSuppliers = (isAuthReady: boolean, isApproved: boolean) => {
     const cached = localStorage.getItem('cache_categories');
     return cached ? JSON.parse(cached) : ['Embalagens', 'Ingredientes', 'Limpeza', 'Escritório', 'Fornecedor'];
   });
+  const [setores, setSetores] = useState<string[]>(() => {
+    const cached = localStorage.getItem('cache_setores');
+    return cached ? JSON.parse(cached) : [];
+  });
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -29,6 +33,7 @@ export const useSuppliers = (isAuthReady: boolean, isApproved: boolean) => {
 
     const cachedSuppliers = localStorage.getItem('cache_suppliers');
     const cachedCategories = localStorage.getItem('cache_categories');
+    const cachedSetores = localStorage.getItem('cache_setores');
 
     // Para otimização extrema, exibimos o cache instantaneamente na tela para zero delay visual
     if (cachedSuppliers && suppliers.length === 0) {
@@ -37,6 +42,9 @@ export const useSuppliers = (isAuthReady: boolean, isApproved: boolean) => {
     if (cachedCategories && categories.length <= 5) { // default categories list is 5 items
       setCategories(JSON.parse(cachedCategories));
     }
+    if (cachedSetores && setores.length === 0) {
+      setSetores(JSON.parse(cachedSetores));
+    }
 
     setIsLoading(true);
     setError(null);
@@ -44,35 +52,43 @@ export const useSuppliers = (isAuthReady: boolean, isApproved: boolean) => {
     try {
       let suppliersData: Supplier[] = [];
       let categoriesData: string[] = [];
+      let setoresData: string[] = [];
 
       try {
         const suppUrl = force ? '/api/xml/suppliers?fresh=true' : '/api/xml/suppliers';
         const catUrl = force ? '/api/xml/categories?fresh=true' : '/api/xml/categories';
+        const setUrl = force ? '/api/xml/setores?fresh=true' : '/api/xml/setores';
         const fetchOptions = force ? { headers: { 'Cache-Control': 'no-cache' } } : undefined;
 
-        const [suppRes, catRes] = await Promise.all([
+        const [suppRes, catRes, setRes] = await Promise.all([
           fetch(suppUrl, fetchOptions),
-          fetch(catUrl, fetchOptions)
+          fetch(catUrl, fetchOptions),
+          fetch(setUrl, fetchOptions)
         ]);
 
-        if (suppRes.ok && catRes.ok) {
+        if (suppRes.ok && catRes.ok && setRes.ok) {
           const sData = await suppRes.json();
           suppliersData = sData as Supplier[];
-          
+
           const cData = await catRes.json();
           categoriesData = cData.map((d: any) => d.name as string);
+
+          const setData = await setRes.json();
+          setoresData = setData.map((d: any) => d.name as string);
         } else {
           throw new Error("Backend caching routes failed, resorting to client SDK fallback");
         }
       } catch (backendErr) {
-        console.warn("Backend suppliers/categories cache failed, falling back to client-side Firestore SDK:", backendErr);
-        
+        console.warn("Backend suppliers/categories/setores cache failed, falling back to client-side Firestore SDK:", backendErr);
+
         const suppliersCollection = collection(db, 'suppliers');
         const categoriesCollection = collection(db, 'categories');
+        const setoresCollection = collection(db, 'setores');
 
-        const [suppSnap, catSnap] = await Promise.all([
+        const [suppSnap, catSnap, setSnap] = await Promise.all([
           getDocs(suppliersCollection),
-          getDocs(categoriesCollection)
+          getDocs(categoriesCollection),
+          getDocs(setoresCollection)
         ]);
 
         suppliersData = suppSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Supplier));
@@ -82,6 +98,8 @@ export const useSuppliers = (isAuthReady: boolean, isApproved: boolean) => {
         } else {
           categoriesData = ['Embalagens', 'Ingredientes', 'Limpeza', 'Escritório', 'Fornecedor'];
         }
+
+        setoresData = setSnap.docs.map(doc => doc.data().name as string);
       }
 
       const normalizeSuppliers = (list: Supplier[]): Supplier[] =>
@@ -111,12 +129,17 @@ export const useSuppliers = (isAuthReady: boolean, isApproved: boolean) => {
         localStorage.setItem('cache_categories', safeStringify(uniqueCategories));
       }
 
+      const uniqueSetores = Array.from(new Set(setoresData));
+      setSetores(uniqueSetores);
+      localStorage.setItem('cache_setores', safeStringify(uniqueSetores));
+
       localStorage.setItem('suppliers_last_fetch', String(Date.now()));
     } catch (err: any) {
-      handleFirestoreError(err, OperationType.GET, 'suppliers/categories');
+      handleFirestoreError(err, OperationType.GET, 'suppliers/categories/setores');
       if (cachedSuppliers) setSuppliers(JSON.parse(cachedSuppliers));
       if (cachedCategories) setCategories(JSON.parse(cachedCategories));
-      
+      if (cachedSetores) setSetores(JSON.parse(cachedSetores));
+
       const isQuota = err.message?.toLowerCase().includes('quota') || err.message?.toLowerCase().includes('resource-exhausted');
       if (!isQuota) setError(extractErrorMessage(err));
     } finally {
@@ -259,9 +282,50 @@ export const useSuppliers = (isAuthReady: boolean, isApproved: boolean) => {
     }
   };
 
+  const addSetor = async (name: string) => {
+    if (setores.includes(name)) return;
+
+    // Optimistic update
+    setSetores(prev => {
+      const next = [...prev, name];
+      localStorage.setItem('cache_setores', safeStringify(next));
+      return next;
+    });
+
+    try {
+      const id = generateId();
+      await setDoc(doc(db, 'setores', id), { name });
+      await invalidateBackendCache('setores');
+    } catch (err: any) {
+      handleFirestoreError(err, OperationType.WRITE, `setores/${name}`);
+      console.warn("Cloud setor add failed:", err.message);
+    }
+  };
+
+  const deleteSetor = async (name: string) => {
+    // Optimistic update
+    setSetores(prev => {
+      const next = prev.filter(s => s !== name);
+      localStorage.setItem('cache_setores', safeStringify(next));
+      return next;
+    });
+
+    try {
+      const q = query(collection(db, 'setores'), where('name', '==', name));
+      const snapshot = await getDocs(q);
+      const deletePromises = snapshot.docs.map(d => deleteDoc(d.ref));
+      await Promise.all(deletePromises);
+      await invalidateBackendCache('setores');
+    } catch (err: any) {
+      handleFirestoreError(err, OperationType.DELETE, `setores/${name}`);
+      console.warn("Cloud setor delete failed:", err.message);
+    }
+  };
+
   return {
     suppliers,
     categories,
+    setores,
     isLoading,
     refreshData,
     saveSupplier,
@@ -269,6 +333,8 @@ export const useSuppliers = (isAuthReady: boolean, isApproved: boolean) => {
     deleteAllSuppliers,
     addCategory,
     deleteCategory,
+    addSetor,
+    deleteSetor,
     error
   };
 };

@@ -64,7 +64,7 @@ const HistoryItemRow = React.memo(({
       </td>
       <td className="px-6 py-4">
         <p className={`text-sm font-bold text-slate-700 tracking-tight ${item.bought ? 'line-through opacity-40 text-slate-400' : ''}`}>{item.name}</p>
-        <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">{item.category}</p>
+        <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">{item.setor}</p>
       </td>
       <td className="px-6 py-4">
         <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">

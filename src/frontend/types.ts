@@ -36,7 +36,7 @@ export interface AppNotification {
 }
 
 export interface CartItem extends Omit<Product, 'categories'> {
-  category: string;
+  setor: string;
   supplierName: string;
   quantity: number;
 }
@@ -45,7 +45,7 @@ export interface SavedList {
   id: string;
   name: string;
   date: string;
-  items: (Omit<Product, 'categories'> & { category: string; supplierName: string; bought: boolean; quantity: number, deliveryId?: string, invoiceId?: string, boughtAt?: string, previousLastPurchaseDate?: string })[];
+  items: (Omit<Product, 'categories'> & { setor: string; supplierName: string; bought: boolean; quantity: number, deliveryId?: string, invoiceId?: string, boughtAt?: string, previousLastPurchaseDate?: string })[];
   total: number;
   shippingFee: number;
   createdBy?: string;

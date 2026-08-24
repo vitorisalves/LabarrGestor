@@ -108,18 +108,18 @@ export const useCart = (
     await loadLists(true);
   };
 
-  const addToCart = (product: Product, supplierName: string, quantity: number = 1, category: string) => {
+  const addToCart = (product: Product, supplierName: string, quantity: number = 1, setor: string) => {
     const { categories, ...productWithoutCategories } = product;
     setCart(prev => {
       const existing = prev.find(item => item.name === product.name && item.supplierName === supplierName);
       if (existing) {
         return prev.map(item =>
           item.name === product.name && item.supplierName === supplierName
-            ? { ...item, quantity: item.quantity + quantity, category }
+            ? { ...item, quantity: item.quantity + quantity, setor }
             : item
         );
       }
-      return [...prev, { ...productWithoutCategories, supplierName, quantity, category }];
+      return [...prev, { ...productWithoutCategories, supplierName, quantity, setor }];
     });
   };
 
@@ -237,7 +237,7 @@ export const useCart = (
     }
   };
 
-  const addItemToList = async (listId: string, product: Product, supplierName: string, quantity: number, category: string) => {
+  const addItemToList = async (listId: string, product: Product, supplierName: string, quantity: number, setor: string) => {
     const list = savedLists.find(l => l.id === listId);
     if (!list) return;
 
@@ -256,7 +256,7 @@ export const useCart = (
         supplierName,
         quantity,
         bought: false,
-        category
+        setor
       });
     }
 

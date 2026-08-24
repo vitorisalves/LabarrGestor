@@ -6,12 +6,14 @@ export const useDeletions = () => {
     list: string | null;
     reminder: string | null;
     category: string | null;
+    setor: string | null;
     user: string | null;
   }>({
     supplier: null,
     list: null,
     reminder: null,
     category: null,
+    setor: null,
     user: null
   });
 

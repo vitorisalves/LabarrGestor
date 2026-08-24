@@ -31,12 +31,13 @@ import { SearchBar, QuantitySelector, EmptyState } from './common';
 import { XmlImportTab, ImportRow } from './suppliers/XmlImportTab';
 import { useXmlImport } from '../hooks/useXmlImport';
 import { ProductsTab } from './products/ProductsTab';
-import { PurchaseCategoryPicker } from './products/PurchaseCategoryPicker';
+import { PurchaseSetorPicker } from './products/PurchaseSetorPicker';
 
 interface SuppliersViewProps {
   suppliers: Supplier[];
   allSuppliers: Supplier[];
   categories?: string[];
+  setores?: string[];
   isLoading?: boolean;
   onRefresh?: () => void;
   searchTerm: string;
@@ -44,7 +45,7 @@ interface SuppliersViewProps {
   setIsAdding: (adding: boolean) => void;
   handleEditSupplier: (supplier: Supplier) => void;
   setSupplierToDelete: (id: string | null) => void;
-  addToCart: (product: Product, supplierName: string, quantity: number, category: string) => void;
+  addToCart: (product: Product, supplierName: string, quantity: number, setor: string) => void;
   handleExportExcel: () => void;
   handleImportExcel: (e: React.ChangeEvent<HTMLInputElement>) => void;
   handleSyncSheets?: () => void;
@@ -59,6 +60,7 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
   suppliers,
   allSuppliers,
   categories = [],
+  setores = [],
   isLoading,
   onRefresh,
   searchTerm,
@@ -111,7 +113,7 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
 
   const [expandedSupplier, setExpandedSupplier] = React.useState<string | null>(null);
   const [quantities, setQuantities] = React.useState<Record<string, string>>({});
-  const [purchaseCategories, setPurchaseCategories] = React.useState<Record<string, string>>({});
+  const [purchaseSetores, setPurchaseSetores] = React.useState<Record<string, string>>({});
 
   const handleQuantityChange = (key: string, value: string) => {
     // Permite vazio, números inteiros ou decimais com ponto ou vírgula
@@ -148,8 +150,8 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
     if (isNaN(qty) || qty <= 0) {
       qty = 1;
     }
-    const category = purchaseCategories[key] || availableCategories[0] || '';
-    addToCart(product, supplierName, qty, category);
+    const setor = purchaseSetores[key] || setores[0] || '';
+    addToCart(product, supplierName, qty, setor);
     setQuantities(prev => ({ ...prev, [key]: '1' }));
   };
 
@@ -417,11 +419,10 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
                                   onEnter={() => onAddToCart(product, supplier.name, qKey)}
                                   idPrefix={qKey}
                                 />
-                                <PurchaseCategoryPicker
-                                  product={product}
-                                  categories={availableCategories}
-                                  value={purchaseCategories[qKey] || ''}
-                                  onChange={(cat) => setPurchaseCategories(prev => ({ ...prev, [qKey]: cat }))}
+                                <PurchaseSetorPicker
+                                  setores={setores}
+                                  value={purchaseSetores[qKey] || ''}
+                                  onChange={(setor) => setPurchaseSetores(prev => ({ ...prev, [qKey]: setor }))}
                                 />
                                 <button
                                   id={`add-${qKey}`}
@@ -449,6 +450,7 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
           suppliers={allSuppliers}
           saveSupplier={saveSupplier}
           categories={availableCategories}
+          setores={setores}
           searchTerm={searchTerm}
           setSearchTerm={setSearchTerm}
           onEditProduct={onEditProduct}

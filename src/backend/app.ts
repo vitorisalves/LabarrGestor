@@ -613,6 +613,21 @@ app.get("/api/xml/categories", handleCacheAndEtag("categories"), asyncHandler(as
   }
 }));
 
+app.get("/api/xml/setores", handleCacheAndEtag("setores"), asyncHandler(async (req: Request, res: Response) => {
+  try {
+    const forceNoCache = req.query.fresh === 'true' || req.headers['cache-control'] === 'no-cache' || req.headers['pragma'] === 'no-cache';
+    const snapshot = await fsOps.getDocs('setores', 'setores', forceNoCache);
+    const data = snapshot.docs.map((doc: any) => {
+      const d = typeof doc.data === 'function' ? doc.data() : doc.data;
+      return { id: doc.id, ...d };
+    });
+    res.json(applyPagination(req, res, data));
+  } catch (error: any) {
+    console.error("Error fetching cached setores:", error);
+    res.status(500).json({ error: "Error fetching setores", message: error.message });
+  }
+}));
+
 app.get("/api/xml/delivered_products", handleCacheAndEtag("delivered_products"), asyncHandler(async (req: Request, res: Response) => {
   try {
     const forceNoCache = req.query.fresh === 'true' || req.headers['cache-control'] === 'no-cache' || req.headers['pragma'] === 'no-cache';
@@ -678,6 +693,7 @@ const TEST_MODE_COLLECTIONS = [
   'suppliers',
   'authorized_users',
   'categories',
+  'setores',
   'delivered_products',
   'reminders',
   'shopping_lists',

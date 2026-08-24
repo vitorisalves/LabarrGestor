@@ -82,6 +82,7 @@ export default function App() {
   const {
     suppliers,
     categories,
+    setores,
     isLoading: isSuppliersLoading,
     refreshData: refreshSuppliers,
     saveSupplier,
@@ -89,11 +90,13 @@ export default function App() {
     deleteAllSuppliers,
     addCategory,
     deleteCategory,
+    addSetor,
+    deleteSetor,
     error: suppliersError
   } = useSuppliers(isAuthReady, isApproved);
 
-  // Single, consistent list of purchase-category options shared by every
-  // purchase-category picker in the app (Fazer Compras, Produtos, Fornecedores).
+  // Single, consistent list of product-classification category options shared by
+  // every category picker/editor in the app (Fazer Compras, Produtos, Fornecedores).
   const availableCategories = React.useMemo(() => {
     const defaults = ['Ingredientes', 'Embalagens', 'Limpeza', 'Escritório', 'Fornecedor'];
     const combined = [...(categories || []), ...defaults];
@@ -245,7 +248,8 @@ export default function App() {
           supplierName,
           quantity: item.quantity || 1,
           price: item.price || 0,
-          category: (item as any).category || 'Ingredientes',
+          category: 'Ingredientes',
+          setor: (item as any).setor || '',
           date: now.toISOString(),
           status: 'pending'
         };
@@ -342,12 +346,12 @@ export default function App() {
   const [activeTargetListId, setActiveTargetListId] = useState<string | null>(null);
   const [activeTargetListName, setActiveTargetListName] = useState<string | null>(null);
 
-  const handleAddToCart = React.useCallback((product: Product, supplierName: string, quantity: number, category: string) => {
+  const handleAddToCart = React.useCallback((product: Product, supplierName: string, quantity: number, setor: string) => {
     if (activeTargetListId) {
-      addItemToList(activeTargetListId, product, supplierName, quantity, category);
+      addItemToList(activeTargetListId, product, supplierName, quantity, setor);
       addNotification(`Adicionado à lista ${activeTargetListName}`, quantity, 'info');
     } else {
-      addToCart(product, supplierName, quantity, category);
+      addToCart(product, supplierName, quantity, setor);
       addNotification(product.name, quantity, 'cart');
     }
   }, [activeTargetListId, activeTargetListName, addItemToList, addNotification, addToCart]);
@@ -401,6 +405,7 @@ export default function App() {
   const [searchTerm, setSearchTerm] = useState('');
   const [shoppingQuantities, setShoppingQuantities] = useState<Record<string, number | string>>({});
   const [newCategoryName, setNewCategoryName] = useState('');
+  const [newSetorName, setNewSetorName] = useState('');
   const [reminderProductName, setReminderProductName] = useState('');
   const [reminderDate, setReminderDate] = useState('');
 
@@ -489,6 +494,13 @@ export default function App() {
       setNewCategoryName('');
     }
   }, [newCategoryName, addCategory]);
+
+  const onAddSetor = React.useCallback(() => {
+    if (newSetorName.trim()) {
+      addSetor(newSetorName.trim());
+      setNewSetorName('');
+    }
+  }, [newSetorName, addSetor]);
 
   const onScheduleReminder = React.useCallback(() => {
     if (reminderProductName && reminderDate) {
@@ -696,6 +708,7 @@ export default function App() {
               suppliers={mainSuppliers}
               allSuppliers={suppliers}
               categories={availableCategories}
+              setores={setores}
               isLoading={isSuppliersLoading}
               onRefresh={refreshSuppliers}
               searchTerm={searchTerm}
@@ -722,7 +735,7 @@ export default function App() {
               setShoppingQuantities={setShoppingQuantities}
               addToCart={handleAddToCart}
               onEditProduct={onEditProductFromShopping}
-              allCategories={availableCategories}
+              allSetores={setores}
             />
           )}
           {currentPage === 'history' && (
@@ -840,6 +853,10 @@ export default function App() {
         newCategoryName={newCategoryName}
         setNewCategoryName={setNewCategoryName}
         handleAddCategory={onAddCategory}
+        setores={setores}
+        newSetorName={newSetorName}
+        setNewSetorName={setNewSetorName}
+        handleAddSetor={onAddSetor}
         authorizedUsers={authorizedUsers}
         updateUserStatus={updateUserStatus}
         removeUserRequest={removeUserRequest}
@@ -855,6 +872,9 @@ export default function App() {
         categoryToDelete={deletions.category}
         setCategoryToDelete={(id) => setDeletion('category', id)}
         confirmDeleteCategory={() => { if (deletions.category) { deleteCategory(deletions.category); setDeletion('category', null); } }}
+        setorToDelete={deletions.setor}
+        setSetorToDelete={(id) => setDeletion('setor', id)}
+        confirmDeleteSetor={() => { if (deletions.setor) { deleteSetor(deletions.setor); setDeletion('setor', null); } }}
         userToDelete={deletions.user}
         setUserToDelete={(id) => setDeletion('user', id)}
         confirmDeleteUser={async () => { 
