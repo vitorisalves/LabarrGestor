@@ -8,6 +8,7 @@ import * as XLSX from 'xlsx';
 import Papa from 'papaparse';
 import { Supplier, Product } from '../types';
 import { generateId, extractErrorMessage } from '../utils';
+import { getProductCategories } from '../utils/productCategories';
 
 export const useExcel = (suppliers: Supplier[], saveSupplier: (s: Supplier) => Promise<void>, addNotification: any) => {
   const handleExportExcel = () => {
@@ -17,7 +18,7 @@ export const useExcel = (suppliers: Supplier[], saveSupplier: (s: Supplier) => P
         'Telefone': supplier.phone,
         'Produto': product.name,
         'Preço': product.price,
-        'Categoria': product.category,
+        'Categoria': getProductCategories(product).join(', '),
         'Ultima Data Compra': product.lastPurchaseDate || '',
         'Forma de Pagamento': product.paymentMethod || ''
       }))
@@ -98,7 +99,7 @@ export const useExcel = (suppliers: Supplier[], saveSupplier: (s: Supplier) => P
             newSuppliersMap[finalSName].products.push({
               name: pName.toString(),
               price: pPrice,
-              category: pCat.toString(),
+              categories: pCat.toString().split(',').map((c: string) => c.trim()).filter(Boolean),
               lastPurchaseDate: pLastDate.toString(),
               paymentMethod: pPayMethod.toString(),
               code: ''
@@ -146,8 +147,8 @@ export const useExcel = (suppliers: Supplier[], saveSupplier: (s: Supplier) => P
               const oldP = updatedSupplier.products[existingIdx];
               
               // Verifica se houve mudança real nos dados do produto
-              if (oldP.price !== newP.price || 
-                  oldP.category !== newP.category || 
+              if (oldP.price !== newP.price ||
+                  JSON.stringify(oldP.categories) !== JSON.stringify(newP.categories) ||
                   oldP.paymentMethod !== newP.paymentMethod ||
                   oldP.lastPurchaseDate !== newP.lastPurchaseDate) {
                 updatedSupplier.products[existingIdx] = { ...newP };
@@ -248,7 +249,7 @@ export const useExcel = (suppliers: Supplier[], saveSupplier: (s: Supplier) => P
           suppliersMap[sName].products.push({
             name: String(pName),
             price: isNaN(pPrice) ? 0 : pPrice,
-            category: String(category),
+            categories: String(category).split(',').map((c: string) => c.trim()).filter(Boolean),
             lastPurchaseDate: String(lastPurchaseDate),
             paymentMethod: String(paymentMethod),
             code: ''

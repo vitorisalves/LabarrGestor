@@ -27,6 +27,7 @@ import { AIActionType, AIResponse, processCommandWithAI, ExtractedProduct } from
 import { DeliveredProduct, Product, Supplier } from '../types';
 import { formatCurrency, extractErrorMessage, normalizeText } from '../utils';
 import { ConfirmationModal } from './modals/ConfirmationModal';
+import { getProductCategories } from '../utils/productCategories';
 
 interface AIViewProps {
   suppliers: Supplier[];
@@ -35,7 +36,7 @@ interface AIViewProps {
   saveSupplier: (s: Supplier) => Promise<void>;
   updateForecastDate: (id: string, date: string) => Promise<void>;
   updateProductPriceInLists: (productName: string, supplierName: string, newPrice: number) => Promise<void>;
-  addToCart: (product: Product, supplierName: string, quantity: number) => void;
+  addToCart: (product: Product, supplierName: string, quantity: number, category: string) => void;
   addNotification: (msg: string, qty: number, type?: 'cart' | 'info') => void;
 }
 
@@ -47,7 +48,7 @@ interface MatchResult {
   isNew: boolean;
   selectedContext?: 'suppliers' | 'mercado' | 'materiais';
   selectedSupplierId?: string;
-  selectedCategory?: string;
+  selectedCategories?: string[];
   newSupplierName?: string;
 }
 
@@ -223,7 +224,7 @@ export const AIView: React.FC<AIViewProps> = ({
             selectedContext,
             selectedSupplierId,
             newSupplierName,
-            selectedCategory: matchedProduct?.category || item.category || (categories.length > 0 ? categories[0] : 'Fornecedor')
+            selectedCategories: matchedProduct ? getProductCategories(matchedProduct) : (categories.length > 0 ? [categories[0]] : ['Fornecedor'])
           };
         });
 
@@ -301,9 +302,9 @@ export const AIView: React.FC<AIViewProps> = ({
           if (pIdx !== -1) {
             s.products[pIdx] = { 
               ...s.products[pIdx], 
-              name: res.extracted.name, 
+              name: res.extracted.name,
               price: res.extracted.price,
-              category: res.selectedCategory || s.products[pIdx].category,
+              categories: res.selectedCategories && res.selectedCategories.length > 0 ? res.selectedCategories : s.products[pIdx].categories,
               lastPurchaseDate: res.extracted.lastPurchaseDate || s.products[pIdx].lastPurchaseDate,
               paymentMethod: res.extracted.paymentMethod || s.products[pIdx].paymentMethod
             };
@@ -311,7 +312,7 @@ export const AIView: React.FC<AIViewProps> = ({
             s.products.push({
               name: res.extracted.name,
               price: res.extracted.price,
-              category: res.selectedCategory || 'Fornecedor',
+              categories: res.selectedCategories && res.selectedCategories.length > 0 ? res.selectedCategories : ['Fornecedor'],
               lastPurchaseDate: res.extracted.lastPurchaseDate,
               paymentMethod: res.extracted.paymentMethod,
               code: ''
@@ -324,7 +325,7 @@ export const AIView: React.FC<AIViewProps> = ({
             s.products[pIdx] = {
               ...s.products[pIdx],
               price: res.extracted.price,
-              category: res.selectedCategory || s.products[pIdx].category,
+              categories: res.selectedCategories && res.selectedCategories.length > 0 ? res.selectedCategories : s.products[pIdx].categories,
               lastPurchaseDate: res.extracted.lastPurchaseDate || s.products[pIdx].lastPurchaseDate,
               paymentMethod: res.extracted.paymentMethod || s.products[pIdx].paymentMethod
             };
@@ -332,7 +333,7 @@ export const AIView: React.FC<AIViewProps> = ({
             s.products.push({
               name: res.extracted.name,
               price: res.extracted.price,
-              category: res.selectedCategory || 'Fornecedor',
+              categories: res.selectedCategories && res.selectedCategories.length > 0 ? res.selectedCategories : ['Fornecedor'],
               lastPurchaseDate: res.extracted.lastPurchaseDate,
               paymentMethod: res.extracted.paymentMethod,
               code: ''
@@ -425,10 +426,10 @@ export const AIView: React.FC<AIViewProps> = ({
           const found = flatProducts.find(p => p.name === item.name && (!item.supplierName || p.supplier.name === item.supplierName));
 
           if (found) {
-            addToCart(found, found.supplier.name, item.quantity);
+            addToCart(found, found.supplier.name, item.quantity, getProductCategories(found)[0] || 'AI');
           } else {
             // Se não existe, cria um "fantasma" para a lista
-            addToCart({ name: item.name, price: 0, category: 'AI', code: '' }, item.supplierName || 'AI', item.quantity);
+            addToCart({ name: item.name, price: 0, categories: ['AI'], code: '' }, item.supplierName || 'AI', item.quantity, 'AI');
           }
         }
         addNotification("Operação concluída!", items.length, 'cart');
@@ -976,10 +977,10 @@ export const AIView: React.FC<AIViewProps> = ({
 
                         {/* Categoria */}
                         <td className="px-6 py-4">
-                          <select 
+                          <select
                             className="text-xs font-bold uppercase tracking-tight outline-none w-full bg-slate-50 border border-slate-200 px-2 py-1.5 rounded-lg cursor-pointer"
-                            value={res.selectedCategory || ''}
-                            onChange={(e) => updateItemConfig(i, { selectedCategory: e.target.value })}
+                            value={res.selectedCategories?.[0] || ''}
+                            onChange={(e) => updateItemConfig(i, { selectedCategories: e.target.value ? [e.target.value] : [] })}
                           >
                             <option value="">Selecionar Categoria</option>
                             {Array.from(new Set(categories)).map((c, idx) => <option key={`${c}-${idx}`} value={c}>{c}</option>)}
@@ -1062,7 +1063,7 @@ export const AIView: React.FC<AIViewProps> = ({
                             selectedSupplierId: p.supplier.id,
                             selectedContext: p.supplier.name.toUpperCase() === 'MERCADO' ? 'mercado' : 
                                              p.supplier.name.toUpperCase() === 'MATERIAIS' ? 'materiais' : 'suppliers',
-                            selectedCategory: p.category
+                            selectedCategories: getProductCategories(p)
                           });
                           setLinkingIndex(null);
                         }
@@ -1078,7 +1079,7 @@ export const AIView: React.FC<AIViewProps> = ({
                           <div className="flex items-center gap-2 mt-0.5">
                             <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{p.supplier.name}</span>
                             <span className="w-1 h-1 bg-slate-200 rounded-full" />
-                            <span className="text-[9px] font-bold text-indigo-400 uppercase tracking-widest">{p.category}</span>
+                            <span className="text-[9px] font-bold text-indigo-400 uppercase tracking-widest">{getProductCategories(p).join(', ')}</span>
                           </div>
                         </div>
                       </div>
