@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { Supplier, Product } from '../types';
 import { formatCurrency, normalizeText, copyToClipboard } from '../utils';
+import { getProductCategories } from '../utils/productCategories';
 import { SearchBar, QuantitySelector, EmptyState } from './common';
 import { XmlImportTab, ImportRow } from './suppliers/XmlImportTab';
 import { useXmlImport } from '../hooks/useXmlImport';
@@ -352,8 +353,8 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
                         .filter(p => {
                           if (!searchTerm) return true;
                           const normalizedSearch = normalizeText(searchTerm);
-                          return normalizeText(p.name).includes(normalizedSearch) || 
-                            normalizeText(p.category).includes(normalizedSearch) ||
+                          return normalizeText(p.name).includes(normalizedSearch) ||
+                            getProductCategories(p).some(c => normalizeText(c).includes(normalizedSearch)) ||
                             normalizeText(supplier.name).includes(normalizedSearch);
                         })
                         .sort((a, b) => a.name.localeCompare(b.name))
@@ -363,9 +364,19 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
                             <div key={qKey} className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col justify-between group hover:border-indigo-200 transition-all">
                               <div>
                                 <div className="flex justify-between items-start mb-3">
-                                  <span className="px-3 py-1 bg-slate-100 text-slate-500 rounded-full text-[10px] font-black uppercase tracking-wider">
-                                    {product.category}
-                                  </span>
+                                  <div className="flex flex-wrap gap-1">
+                                    {getProductCategories(product).length > 0 ? (
+                                      getProductCategories(product).map(cat => (
+                                        <span key={cat} className="px-2 py-0.5 bg-slate-100 text-slate-500 rounded-full text-[9px] font-black uppercase tracking-wider">
+                                          {cat}
+                                        </span>
+                                      ))
+                                    ) : (
+                                      <span className="px-2 py-0.5 bg-amber-50 text-amber-600 rounded-full text-[9px] font-black uppercase tracking-wider">
+                                        Sem Categoria
+                                      </span>
+                                    )}
+                                  </div>
                                   <div className='flex gap-2 items-center'>
                                     <button onClick={() => onEditProduct(product, supplier.name)} className='p-1 hover:bg-slate-100 rounded-md'>
                                       <Pencil className="w-3 h-3 text-slate-400 hover:text-indigo-600" />
@@ -465,8 +476,8 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
               {marketSupplier.products
                 .filter(p => {
                   const normalizedSearch = normalizeText(searchTerm);
-                  return normalizeText(p.name).includes(normalizedSearch) || 
-                    normalizeText(p.category).includes(normalizedSearch);
+                  return normalizeText(p.name).includes(normalizedSearch) ||
+                    getProductCategories(p).some(c => normalizeText(c).includes(normalizedSearch));
                 })
                 .sort((a, b) => a.name.localeCompare(b.name))
                 .map((product, idx) => {
@@ -475,9 +486,19 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
                     <div key={qKey} className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col justify-between group hover:border-indigo-200 transition-all">
                       <div>
                         <div className="flex justify-between items-start mb-4">
-                          <span className="px-3 py-1 bg-slate-50 text-slate-400 border border-slate-100 rounded-lg text-[9px] font-bold uppercase tracking-wider">
-                            {product.category}
-                          </span>
+                          <div className="flex flex-wrap gap-1">
+                            {getProductCategories(product).length > 0 ? (
+                              getProductCategories(product).map(cat => (
+                                <span key={cat} className="px-2 py-0.5 bg-slate-100 text-slate-500 rounded-full text-[9px] font-black uppercase tracking-wider">
+                                  {cat}
+                                </span>
+                              ))
+                            ) : (
+                              <span className="px-2 py-0.5 bg-amber-50 text-amber-600 rounded-full text-[9px] font-black uppercase tracking-wider">
+                                Sem Categoria
+                              </span>
+                            )}
+                          </div>
                           <div className='flex gap-2 items-center'>
                             <button onClick={() => onEditProduct(product, 'MERCADO')} className='p-1 hover:bg-slate-100 rounded-md'>
                               <Pencil className="w-3 h-3 text-slate-400 hover:text-indigo-600" />
@@ -572,8 +593,8 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
               {materialsSupplier.products
                 .filter(p => {
                   const normalizedSearch = normalizeText(searchTerm);
-                  return normalizeText(p.name).includes(normalizedSearch) || 
-                    normalizeText(p.category).includes(normalizedSearch);
+                  return normalizeText(p.name).includes(normalizedSearch) ||
+                    getProductCategories(p).some(c => normalizeText(c).includes(normalizedSearch));
                 })
                 .sort((a, b) => a.name.localeCompare(b.name))
                 .map((product, idx) => {
@@ -582,9 +603,19 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
                     <div key={qKey} className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col justify-between group hover:border-indigo-100 transition-all">
                       <div>
                         <div className="flex justify-between items-start mb-4">
-                          <span className="px-3 py-1 bg-slate-50 text-slate-400 border border-slate-100 rounded-lg text-[9px] font-bold uppercase tracking-wider">
-                            {product.category}
-                          </span>
+                          <div className="flex flex-wrap gap-1">
+                            {getProductCategories(product).length > 0 ? (
+                              getProductCategories(product).map(cat => (
+                                <span key={cat} className="px-2 py-0.5 bg-slate-100 text-slate-500 rounded-full text-[9px] font-black uppercase tracking-wider">
+                                  {cat}
+                                </span>
+                              ))
+                            ) : (
+                              <span className="px-2 py-0.5 bg-amber-50 text-amber-600 rounded-full text-[9px] font-black uppercase tracking-wider">
+                                Sem Categoria
+                              </span>
+                            )}
+                          </div>
                           <div className='flex gap-2 items-center'>
                             <button onClick={() => onEditProduct(product, 'MATERIAIS')} className='p-1 hover:bg-slate-100 rounded-md'>
                               <Pencil className="w-3 h-3 text-slate-400 hover:text-indigo-600" />
