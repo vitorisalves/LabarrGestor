@@ -7,6 +7,7 @@ import { useState, useRef, useCallback } from 'react';
 import { Supplier, Product } from '../types';
 import { normalizeText } from '../utils';
 import { ImportRow } from '../components/suppliers/XmlImportTab';
+import { getProductCategories } from '../utils/productCategories';
 
 export interface ParsedNFeProduct {
   cProd: string;
@@ -188,7 +189,7 @@ export function useXmlImport(
             associatedSupplierName,
             associatedProductCode,
             targetType: 'suppliers',
-            targetCategory: matched?.product?.category || 'Ingredientes'
+            targetCategories: matched ? getProductCategories(matched.product) : ['Ingredientes']
           });
         });
 
@@ -263,7 +264,7 @@ export function useXmlImport(
                   ...p,
                   price: newPrice,
                   lastPurchaseDate: newDate,
-                  ...(row.targetCategory ? { category: row.targetCategory } : {})
+                  ...(row.targetCategories.length > 0 ? { categories: row.targetCategories } : {})
                 };
                 if (!p.code && row.cProd) {
                   updatedProduct.code = row.cProd;
@@ -278,8 +279,8 @@ export function useXmlImport(
           });
 
           // Propagação simultânea de preço, data e categoria para todas as entidades
-          if (row.targetCategory) {
-            const newCat = row.targetCategory;
+          if (row.targetCategories.length > 0) {
+            const newCat = row.targetCategories;
             workingSuppliers = workingSuppliers.map(s => {
               let changed = false;
               const updatedProducts = s.products.map(p => {
@@ -291,7 +292,7 @@ export function useXmlImport(
                     ...p,
                     price: newPrice,
                     lastPurchaseDate: newDate,
-                    category: newCat
+                    categories: newCat
                   };
                 }
                 return p;
@@ -321,7 +322,7 @@ export function useXmlImport(
             code: row.cProd || `XML_${row.nfeKey.substring(0, 4)}_${row.id.substring(0, 4)}`,
             name: row.xProd,
             price: newPrice,
-            category: row.targetCategory || 'Ingredientes',
+            categories: row.targetCategories.length > 0 ? row.targetCategories : ['Ingredientes'],
             lastPurchaseDate: newDate
           };
 
@@ -394,7 +395,7 @@ export function useXmlImport(
             op.name !== sp.name ||
             op.price !== sp.price ||
             op.lastPurchaseDate !== sp.lastPurchaseDate ||
-            op.category !== sp.category
+            JSON.stringify(op.categories) !== JSON.stringify(sp.categories)
           ) {
             return true;
           }

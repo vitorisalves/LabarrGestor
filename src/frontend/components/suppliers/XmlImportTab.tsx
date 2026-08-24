@@ -3,6 +3,8 @@ import { Upload, RefreshCcw, CheckCircle, Trash2 } from 'lucide-react';
 import { Supplier } from '../../types';
 import { formatCurrency } from '../../utils';
 import { ConfirmationModal } from '../modals/ConfirmationModal';
+import { CategoryMultiSelect } from '../products/CategoryMultiSelect';
+import { getProductCategories } from '../../utils/productCategories';
 
 export interface ImportRow {
   id: string;
@@ -20,7 +22,7 @@ export interface ImportRow {
   associatedProductCode?: string;
   targetType: 'suppliers' | 'mercado' | 'materiais';
   targetSupplierId?: string;
-  targetCategory: string;
+  targetCategories: string[];
 }
 
 interface XmlImportTabProps {
@@ -370,7 +372,7 @@ export const XmlImportTab: React.FC<XmlImportTabProps> = ({
                                       const matchedP = activeSupp.products.find(p => p.code === val || p.name === val);
                                       updateRow(row.id, {
                                         associatedProductCode: val,
-                                        ...(matchedP?.category ? { targetCategory: matchedP.category } : {})
+                                        targetCategories: matchedP ? getProductCategories(matchedP) : row.targetCategories
                                       });
                                     }}
                                     className="w-full text-[10px] font-bold bg-white text-slate-800 border border-slate-200 rounded-lg p-1.5 outline-none"
@@ -388,29 +390,11 @@ export const XmlImportTab: React.FC<XmlImportTabProps> = ({
                                   <span className="font-extrabold text-indigo-900 text-[9px] uppercase tracking-wider">
                                     📁 Categoria (Dashboard):
                                   </span>
-                                  <select
-                                    value={availableCategories.includes(row.targetCategory) ? row.targetCategory : (row.targetCategory ? '__CUSTOM__' : 'Ingredientes')}
-                                    onChange={(e) => {
-                                      const val = e.target.value;
-                                      if (val === '__ADD_NEW__') {
-                                        const customCat = prompt("Digite o nome da nova categoria:");
-                                        if (customCat && customCat.trim()) {
-                                          updateRow(row.id, { targetCategory: customCat.trim() });
-                                        }
-                                      } else if (val !== '__CUSTOM__') {
-                                        updateRow(row.id, { targetCategory: val });
-                                      }
-                                    }}
-                                    className="w-full text-[10px] font-bold bg-white text-slate-800 border border-indigo-200 rounded-lg p-1.5 outline-none focus:ring-1 focus:ring-indigo-500"
-                                  >
-                                    {availableCategories.map(cat => (
-                                      <option key={cat} value={cat}>{cat}</option>
-                                    ))}
-                                    {!availableCategories.includes(row.targetCategory) && row.targetCategory && (
-                                      <option value="__CUSTOM__">{row.targetCategory}</option>
-                                    )}
-                                    <option value="__ADD_NEW__">＋ Criar Nova Categoria...</option>
-                                  </select>
+                                  <CategoryMultiSelect
+                                    value={row.targetCategories}
+                                    onChange={(next) => updateRow(row.id, { targetCategories: next })}
+                                    options={availableCategories}
+                                  />
                                 </div>
                               </div>
                             );
@@ -455,29 +439,11 @@ export const XmlImportTab: React.FC<XmlImportTabProps> = ({
 
                             <div className="flex flex-col gap-1 mt-1 pt-1.5 border-t border-amber-200/60">
                               <span className="font-bold text-slate-700 uppercase text-[9px] tracking-wide">Categoria do Produto:</span>
-                              <select
-                                value={availableCategories.includes(row.targetCategory) ? row.targetCategory : (row.targetCategory ? '__CUSTOM__' : 'Ingredientes')}
-                                onChange={(e) => {
-                                  const val = e.target.value;
-                                  if (val === '__ADD_NEW__') {
-                                    const customCat = prompt("Digite o nome da nova categoria:");
-                                    if (customCat && customCat.trim()) {
-                                      updateRow(row.id, { targetCategory: customCat.trim() });
-                                    }
-                                  } else if (val !== '__CUSTOM__') {
-                                    updateRow(row.id, { targetCategory: val });
-                                  }
-                                }}
-                                className="w-full text-[10px] bg-white border border-slate-200 p-1.5 rounded-lg outline-none font-bold text-slate-700"
-                              >
-                                {availableCategories.map(cat => (
-                                  <option key={cat} value={cat}>{cat}</option>
-                                ))}
-                                {!availableCategories.includes(row.targetCategory) && row.targetCategory && (
-                                  <option value="__CUSTOM__">{row.targetCategory}</option>
-                                )}
-                                <option value="__ADD_NEW__">＋ Criar Nova Categoria...</option>
-                              </select>
+                              <CategoryMultiSelect
+                                value={row.targetCategories}
+                                onChange={(next) => updateRow(row.id, { targetCategories: next })}
+                                options={availableCategories}
+                              />
                             </div>
                           </div>
                         )}
