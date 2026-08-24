@@ -117,6 +117,14 @@ export const CartModal: React.FC<CartModalProps> = ({
                             {item.supplierName}
                           </span>
                           <span className="text-slate-300">|</span>
+                          {item.category && (
+                            <>
+                              <span className="text-[9px] font-black text-indigo-600 bg-indigo-50 px-1.5 rounded border border-indigo-100 uppercase tracking-wider">
+                                {item.category}
+                              </span>
+                              <span className="text-slate-300">|</span>
+                            </>
+                          )}
                           {item.code ? (
                             <span className="text-[9px] font-mono text-emerald-700 bg-emerald-50 px-1 rounded border border-emerald-100">
                               Cód: {item.code}
