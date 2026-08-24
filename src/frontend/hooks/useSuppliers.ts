@@ -84,6 +84,19 @@ export const useSuppliers = (isAuthReady: boolean, isApproved: boolean) => {
         }
       }
 
+      const normalizeSuppliers = (list: Supplier[]): Supplier[] =>
+        list.map(s => ({
+          ...s,
+          products: (s.products || []).map(p => {
+            const legacy = (p as any).category;
+            if (Array.isArray(p.categories) && p.categories.length > 0) return p;
+            const { category, ...rest } = p as any;
+            return { ...rest, categories: legacy ? [legacy] : [] };
+          })
+        }));
+
+      suppliersData = normalizeSuppliers(suppliersData);
+
       setSuppliers(suppliersData);
       localStorage.setItem('cache_suppliers', safeStringify(suppliersData));
 

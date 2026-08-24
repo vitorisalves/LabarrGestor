@@ -7,7 +7,7 @@ export interface Product {
   code: string;
   name: string;
   price: number;
-  category: string;
+  categories: string[];
   lastPurchaseDate?: string;
   paymentMethod?: string;
 }
