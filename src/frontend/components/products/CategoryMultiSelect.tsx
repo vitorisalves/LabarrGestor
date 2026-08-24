@@ -11,11 +11,19 @@ interface CategoryMultiSelectProps {
   onChange: (next: string[]) => void;
   options: string[];
   className?: string;
+  allowCreate?: boolean;
 }
 
-export const CategoryMultiSelect: React.FC<CategoryMultiSelectProps> = ({ value, onChange, options, className }) => {
+export const CategoryMultiSelect: React.FC<CategoryMultiSelectProps> = ({ value, onChange, options, className, allowCreate }) => {
   const [open, setOpen] = React.useState(false);
   const containerRef = React.useRef<HTMLDivElement>(null);
+
+  // Ensure any already-selected category not present in `options` (e.g. a category
+  // suggested during XML reconciliation that isn't registered system-wide) still shows up.
+  const displayOptions = React.useMemo(() => {
+    const extras = value.filter(v => !options.includes(v));
+    return [...options, ...extras];
+  }, [options, value]);
 
   React.useEffect(() => {
     const onClickOutside = (e: MouseEvent) => {
@@ -47,10 +55,10 @@ export const CategoryMultiSelect: React.FC<CategoryMultiSelectProps> = ({ value,
       </button>
       {open && (
         <div className="absolute z-50 mt-1 w-full max-h-56 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-lg p-2 space-y-1">
-          {options.length === 0 && (
+          {displayOptions.length === 0 && (
             <p className="text-xs text-slate-400 px-2 py-1">Nenhuma categoria cadastrada</p>
           )}
-          {options.map(cat => (
+          {displayOptions.map(cat => (
             <label key={cat} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-slate-50 cursor-pointer text-sm">
               <input
                 type="checkbox"
@@ -61,6 +69,21 @@ export const CategoryMultiSelect: React.FC<CategoryMultiSelectProps> = ({ value,
               {cat}
             </label>
           ))}
+          {allowCreate && (
+            <button
+              type="button"
+              onClick={() => {
+                const name = window.prompt('Nome da nova categoria:');
+                const trimmed = name?.trim();
+                if (trimmed && !value.includes(trimmed)) {
+                  onChange([...value, trimmed]);
+                }
+              }}
+              className="w-full text-left px-2 py-1.5 rounded-lg hover:bg-slate-50 text-sm font-bold text-indigo-600"
+            >
+              + Nova categoria
+            </button>
+          )}
         </div>
       )}
     </div>

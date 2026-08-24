@@ -89,7 +89,12 @@ export const useSuppliers = (isAuthReady: boolean, isApproved: boolean) => {
           ...s,
           products: (s.products || []).map(p => {
             const legacy = (p as any).category;
-            if (Array.isArray(p.categories) && p.categories.length > 0) return p;
+            if (Array.isArray(p.categories) && p.categories.length > 0) {
+              // Strip any stale legacy `category` field even when `categories` is
+              // already populated, so normalized products never carry both.
+              const { category, ...rest } = p as any;
+              return rest;
+            }
             const { category, ...rest } = p as any;
             return { ...rest, categories: legacy ? [legacy] : [] };
           })

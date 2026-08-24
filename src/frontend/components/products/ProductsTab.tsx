@@ -22,6 +22,7 @@ interface ProductsTabProps {
   setSearchTerm: (v: string) => void;
   onEditProduct: (product: Product, supplierName: string) => void;
   onAddToCart: (product: Product, supplierName: string, quantity: number, category: string) => void;
+  onAddChannelProduct?: (channel: 'MERCADO' | 'MATERIAIS') => void;
 }
 
 export const ProductsTab: React.FC<ProductsTabProps> = ({
@@ -31,7 +32,8 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
   searchTerm,
   setSearchTerm,
   onEditProduct,
-  onAddToCart
+  onAddToCart,
+  onAddChannelProduct
 }) => {
   const { catalog, updateProductCategories } = useProductCatalog(suppliers, saveSupplier);
   const [categoryFilter, setCategoryFilter] = React.useState('ALL');
@@ -93,6 +95,23 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
           </select>
         </div>
       </div>
+
+      {onAddChannelProduct && (
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => onAddChannelProduct('MERCADO')}
+            className="py-2 px-4 text-xs font-black uppercase bg-white border border-slate-200 rounded-xl text-slate-700 hover:border-indigo-300 hover:text-indigo-600 transition-all"
+          >
+            Gerenciar Mercado
+          </button>
+          <button
+            onClick={() => onAddChannelProduct('MATERIAIS')}
+            className="py-2 px-4 text-xs font-black uppercase bg-white border border-slate-200 rounded-xl text-slate-700 hover:border-indigo-300 hover:text-indigo-600 transition-all"
+          >
+            Gerenciar Materiais
+          </button>
+        </div>
+      )}
 
       <SearchBar value={searchTerm} onChange={setSearchTerm} placeholder="Buscar produto por nome, fornecedor ou categoria..." />
 

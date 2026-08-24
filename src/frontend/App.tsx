@@ -92,6 +92,14 @@ export default function App() {
     error: suppliersError
   } = useSuppliers(isAuthReady, isApproved);
 
+  // Single, consistent list of purchase-category options shared by every
+  // purchase-category picker in the app (Fazer Compras, Produtos, Fornecedores).
+  const availableCategories = React.useMemo(() => {
+    const defaults = ['Ingredientes', 'Embalagens', 'Limpeza', 'Escritório', 'Fornecedor'];
+    const combined = [...(categories || []), ...defaults];
+    return Array.from(new Set(combined.filter(Boolean)));
+  }, [categories]);
+
   const {
     reminders,
     refreshReminders,
@@ -660,7 +668,7 @@ export default function App() {
               key={currentPage}
               suppliers={mainSuppliers}
               allSuppliers={suppliers}
-              categories={categories}
+              categories={availableCategories}
               isLoading={isSuppliersLoading}
               onRefresh={refreshSuppliers}
               searchTerm={searchTerm}
@@ -687,7 +695,7 @@ export default function App() {
               setShoppingQuantities={setShoppingQuantities}
               addToCart={handleAddToCart}
               onEditProduct={onEditProductFromShopping}
-              allCategories={categories}
+              allCategories={availableCategories}
             />
           )}
           {currentPage === 'history' && (

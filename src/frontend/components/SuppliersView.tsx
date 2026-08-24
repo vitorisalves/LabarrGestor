@@ -80,11 +80,14 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
   const activeSubTab = externalTab || internalTab;
   const setActiveSubTab = onTabChange || setInternalTab;
 
+  // `categories` is expected to already be the full, deduplicated set (user categories
+  // plus the standard defaults) as computed once in App.tsx, so every purchase-category
+  // picker in the app offers the same options. Fall back to the 5 defaults if the caller
+  // passes nothing, so this component still works standalone.
   const availableCategories = React.useMemo(() => {
     const defaults = ['Ingredientes', 'Embalagens', 'Limpeza', 'Escritório', 'Fornecedor'];
     if (categories && Array.isArray(categories) && categories.length > 0) {
-      const combined = [...categories, ...defaults];
-      return Array.from(new Set(combined.filter(Boolean)));
+      return Array.from(new Set(categories.filter(Boolean)));
     }
     return defaults;
   }, [categories]);
@@ -109,6 +112,21 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
   const [expandedSupplier, setExpandedSupplier] = React.useState<string | null>(null);
   const [quantities, setQuantities] = React.useState<Record<string, string>>({});
   const [purchaseCategories, setPurchaseCategories] = React.useState<Record<string, string>>({});
+
+  const handleAddChannelProduct = (channel: 'MERCADO' | 'MATERIAIS') => {
+    const existingSupplier = allSuppliers.find(s => s.name.toUpperCase() === channel);
+    if (existingSupplier) {
+      handleEditSupplier(existingSupplier);
+    } else {
+      // Create a virtual supplier for this channel if it doesn't exist
+      handleEditSupplier({
+        id: `CHANNEL_${channel}`,
+        name: channel,
+        phone: '00000000000',
+        products: []
+      });
+    }
+  };
 
   const handleQuantityChange = (key: string, value: string) => {
     // Permite vazio, números inteiros ou decimais com ponto ou vírgula
@@ -450,6 +468,7 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
           setSearchTerm={setSearchTerm}
           onEditProduct={onEditProduct}
           onAddToCart={addToCart}
+          onAddChannelProduct={handleAddChannelProduct}
         />
       )}
 

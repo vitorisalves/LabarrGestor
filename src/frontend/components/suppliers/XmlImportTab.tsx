@@ -394,6 +394,7 @@ export const XmlImportTab: React.FC<XmlImportTabProps> = ({
                                     value={row.targetCategories}
                                     onChange={(next) => updateRow(row.id, { targetCategories: next })}
                                     options={availableCategories}
+                                    allowCreate
                                   />
                                 </div>
                               </div>
@@ -443,6 +444,7 @@ export const XmlImportTab: React.FC<XmlImportTabProps> = ({
                                 value={row.targetCategories}
                                 onChange={(next) => updateRow(row.id, { targetCategories: next })}
                                 options={availableCategories}
+                                allowCreate
                               />
                             </div>
                           </div>
