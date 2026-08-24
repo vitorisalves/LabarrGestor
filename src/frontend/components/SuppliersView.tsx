@@ -113,21 +113,6 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
   const [quantities, setQuantities] = React.useState<Record<string, string>>({});
   const [purchaseCategories, setPurchaseCategories] = React.useState<Record<string, string>>({});
 
-  const handleAddChannelProduct = (channel: 'MERCADO' | 'MATERIAIS') => {
-    const existingSupplier = allSuppliers.find(s => s.name.toUpperCase() === channel);
-    if (existingSupplier) {
-      handleEditSupplier(existingSupplier);
-    } else {
-      // Create a virtual supplier for this channel if it doesn't exist
-      handleEditSupplier({
-        id: `CHANNEL_${channel}`,
-        name: channel,
-        phone: '00000000000',
-        products: []
-      });
-    }
-  };
-
   const handleQuantityChange = (key: string, value: string) => {
     // Permite vazio, números inteiros ou decimais com ponto ou vírgula
     if (value === '' || /^\d*[.,]?\d*$/.test(value)) {
@@ -468,7 +453,6 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
           setSearchTerm={setSearchTerm}
           onEditProduct={onEditProduct}
           onAddToCart={addToCart}
-          onAddChannelProduct={handleAddChannelProduct}
         />
       )}
 
