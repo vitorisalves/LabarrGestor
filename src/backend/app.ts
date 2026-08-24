@@ -495,13 +495,33 @@ app.get("/api/xml/invoices", handleCacheAndEtag("invoices"), asyncHandler(async 
       console.warn("Nenhum mapa de categorias de produtos carregado:", pcErr);
     }
 
+    // Load product setor overrides
+    let setorOverridesMap = new Map<string, { setor?: string }>();
+    try {
+      const psSnap = await fsOps.getDocs('product_setores', 'product_setores', forceNoCache);
+      if (psSnap && psSnap.docs) {
+        psSnap.docs.forEach((d: any) => {
+          const data = typeof d.data === 'function' ? d.data() : d.data;
+          if (data) {
+            if (data.code) setorOverridesMap.set(String(data.code).trim(), data);
+            if (data.name) {
+              const normN = String(data.name).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+              if (normN) setorOverridesMap.set(normN, data);
+            }
+          }
+        });
+      }
+    } catch (psErr) {
+      console.warn("Nenhum mapa de setores de produtos carregado:", psErr);
+    }
+
     const normStr = (s: string) => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
 
     const data = snapshot.docs
       .map((doc: any) => {
         const d = typeof doc.data === 'function' ? doc.data() : doc.data;
         const invObj = { id: doc.id, ...d };
-        if (Array.isArray(invObj.products) && productOverridesMap.size > 0) {
+        if (Array.isArray(invObj.products) && (productOverridesMap.size > 0 || setorOverridesMap.size > 0)) {
           invObj.products = invObj.products.map((p: any) => {
             const pCode = String(p.code !== undefined && p.code !== null && p.code !== "" ? p.code : (p.cProd !== undefined && p.cProd !== null ? p.cProd : "")).trim();
             const pName = normStr(p.name || p.xProd || "");
@@ -515,6 +535,11 @@ app.get("/api/xml/invoices", handleCacheAndEtag("invoices"), asyncHandler(async 
               if (over.deleted) {
                 p.deleted = true;
               }
+            }
+
+            const setorOver = (pCode && setorOverridesMap.get(pCode)) || (pName && setorOverridesMap.get(pName));
+            if (setorOver && setorOver.setor) {
+              p.setor = setorOver.setor;
             }
             return p;
           });
@@ -690,6 +715,8 @@ const TEST_MODE_COLLECTIONS = [
   'xml_spendings',
   'price_increases',
   'product_categories',
+  'product_setores',
+  'setor_limits',
   'suppliers',
   'authorized_users',
   'categories',
@@ -879,6 +906,113 @@ app.post("/api/xml/products/update-category", asyncHandler(async (req: Request, 
   fsOps.invalidateCache('categories');
   fsOps.invalidateCache('product_categories');
 
+  res.json({ status: "success" });
+}));
+
+app.post("/api/xml/products/update-setor", asyncHandler(async (req: Request, res: Response) => {
+  const { code, name, setor } = req.body;
+  if (!setor) {
+    return res.status(400).json({ error: "Setor e obrigatorio" });
+  }
+
+  const normStr = (s: string) => String(s || "").toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, "").trim();
+  const targetCode = String(code || "").trim();
+  const targetName = normStr(name);
+
+  // 1. Save override mapping in product_setores collection
+  try {
+    const psId = targetCode ? `code_${targetCode}` : `name_${targetName.replace(/\s+/g, "_")}`;
+    if (psId) {
+      const psRef = fsOps.doc('product_setores', psId);
+      await fsOps.set(psRef, {
+        code: targetCode,
+        name: targetName,
+        setor,
+        updatedAt: new Date().toISOString()
+      }, 'product_setores/' + psId);
+    }
+  } catch (psErr) {
+    console.error("Erro ao salvar product_setores override:", psErr);
+  }
+
+  // 2. Update Invoices
+  try {
+    const invSnapshot = await fsOps.getDocs('invoices', 'invoices', true);
+    const invoices = invSnapshot.docs.map((doc: any) => {
+      const d = typeof doc.data === 'function' ? doc.data() : doc.data;
+      return { id: doc.id, ...d };
+    });
+
+    for (const inv of invoices) {
+      if (!Array.isArray(inv.products)) continue;
+      let invChanged = false;
+      inv.products = inv.products.map((p: any) => {
+        const pCode = String(p.code !== undefined && p.code !== null && p.code !== "" ? p.code : (p.cProd !== undefined && p.cProd !== null ? p.cProd : "")).trim();
+        const pName = normStr(p.name || p.xProd || "");
+        const codeMatches = targetCode && pCode && targetCode === pCode;
+        const nameMatches = targetName && pName && (targetName === pName || targetName.includes(pName) || pName.includes(targetName));
+
+        if (codeMatches || nameMatches) {
+          invChanged = true;
+          return { ...p, setor };
+        }
+        return p;
+      });
+
+      if (invChanged && inv.id) {
+        const docRef = fsOps.doc('invoices', inv.id);
+        await fsOps.set(docRef, inv, 'invoices/' + inv.id);
+      }
+    }
+  } catch (err) {
+    console.error("Erro ao atualizar setor em invoices:", err);
+  }
+
+  // 3. Register Setor if new
+  try {
+    const setId = setor.toLowerCase().replace(/\s+/g, "_");
+    const setRef = fsOps.doc('setores', setId);
+    await fsOps.set(setRef, { name: setor }, 'setores/' + setId);
+  } catch (err) {
+    console.error("Erro ao salvar setor:", err);
+  }
+
+  // 4. Invalidate caches
+  fsOps.invalidateCache('invoices');
+  fsOps.invalidateCache('setores');
+  fsOps.invalidateCache('product_setores');
+
+  res.json({ status: "success" });
+}));
+
+app.get("/api/xml/setor-limits", handleCacheAndEtag("setor_limits"), asyncHandler(async (req: Request, res: Response) => {
+  try {
+    const forceNoCache = req.query.fresh === 'true' || req.headers['cache-control'] === 'no-cache' || req.headers['pragma'] === 'no-cache';
+    const snapshot = await fsOps.getDocs('setor_limits', 'setor_limits', forceNoCache);
+    const data = snapshot.docs.map((doc: any) => {
+      const d = typeof doc.data === 'function' ? doc.data() : doc.data;
+      return { id: doc.id, ...d };
+    });
+    res.json(applyPagination(req, res, data));
+  } catch (error: any) {
+    console.error("Error fetching setor_limits:", error);
+    res.status(500).json({ error: "Error fetching setor_limits", message: error.message });
+  }
+}));
+
+app.post("/api/xml/setor-limits", asyncHandler(async (req: Request, res: Response) => {
+  const { setor, monthlyLimit } = req.body;
+  if (!setor) {
+    return res.status(400).json({ error: "Setor e obrigatorio" });
+  }
+  const limitId = setor.toLowerCase().replace(/\s+/g, "_");
+  const limitRef = fsOps.doc('setor_limits', limitId);
+  await fsOps.set(limitRef, {
+    setor,
+    monthlyLimit: Number(monthlyLimit) || 0,
+    updatedAt: new Date().toISOString()
+  }, 'setor_limits/' + limitId);
+  fsOps.invalidateCache('setor_limits');
   res.json({ status: "success" });
 }));
 
@@ -1109,7 +1243,8 @@ app.post("/api/xml/pending-list-products/confirm", asyncHandler(async (req: Requ
         quantity: itemQty,
         vProd: totalVal,
         category: it.category || 'Outros',
-        categoryId: it.category || 'Outros'
+        categoryId: it.category || 'Outros',
+        setor: it.setor || ''
       }]
     };
 

@@ -21,6 +21,7 @@ interface PendingListProductsPanelProps {
   handlePendingPriceChange: (id: string, newPrice: number) => Promise<void>;
   handlePendingQuantityChange: (id: string, newQuantity: number) => Promise<void>;
   handlePendingCategoryChange: (id: string, newCategory: string) => Promise<void>;
+  handlePendingSetorChange: (id: string, newSetor: string) => Promise<void>;
   handleToggleSelectAllPending: () => void;
   handleToggleSelectPending: (id: string) => void;
   handleApplyBulkPendingCategory: () => Promise<void>;
@@ -31,6 +32,7 @@ interface PendingListProductsPanelProps {
   handleConfirmPendingProducts: () => Promise<void>;
   isUploading: boolean;
   normalizedCategories: any[];
+  setores: string[];
 }
 
 export const PendingListProductsPanel: React.FC<PendingListProductsPanelProps> = ({
@@ -46,6 +48,7 @@ export const PendingListProductsPanel: React.FC<PendingListProductsPanelProps> =
   handlePendingPriceChange,
   handlePendingQuantityChange,
   handlePendingCategoryChange,
+  handlePendingSetorChange,
   handleToggleSelectAllPending,
   handleToggleSelectPending,
   handleApplyBulkPendingCategory,
@@ -55,7 +58,8 @@ export const PendingListProductsPanel: React.FC<PendingListProductsPanelProps> =
   executeDeletePending,
   handleConfirmPendingProducts,
   isUploading,
-  normalizedCategories
+  normalizedCategories,
+  setores
 }) => {
   return (
     <>
@@ -202,6 +206,7 @@ export const PendingListProductsPanel: React.FC<PendingListProductsPanelProps> =
                     <th className="p-3.5 w-36">Valor Unit. (R$)</th>
                     <th className="p-3.5 w-36">Total (R$)</th>
                     <th className="p-3.5 w-48">Categoria</th>
+                    <th className="p-3.5 w-40">Setor</th>
                     <th className="p-3.5 w-16 text-center">Ações</th>
                   </tr>
                 </thead>
@@ -256,6 +261,18 @@ export const PendingListProductsPanel: React.FC<PendingListProductsPanelProps> =
                             <option value="">-- Selecionar --</option>
                             {normalizedCategories.map((c: any) => (
                               <option key={c.id} value={c.name}>{c.name}</option>
+                            ))}
+                          </select>
+                        </td>
+                        <td className="p-3.5">
+                          <select
+                            value={p.setor || ''}
+                            onChange={(e) => handlePendingSetorChange(p.id, e.target.value)}
+                            className="w-full bg-white border border-slate-200 text-slate-800 font-bold rounded-lg px-2.5 py-1 text-xs outline-none focus:border-indigo-500"
+                          >
+                            <option value="">-- Selecionar --</option>
+                            {setores.map((s) => (
+                              <option key={s} value={s}>{s}</option>
                             ))}
                           </select>
                         </td>

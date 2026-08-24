@@ -64,9 +64,10 @@ const parseDateSafe = (dateStr: any): Date | null => {
 interface DashboardViewProps {
   savedLists?: SavedList[];
   categories?: any[];
+  setores?: string[];
 }
 
-export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, categories: propCategories = [] }) => {
+export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, categories: propCategories = [], setores = [] }) => {
   const { isTestMode } = useTestMode();
   const [startDate, setStartDate] = useState<string>(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
   const [endDate, setEndDate] = useState<string>(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
@@ -989,6 +990,56 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
     }
   };
 
+  const handleUpdateProductSetor = async (code: string, name: string, newSetor: string) => {
+    if (!newSetor) return;
+    const normStr = (s: string) => String(s || "").toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, "").trim();
+    const targetCode = String(code || "").trim();
+    const targetName = normStr(name);
+
+    let invoicesChanged = false;
+    const nextInvoices = invoices.map(inv => {
+      let invChanged = false;
+      const updatedProducts = (inv.products || []).map((p: any) => {
+        const pCode = String(p.code !== undefined && p.code !== null && p.code !== "" ? p.code : (p.cProd !== undefined && p.cProd !== null ? p.cProd : "")).trim();
+        const pName = normStr(p.name || p.xProd || "");
+
+        const codeMatches = targetCode && pCode && targetCode === pCode;
+        const nameMatches = targetName && pName && (targetName === pName || targetName.includes(pName) || pName.includes(targetName));
+
+        if (codeMatches || nameMatches) {
+          invChanged = true;
+          return { ...p, setor: newSetor };
+        }
+        return p;
+      });
+
+      if (invChanged) {
+        invoicesChanged = true;
+        return { ...inv, products: updatedProducts };
+      }
+      return inv;
+    });
+
+    if (invoicesChanged) {
+      setInvoices(nextInvoices);
+      localStorage.setItem("cached_dashboard_invoices", JSON.stringify(nextInvoices));
+    }
+
+    addSystemLog('category', `Setor do produto "${name}" ${targetCode ? `(Cód: ${targetCode})` : ''} alterado para "${newSetor}".`);
+
+    if (!isTestMode) {
+      try {
+        await fetch("/api/xml/products/update-setor", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code: targetCode, name, setor: newSetor })
+        });
+      } catch (err) {
+        console.error("Erro ao salvar setor no servidor:", err);
+      }
+    }
+  };
+
   const handleDeleteProduct = async (code: string, name: string) => {
     if (!window.confirm(`Tem certeza que deseja excluir o produto "${name}"? Esta ação removerá o produto do período e das análises.`)) {
       return;
@@ -1364,6 +1415,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
         {...pendingPanel}
         isUploading={isUploading}
         normalizedCategories={normalizedCategories}
+        setores={setores}
       />
 
       {/* Uploading & Logs Panel */}
@@ -1467,6 +1519,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
             normalizedCategories={normalizedCategories}
             uncategorizedCount={uncategorizedCount}
             onUpdateProductCategory={handleUpdateProductCategory}
+            onUpdateProductSetor={handleUpdateProductSetor}
+            setores={setores}
             setDeleteProductConfirmModal={setDeleteProductConfirmModal}
           />
 

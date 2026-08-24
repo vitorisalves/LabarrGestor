@@ -4,13 +4,13 @@
  */
 
 import React from 'react';
-import { 
-  Building2, 
-  ShoppingCart, 
-  ListChecks, 
-  Globe, 
+import {
+  Building2,
+  ShoppingCart,
+  ListChecks,
+  Globe,
   Truck,
-  Bell, 
+  Bell,
   LogOut,
   Settings,
   Store,
@@ -19,7 +19,8 @@ import {
   X,
   LayoutDashboard,
   FileUp,
-  TrendingUp
+  TrendingUp,
+  PieChart
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -52,6 +53,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         { id: 'vendas', label: 'Dados DRE', icon: TrendingUp },
       ]
     : [
+        { id: 'setores-dashboard', label: 'Dashboard de Setores', icon: PieChart },
         { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
         { id: 'suppliers', label: 'Produtos', icon: Building2 },
         { id: 'shopping', label: 'Fazer Compras', icon: ShoppingCart },

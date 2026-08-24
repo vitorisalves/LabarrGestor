@@ -35,6 +35,7 @@ import { PermissionBanner } from './components/PermissionBanner';
 
 // Lazy Loaded Views for Stage 1 Optimization (Lighter & Faster Bundle, on-demand loading)
 const DashboardView = React.lazy(() => import('./components/DashboardView').then(m => ({ default: m.DashboardView })));
+const SectorDashboardView = React.lazy(() => import('./components/SectorDashboardView').then(m => ({ default: m.SectorDashboardView })));
 const SuppliersView = React.lazy(() => import('./components/SuppliersView').then(m => ({ default: m.SuppliersView })));
 const ShoppingView = React.lazy(() => import('./components/ShoppingView').then(m => ({ default: m.ShoppingView })));
 const HistoryView = React.lazy(() => import('./components/HistoryView').then(m => ({ default: m.HistoryView })));
@@ -357,7 +358,7 @@ export default function App() {
   }, [activeTargetListId, activeTargetListName, addItemToList, addNotification, addToCart]);
 
   const [activeWindow, setActiveWindow] = useState<'compras' | 'dre'>('compras');
-  const [currentPage, setCurrentPage] = useState<'dashboard' | 'suppliers' | 'shopping' | 'history' | 'delivered' | 'reminders' | 'ai' | 'purchase-forecast' | 'vendas'>('dashboard');
+  const [currentPage, setCurrentPage] = useState<'setores-dashboard' | 'dashboard' | 'suppliers' | 'shopping' | 'history' | 'delivered' | 'reminders' | 'ai' | 'purchase-forecast' | 'vendas'>('dashboard');
 
   const handleWindowChange = (win: 'compras' | 'dre') => {
     setActiveWindow(win);
@@ -695,11 +696,18 @@ export default function App() {
             <span className="text-sm font-medium">Carregando painel...</span>
           </div>
         }>
+          {currentPage === 'setores-dashboard' && (
+            <SectorDashboardView
+              key="setores-dashboard"
+              setores={setores}
+            />
+          )}
           {currentPage === 'dashboard' && (
-            <DashboardView 
+            <DashboardView
               key="dashboard"
               savedLists={savedLists}
               categories={categories}
+              setores={setores}
             />
           )}
           {currentPage === 'suppliers' && (

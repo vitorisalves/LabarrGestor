@@ -18,6 +18,8 @@ interface CategoryEditorPanelProps {
   normalizedCategories: any[];
   uncategorizedCount: number;
   onUpdateProductCategory: (code: string, name: string, newCategory: string) => Promise<void>;
+  onUpdateProductSetor: (code: string, name: string, newSetor: string) => Promise<void>;
+  setores: string[];
   setDeleteProductConfirmModal: (v: any) => void;
 }
 
@@ -32,6 +34,8 @@ export const CategoryEditorPanel: React.FC<CategoryEditorPanelProps> = ({
   normalizedCategories,
   uncategorizedCount,
   onUpdateProductCategory,
+  onUpdateProductSetor,
+  setores,
   setDeleteProductConfirmModal
 }) => {
   if (!(showPieProductList || pieSearchQuery.trim().length > 0 || pieCategoryFilter !== "ALL")) {
@@ -144,6 +148,20 @@ export const CategoryEditorPanel: React.FC<CategoryEditorPanelProps> = ({
                       <option value="__CUSTOM__">{p.category}</option>
                     )}
                     <option value="__ADD_NEW__">＋ Criar Nova Categoria...</option>
+                  </select>
+
+                  <span className="text-[10px] font-extrabold uppercase text-slate-400">
+                    Setor:
+                  </span>
+                  <select
+                    value={p.setor || ''}
+                    onChange={(e) => onUpdateProductSetor(p.code, p.name, e.target.value)}
+                    className="text-xs font-black px-3 py-1.5 rounded-xl border outline-none cursor-pointer bg-slate-800 text-slate-200 border-slate-700 focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="">-- Selecionar --</option>
+                    {setores.map(s => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
                   </select>
 
                   <button
