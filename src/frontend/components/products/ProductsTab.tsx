@@ -117,6 +117,27 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
                     </div>
                   </div>
                   <h4 className="font-bold mb-3 text-slate-900">{row.product.name}</h4>
+                  <div className="space-y-1.5 mb-3">
+                    <div className="flex items-center gap-2 bg-indigo-50/50 px-2 py-1 rounded-lg border border-indigo-100/50">
+                      <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full" />
+                      <span className="text-[11px] text-slate-500 font-bold uppercase">Código:</span>
+                      <span className="text-[11px] text-indigo-700 font-mono font-black uppercase tracking-wider">{row.product.code || 'Não associado'}</span>
+                    </div>
+                    {row.product.lastPurchaseDate && (
+                      <div className="flex items-center gap-2 bg-indigo-50/50 px-2 py-1 rounded-lg border border-indigo-100/50">
+                        <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full" />
+                        <span className="text-[11px] text-slate-500 font-bold uppercase">Última Compra:</span>
+                        <span className="text-[11px] text-indigo-700 font-black">{row.product.lastPurchaseDate}</span>
+                      </div>
+                    )}
+                    {row.product.paymentMethod && (
+                      <div className="flex items-center gap-2 bg-emerald-50/50 px-2 py-1 rounded-lg border border-emerald-100/50">
+                        <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
+                        <span className="text-[11px] text-slate-500 font-bold uppercase">Pagamento:</span>
+                        <span className="text-[11px] text-emerald-700 font-black">{row.product.paymentMethod}</span>
+                      </div>
+                    )}
+                  </div>
                   <CategoryMultiSelect
                     value={getProductCategories(row.product)}
                     onChange={(next) => updateProductCategories(row.supplierId, row.productIndex, next)}
