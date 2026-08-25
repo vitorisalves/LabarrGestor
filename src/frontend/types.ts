@@ -49,6 +49,7 @@ export interface SavedList {
   total: number;
   shippingFee: number;
   createdBy?: string;
+  approvedBy?: string;
 }
 
 export interface PurchaseOrder {

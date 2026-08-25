@@ -248,6 +248,12 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
                           <User className="w-3.5 h-3.5" />
                           {list.createdBy || 'Sistema'}
                         </span>
+                        {list.approvedBy && (
+                          <span className="flex items-center gap-1 text-emerald-700">
+                            <Check className="w-3.5 h-3.5" />
+                            Aprovado por {list.approvedBy}
+                          </span>
+                        )}
                         <span className="px-2 py-0.5 bg-slate-900 text-white rounded text-[9px]">
                           {list.items.length} itens
                         </span>

@@ -856,7 +856,8 @@ app.post("/api/xml/purchase_orders/send", asyncHandler(async (req: Request, res:
     items: order.items,
     total: order.total,
     shippingFee: order.shippingFee,
-    createdBy: order.createdBy
+    createdBy: order.createdBy,
+    approvedBy: order.approvedBy || ''
   };
   await fsOps.set(fsOps.doc('shopping_lists', listId), listData, 'shopping_lists/' + listId);
   await fsOps.delete(fsOps.doc('purchase_orders', id), 'purchase_orders/' + id);
