@@ -15,6 +15,7 @@ import { useAuth } from './hooks/useAuth';
 import { useNotifications } from './hooks/useNotifications';
 import { useSuppliers } from './hooks/useSuppliers';
 import { useCart } from './hooks/useCart';
+import { usePurchaseOrders } from './hooks/usePurchaseOrders';
 import { useDeliveredProducts } from './hooks/useDeliveredProducts';
 import { useReminders } from './hooks/useReminders';
 import { useExcel } from './hooks/useExcel';
@@ -35,6 +36,7 @@ import { PermissionBanner } from './components/PermissionBanner';
 
 // Lazy Loaded Views for Stage 1 Optimization (Lighter & Faster Bundle, on-demand loading)
 const DashboardView = React.lazy(() => import('./components/DashboardView').then(m => ({ default: m.DashboardView })));
+const PurchaseOrdersView = React.lazy(() => import('./components/PurchaseOrdersView').then(m => ({ default: m.PurchaseOrdersView })));
 const SuppliersView = React.lazy(() => import('./components/SuppliersView').then(m => ({ default: m.SuppliersView })));
 const ShoppingView = React.lazy(() => import('./components/ShoppingView').then(m => ({ default: m.ShoppingView })));
 const HistoryView = React.lazy(() => import('./components/HistoryView').then(m => ({ default: m.HistoryView })));
@@ -136,6 +138,17 @@ export default function App() {
     addItemToList,
     updateProductPriceInLists
   } = useCart(isAuthReady, isApproved, loggedName, addAppNotification);
+
+  const {
+    purchaseOrders,
+    isLoading: isPurchaseOrdersLoading,
+    createPurchaseOrder,
+    approveOrder,
+    rejectOrder,
+    updateObservacao,
+    sendToShoppingList,
+    deleteOrder: deletePurchaseOrder
+  } = usePurchaseOrders(loggedName);
 
   const {
     deliveredProducts,
@@ -357,7 +370,7 @@ export default function App() {
   }, [activeTargetListId, activeTargetListName, addItemToList, addNotification, addToCart]);
 
   const [activeWindow, setActiveWindow] = useState<'compras' | 'dre'>('compras');
-  const [currentPage, setCurrentPage] = useState<'dashboard' | 'suppliers' | 'shopping' | 'history' | 'delivered' | 'reminders' | 'ai' | 'purchase-forecast' | 'vendas'>('dashboard');
+  const [currentPage, setCurrentPage] = useState<'dashboard' | 'purchase-orders' | 'suppliers' | 'shopping' | 'history' | 'delivered' | 'reminders' | 'ai' | 'purchase-forecast' | 'vendas'>('dashboard');
 
   const handleWindowChange = (win: 'compras' | 'dre') => {
     setActiveWindow(win);
@@ -450,26 +463,35 @@ export default function App() {
     if (isFinalizing) return;
     setIsFinalizing(true);
     try {
-      const newList = await finalizeList(listName, editingListId, shippingFee);
-      if (newList) {
-        setListName('');
-        setShippingFee(0);
-        setEditingListId(null);
-        setIsCartOpen(false);
-        setCurrentPage('history');
-        addNotification(editingListId ? 'Lista atualizada!' : 'Lista finalizada!', 1);
-        
-        const title = editingListId ? 'Lista Atualizada' : 'Nova Lista de Compras';
-        const msg = editingListId 
-          ? `A lista "${newList.name}" foi atualizada com sucesso.`
-          : `A lista "${newList.name}" foi criada com sucesso.`;
-        
-        addAppNotification(title, msg);
+      if (editingListId) {
+        // Editar uma lista já enviada continua indo direto, sem passar por aprovação de novo
+        const updatedList = await finalizeList(listName, editingListId, shippingFee);
+        if (updatedList) {
+          setListName('');
+          setShippingFee(0);
+          setEditingListId(null);
+          setIsCartOpen(false);
+          setCurrentPage('history');
+          addNotification('Lista atualizada!', 1);
+          addAppNotification('Lista Atualizada', `A lista "${updatedList.name}" foi atualizada com sucesso.`);
+        }
+      } else {
+        // Lista nova: vai para Ordem de Compra aguardando aprovação
+        const newOrder = await createPurchaseOrder(listName, cart, shippingFee);
+        if (newOrder) {
+          setListName('');
+          setShippingFee(0);
+          clearCart();
+          setIsCartOpen(false);
+          setCurrentPage('purchase-orders');
+          addNotification('Enviado para aprovação!', 1);
+          addAppNotification('Ordem de Compra Criada', `A lista "${newOrder.name}" foi enviada para aprovação.`);
+        }
       }
     } finally {
       setIsFinalizing(false);
     }
-  }, [isFinalizing, finalizeList, listName, shippingFee, editingListId, addNotification, addAppNotification]);
+  }, [isFinalizing, finalizeList, createPurchaseOrder, listName, shippingFee, editingListId, cart, clearCart, addNotification, addAppNotification]);
 
   const onSetActiveTargetList = React.useCallback((id: string | null, name: string | null) => {
     setActiveTargetListId(id);
@@ -703,8 +725,20 @@ export default function App() {
               setores={setores}
             />
           )}
+          {currentPage === 'purchase-orders' && (
+            <PurchaseOrdersView
+              key="purchase-orders"
+              purchaseOrders={purchaseOrders}
+              isLoading={isPurchaseOrdersLoading}
+              approveOrder={approveOrder}
+              rejectOrder={rejectOrder}
+              updateObservacao={updateObservacao}
+              sendToShoppingList={sendToShoppingList}
+              deleteOrder={deletePurchaseOrder}
+            />
+          )}
           {currentPage === 'suppliers' && (
-            <SuppliersView 
+            <SuppliersView
               key={currentPage}
               suppliers={mainSuppliers}
               allSuppliers={suppliers}
@@ -848,6 +882,7 @@ export default function App() {
         removeFromCart={removeFromCart}
         finalizeList={onFinalizeList}
         isFinalizing={isFinalizing}
+        isEditingList={!!editingListId}
         clearCart={clearCart}
         isSettingsOpen={isSettingsOpen}
         setIsSettingsOpen={setIsSettingsOpen}

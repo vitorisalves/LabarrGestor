@@ -51,6 +51,22 @@ export interface SavedList {
   createdBy?: string;
 }
 
+export interface PurchaseOrder {
+  id: string;
+  name: string;
+  date: string;
+  items: SavedList['items'];
+  total: number;
+  shippingFee: number;
+  createdBy?: string;
+  status: 'pending' | 'approved' | 'rejected';
+  observacao?: string;
+  approvedBy?: string;
+  approvedAt?: string;
+  rejectedBy?: string;
+  rejectedAt?: string;
+}
+
 export interface DeliveredProduct {
   id: string;
   name: string;

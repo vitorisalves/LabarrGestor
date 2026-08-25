@@ -55,6 +55,7 @@ interface ModalsProps {
   removeFromCart: (name: string, supplier: string) => void;
   finalizeList: () => void;
   isFinalizing?: boolean;
+  isEditingList?: boolean;
   clearCart: () => void;
 
   isSettingsOpen: boolean;
@@ -152,6 +153,7 @@ export const Modals: React.FC<ModalsProps> = (props) => {
         removeFromCart={props.removeFromCart}
         finalizeList={props.finalizeList}
         isFinalizing={!!props.isFinalizing}
+        isEditingList={!!props.isEditingList}
         clearCart={props.clearCart}
       />
 

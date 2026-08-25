@@ -756,6 +756,114 @@ app.get("/api/xml/shopping_lists", handleCacheAndEtag("shopping_lists"), asyncHa
   }
 }));
 
+app.get("/api/xml/purchase_orders", handleCacheAndEtag("purchase_orders"), asyncHandler(async (req: Request, res: Response) => {
+  try {
+    const forceNoCache = req.query.fresh === 'true' || req.headers['cache-control'] === 'no-cache' || req.headers['pragma'] === 'no-cache';
+    const snapshot = await fsOps.getDocs('purchase_orders', 'purchase_orders', forceNoCache);
+    const data = snapshot.docs.map((doc: any) => {
+      const d = typeof doc.data === 'function' ? doc.data() : doc.data;
+      return { id: doc.id, ...d };
+    });
+    res.json(applyPagination(req, res, data));
+  } catch (error: any) {
+    console.error("Error fetching purchase_orders:", error);
+    res.status(500).json({ error: "Error fetching purchase orders", message: error.message });
+  }
+}));
+
+app.post("/api/xml/purchase_orders", asyncHandler(async (req: Request, res: Response) => {
+  const { name, items, total, shippingFee, createdBy } = req.body;
+  if (!Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ error: "Itens são obrigatórios" });
+  }
+  const id = `po_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+  const order = {
+    id,
+    name: name || 'Lista de Compras',
+    date: new Date().toISOString(),
+    items,
+    total: Number(total) || 0,
+    shippingFee: Number(shippingFee) || 0,
+    createdBy: createdBy || '',
+    status: 'pending'
+  };
+  await fsOps.set(fsOps.doc('purchase_orders', id), order, 'purchase_orders/' + id);
+  fsOps.invalidateCache('purchase_orders');
+  res.json({ status: "success", order });
+}));
+
+app.post("/api/xml/purchase_orders/approve", asyncHandler(async (req: Request, res: Response) => {
+  const { id, approvedBy, observacao } = req.body;
+  if (!id) return res.status(400).json({ error: "ID é obrigatório" });
+  await fsOps.update(fsOps.doc('purchase_orders', id), {
+    status: 'approved',
+    approvedBy: approvedBy || '',
+    approvedAt: new Date().toISOString(),
+    observacao: observacao || ''
+  }, 'purchase_orders/' + id);
+  fsOps.invalidateCache('purchase_orders');
+  res.json({ status: "success" });
+}));
+
+app.post("/api/xml/purchase_orders/reject", asyncHandler(async (req: Request, res: Response) => {
+  const { id, rejectedBy, observacao } = req.body;
+  if (!id) return res.status(400).json({ error: "ID é obrigatório" });
+  await fsOps.update(fsOps.doc('purchase_orders', id), {
+    status: 'rejected',
+    rejectedBy: rejectedBy || '',
+    rejectedAt: new Date().toISOString(),
+    observacao: observacao || ''
+  }, 'purchase_orders/' + id);
+  fsOps.invalidateCache('purchase_orders');
+  res.json({ status: "success" });
+}));
+
+app.post("/api/xml/purchase_orders/observacao", asyncHandler(async (req: Request, res: Response) => {
+  const { id, observacao } = req.body;
+  if (!id) return res.status(400).json({ error: "ID é obrigatório" });
+  await fsOps.update(fsOps.doc('purchase_orders', id), {
+    observacao: observacao || ''
+  }, 'purchase_orders/' + id);
+  fsOps.invalidateCache('purchase_orders');
+  res.json({ status: "success" });
+}));
+
+app.post("/api/xml/purchase_orders/send", asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.body;
+  if (!id) return res.status(400).json({ error: "ID é obrigatório" });
+
+  const docSnap = await fsOps.getDoc(fsOps.doc('purchase_orders', id), 'purchase_orders/' + id);
+  const exists = typeof docSnap.exists === 'function' ? docSnap.exists() : !!docSnap.exists;
+  if (!exists) {
+    return res.status(404).json({ error: "Ordem de compra não encontrada" });
+  }
+  const order: any = typeof docSnap.data === 'function' ? docSnap.data() : docSnap.data;
+
+  const listId = `list_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+  const listData = {
+    name: order.name,
+    date: new Date().toISOString(),
+    items: order.items,
+    total: order.total,
+    shippingFee: order.shippingFee,
+    createdBy: order.createdBy
+  };
+  await fsOps.set(fsOps.doc('shopping_lists', listId), listData, 'shopping_lists/' + listId);
+  await fsOps.delete(fsOps.doc('purchase_orders', id), 'purchase_orders/' + id);
+
+  fsOps.invalidateCache('shopping_lists');
+  fsOps.invalidateCache('purchase_orders');
+  res.json({ status: "success", listId });
+}));
+
+app.post("/api/xml/purchase_orders/delete", asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.body;
+  if (!id) return res.status(400).json({ error: "ID é obrigatório" });
+  await fsOps.delete(fsOps.doc('purchase_orders', id), 'purchase_orders/' + id);
+  fsOps.invalidateCache('purchase_orders');
+  res.json({ status: "success" });
+}));
+
 app.post("/api/xml/cache/invalidate", asyncHandler(async (req: Request, res: Response) => {
   const { collection } = req.body;
   if (collection) {
@@ -782,6 +890,7 @@ const TEST_MODE_COLLECTIONS = [
   'delivered_products',
   'reminders',
   'shopping_lists',
+  'purchase_orders',
   'pending_list_products',
   'push_subscriptions'
 ];

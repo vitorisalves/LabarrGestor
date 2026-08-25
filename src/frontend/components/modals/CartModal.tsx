@@ -19,6 +19,7 @@ interface CartModalProps {
   finalizeList: () => void;
   isFinalizing: boolean;
   clearCart: () => void;
+  isEditingList?: boolean;
 }
 
 export const CartModal: React.FC<CartModalProps> = ({
@@ -35,7 +36,8 @@ export const CartModal: React.FC<CartModalProps> = ({
   removeFromCart,
   finalizeList,
   isFinalizing,
-  clearCart
+  clearCart,
+  isEditingList = false
 }) => {
   return (
     <AnimatePresence>
@@ -232,7 +234,7 @@ export const CartModal: React.FC<CartModalProps> = ({
                     ) : (
                       <>
                         <Check className="w-4 h-4" />
-                        Finalizar
+                        {isEditingList ? 'Salvar Alterações' : 'Enviar para Aprovação'}
                       </>
                     )}
                   </button>

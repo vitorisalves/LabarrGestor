@@ -19,7 +19,8 @@ import {
   X,
   LayoutDashboard,
   FileUp,
-  TrendingUp
+  TrendingUp,
+  ClipboardList
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -53,6 +54,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       ]
     : [
         { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+        { id: 'purchase-orders', label: 'Ordem de Compra', icon: ClipboardList },
         { id: 'suppliers', label: 'Produtos', icon: Building2 },
         { id: 'shopping', label: 'Fazer Compras', icon: ShoppingCart },
         { id: 'history', label: 'Minhas Listas', icon: ListChecks },
