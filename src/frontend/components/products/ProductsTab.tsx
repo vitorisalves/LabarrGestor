@@ -23,6 +23,8 @@ interface ProductsTabProps {
   setSearchTerm: (v: string) => void;
   onEditProduct: (product: Product, supplierName: string) => void;
   onAddToCart: (product: Product, supplierName: string, quantity: number, setor: string) => void;
+  purchaseSetores: Record<string, string>;
+  setPurchaseSetores: React.Dispatch<React.SetStateAction<Record<string, string>>>;
 }
 
 export const ProductsTab: React.FC<ProductsTabProps> = ({
@@ -33,12 +35,13 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
   searchTerm,
   setSearchTerm,
   onEditProduct,
-  onAddToCart
+  onAddToCart,
+  purchaseSetores,
+  setPurchaseSetores
 }) => {
   const { catalog, updateProductCategories } = useProductCatalog(suppliers, saveSupplier);
   const [categoryFilter, setCategoryFilter] = React.useState('ALL');
   const [quantities, setQuantities] = React.useState<Record<string, string>>({});
-  const [purchaseSetores, setPurchaseSetores] = React.useState<Record<string, string>>({});
 
   const filtered = React.useMemo(() => {
     const normalizedSearch = normalizeText(searchTerm);

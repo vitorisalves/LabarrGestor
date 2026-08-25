@@ -455,6 +455,8 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
           setSearchTerm={setSearchTerm}
           onEditProduct={onEditProduct}
           onAddToCart={addToCart}
+          purchaseSetores={purchaseSetores}
+          setPurchaseSetores={setPurchaseSetores}
         />
       )}
 
