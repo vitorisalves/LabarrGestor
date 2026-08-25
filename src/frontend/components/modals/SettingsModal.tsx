@@ -75,35 +75,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
 
             <div className="flex-1 overflow-y-auto p-6 space-y-10">
-              {/* Aparência / Tema (Modo Noturno) */}
-              <section className="space-y-4">
-                <h3 className="text-sm font-black text-slate-800 flex items-center gap-3 uppercase tracking-wider">
-                  {isDarkMode ? <Moon className="w-4 h-4 text-amber-500" /> : <Sun className="w-4 h-4 text-amber-500" />}
-                  Aparência do Sistema
-                </h3>
-                <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                  <div>
-                    <p className="font-bold text-slate-800 text-sm">Modo Noturno (Escuro)</p>
-                    <p className="text-xs text-slate-500">Alterne a interface para um tema escuro confortável em ambientes com pouca iluminação.</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setIsDarkMode && setIsDarkMode(!isDarkMode)}
-                    className={`relative inline-flex h-7 w-14 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                      isDarkMode ? 'bg-indigo-600' : 'bg-slate-300'
-                    }`}
-                  >
-                    <span
-                      className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out flex items-center justify-center ${
-                        isDarkMode ? 'translate-x-7' : 'translate-x-0'
-                      }`}
-                    >
-                      {isDarkMode ? <Moon className="w-3.5 h-3.5 text-amber-500" /> : <Sun className="w-3.5 h-3.5 text-amber-500" />}
-                    </span>
-                  </button>
-                </div>
-              </section>
-
               {isAdmin && (
                 <>
                   {/* Categorias */}

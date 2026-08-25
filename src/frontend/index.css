@@ -1,217 +1,101 @@
 @import "tailwindcss";
 
+/* ==========================================================================
+   LABARR — tema único (escuro), inspirado em cacau torrado e caramelo.
+   Os nomes de cor abaixo (slate/indigo/white/etc.) são os mesmos que o
+   Tailwind já usa em todo o app — remapeamos os valores aqui, num único
+   lugar, em vez de editar cor por cor em cada componente.
+   ========================================================================== */
 @theme {
-  /* Rich Brown Palette - Based on #895129 */
-  --color-brand-50: #fbf6f3;
-  --color-brand-100: #f5eae2;
-  --color-brand-200: #ead3c4;
-  --color-brand-300: #dab39b;
-  --color-brand-400: #c68c6c;
-  --color-brand-500: #b36b46;
-  --color-brand-600: #895129; /* Primary Brown Requested */
-  --color-brand-700: #714223;
-  --color-brand-800: #5a351d;
-  --color-brand-900: #4a2c1a;
-  --color-brand-950: #2b180d;
+  --font-sans: "Public Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Fraunces", ui-serif, Georgia, serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
 
-  /* Legacy overrides to ensure existing indigo/slate classes map to brown or neutral black */
-  --color-indigo-50: #fbf6f3;
-  --color-indigo-100: #f5eae2;
-  --color-indigo-200: #ead3c4;
-  --color-indigo-300: #dab39b;
-  --color-indigo-400: #c68c6c;
-  --color-indigo-500: #b36b46;
-  --color-indigo-600: #895129; /* Primary Brown Requested */
-  --color-indigo-700: #714223;
-  --color-indigo-800: #5a351d;
-  --color-indigo-900: #351f1a;
-  --color-indigo-950: #1b0f0c;
+  /* base = fundo mais escuro; troca de "branco" por superfície elevada */
+  --color-white: #241811;
 
-  /* Force slate to be warm neutrals/browns instead of cold blue-grays */
-  --color-slate-50: #fafaf9;
-  --color-slate-100: #f5f5f4;
-  --color-slate-200: #e7e5e4;
-  --color-slate-300: #d6d3d1;
-  --color-slate-400: #a8a29e;
-  --color-slate-500: #78716c;
-  --color-slate-600: #57534e;
-  --color-slate-700: #44403c;
-  --color-slate-800: #351f1a;
-  --color-slate-900: #1b0f0c; /* Rich Black-Brown */
-  --color-slate-950: #000000;
+  /* slate: na base do app hoje, slate-50/100 = fundo de página e cards claros,
+     slate-900/800/700 = texto escuro. Invertendo os extremos, todo texto e
+     fundo do sistema já nasce correto no escuro, sem precisar de classe .dark. */
+  --color-slate-50: #1a120b;
+  --color-slate-100: #241811;
+  --color-slate-200: #31221a;
+  --color-slate-300: #4a3626;
+  --color-slate-400: #8a7461;
+  --color-slate-500: #a89680;
+  --color-slate-600: #c9b8a4;
+  --color-slate-700: #e6dbcb;
+  --color-slate-800: #f2e8dc;
+  --color-slate-900: #f7efe4;
+  --color-slate-950: #fffaf3;
+
+  /* indigo: cor de ação primária do sistema inteiro (botões, links, foco) */
+  --color-indigo-50: #2a1c12;
+  --color-indigo-100: #3a2716;
+  --color-indigo-200: #5a3c1f;
+  --color-indigo-300: #855428;
+  --color-indigo-400: #ad6b32;
+  --color-indigo-500: #c77d3f;
+  --color-indigo-600: #c77d3f;
+  --color-indigo-700: #b06a30;
+  --color-indigo-800: #8f5527;
+  --color-indigo-900: #6e4220;
+  --color-indigo-950: #452a14;
+
+  /* dourado — reservado para destaque raro (aprovado, valores importantes) */
+  --color-brand-500: #d9a441;
+  --color-brand-600: #d9a441;
+
+  /* emerald/amber/rose: mantidos reconhecíveis (sucesso/aviso/erro), só
+     recalibrados pra funcionar sobre o fundo escuro em vez de branco */
+  --color-emerald-50: #12251d;
+  --color-emerald-100: #16302512;
+  --color-amber-50: #2a1f0f;
+  --color-rose-50: #2a1414;
 
   --animate-spin-slow: spin 3s linear infinite;
 }
 
-/* ==========================================================================
-   MODO NOTURNO / DARK MODE STYLES
-   ========================================================================== */
-
-html.dark {
+html {
   color-scheme: dark;
-  background-color: #0f172a;
 }
 
-html.dark body {
-  background-color: #0b0f19;
-  color: #f1f5f9;
+body {
+  background-color: var(--color-slate-50);
+  color: var(--color-slate-800);
+  font-family: var(--font-sans);
 }
 
-html.dark main,
-html.dark header {
-  transition: background-color 0.2s ease, border-color 0.2s ease;
+h1, h2, h3 {
+  font-family: var(--font-display);
 }
 
-/* Fundo Geral da Aplicação e Áreas Principais */
-html.dark body,
-html.dark .min-h-screen {
-  background-color: #0b0f19 !important;
+/* Números em tabelas/listas (preço, quantidade) alinhados e legíveis */
+.tabular-nums, td.font-mono, .font-mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
-/* Cards, Modais, Tabelas e Painéis Brancos */
-html.dark .bg-white {
-  background-color: #1e293b !important;
-  color: #f8fafc !important;
-}
-
-html.dark .bg-slate-50,
-html.dark .bg-slate-50\/50,
-html.dark .bg-slate-50\/60,
-html.dark .bg-slate-50\/80 {
-  background-color: #1e293b !important;
-}
-
-html.dark .bg-slate-100,
-html.dark .bg-slate-100\/70 {
-  background-color: #1e293b !important;
-}
-
-html.dark .bg-slate-200 {
-  background-color: #334155 !important;
-}
-
-html.dark .bg-indigo-50,
-html.dark .bg-indigo-50\/40,
-html.dark .bg-indigo-50\/50 {
-  background-color: #1e1b4b !important;
-}
-
-html.dark .bg-emerald-50 {
-  background-color: #064e3b !important;
-}
-
-html.dark .bg-amber-50 {
-  background-color: #451a03 !important;
-}
-
-html.dark .bg-rose-50 {
-  background-color: #4c0519 !important;
-}
-
-/* Textos no Modo Noturno */
-html.dark .text-slate-900,
-html.dark .text-slate-800,
-html.dark .text-slate-700 {
-  color: #f8fafc !important;
-}
-
-html.dark .text-slate-600,
-html.dark .text-slate-500 {
-  color: #cbd5e1 !important;
-}
-
-html.dark .text-slate-400 {
-  color: #94a3b8 !important;
-}
-
-html.dark .text-slate-300 {
-  color: #64748b !important;
-}
-
-/* Bordas no Modo Noturno */
-html.dark .border-slate-100,
-html.dark .border-slate-200,
-html.dark .border-slate-300,
-html.dark .border-slate-300\/60 {
-  border-color: #1e293b !important;
-}
-
-html.dark .divide-slate-100 > * + *,
-html.dark .divide-slate-200 > * + * {
-  border-color: #1e293b !important;
-}
-
-/* Formulários, Inputs, Selects no Modo Noturno */
-html.dark input,
-html.dark select,
-html.dark textarea {
-  background-color: #1e293b !important;
-  color: #f8fafc !important;
-  border-color: #475569 !important;
-}
-
-html.dark input::placeholder,
-html.dark textarea::placeholder {
-  color: #64748b !important;
-}
-
-/* Sidebar Styles */
 aside,
 aside > div {
-  background-color: #e6e4e3;
+  background-color: var(--color-slate-100);
 }
 
-/* Sidebar no Modo Noturno */
-html.dark aside,
-html.dark aside > div,
-html.dark aside .bg-slate-50\/30 {
-  background-color: #1e293b !important;
-  border-color: #334155 !important;
+/* ==========================================================================
+   Divisor "barreta de chocolate" — elemento assinatura do sistema.
+   Usado em barras de progresso e trilhos de abas: segmentos com uma
+   nervura leve entre eles, como os quadrados de uma barra de chocolate.
+   ========================================================================== */
+.choc-bar {
+  display: flex;
+  gap: 2px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--color-slate-200);
 }
 
-/* Recharts Tooltips e SVG no Modo Noturno */
-html.dark .recharts-default-tooltip {
-  background-color: #1e293b !important;
-  border-color: #1e293b !important;
-  color: #f8fafc !important;
-}
-
-html.dark .recharts-cartesian-grid line {
-  stroke: #334155 !important;
-}
-
-html.dark .recharts-text {
-  fill: #94a3b8 !important;
-}
-
-
-/* Correção de hovers gerais do sistema no Modo Noturno */
-html.dark .hover\:bg-slate-50:hover,
-html.dark .hover\:bg-slate-100:hover,
-html.dark .hover\:bg-slate-200:hover,
-html.dark .hover\:bg-slate-50\/50:hover,
-html.dark .hover\:bg-slate-50\/80:hover,
-html.dark .hover\:bg-slate-50\/35:hover,
-html.dark .hover\:bg-white:hover,
-html.dark .hover\:bg-red-50:hover,
-html.dark .hover\:bg-rose-50:hover,
-html.dark .hover\:bg-amber-50:hover,
-html.dark .hover\:bg-emerald-50:hover,
-html.dark .hover\:bg-indigo-50:hover {
-  background-color: transparent !important;
-  box-shadow: inset 0 0 0 1px #334155 !important;
-}
-
-html.dark tr.hover\:bg-slate-50\/50:hover,
-html.dark tr.hover\:bg-slate-50\/80:hover,
-html.dark tr.hover\:bg-slate-50\/35:hover,
-html.dark tr.hover\:bg-slate-50:hover {
-  background-color: #1e293b !important;
-  box-shadow: none !important;
-}
-
-html.dark button.hover\:bg-red-50:hover,
-html.dark button.hover\:bg-rose-50:hover {
-  background-color: transparent !important;
-  box-shadow: inset 0 0 0 1px #9f1239 !important;
+.choc-bar > .choc-bar-fill {
+  background: linear-gradient(180deg, var(--color-indigo-500), var(--color-indigo-700));
+  background-image:
+    repeating-linear-gradient(90deg, transparent 0, transparent calc(100% / 8 - 2px), rgba(0,0,0,0.25) calc(100% / 8 - 2px), rgba(0,0,0,0.25) calc(100% / 8));
 }
