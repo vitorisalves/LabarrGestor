@@ -14,6 +14,10 @@
   /* base = fundo mais escuro; troca de "branco" por superfície elevada */
   --color-white: #241811;
 
+  /* alguns componentes usam text-black/bg-black direto (não slate-900) —
+     sem isso, esse texto fica preto sobre fundo escuro e some. */
+  --color-black: #f2e8dc;
+
   /* slate: na base do app hoje, slate-50/100 = fundo de página e cards claros,
      slate-900/800/700 = texto escuro. Invertendo os extremos, todo texto e
      fundo do sistema já nasce correto no escuro, sem precisar de classe .dark. */
