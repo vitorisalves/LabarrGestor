@@ -33,6 +33,7 @@ import { PriceIncreasesTable } from './dashboard/PriceIncreasesTable';
 import { PriceAnalysisPanel } from './dashboard/PriceAnalysisPanel';
 import { CategoryEditorPanel } from './dashboard/CategoryEditorPanel';
 import { PendingListProductsPanel } from './dashboard/PendingListProductsPanel';
+import { SectorDashboardView } from './SectorDashboardView';
 import { usePendingListProductsPanel } from '../hooks/usePendingListProductsPanel';
 import { useXmlSpendings } from '../hooks/useXmlSpendings';
 
@@ -1302,6 +1303,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
         toggleAllProducts={toggleAllProducts}
         isUploading={isUploading}
       />
+
+      {/* Dashboard de Setores */}
+      <SectorDashboardView setores={setores} />
 
       {/* Header & Filters */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-white p-6 rounded-3xl border border-slate-100 shadow-sm animate-in fade-in slide-in-from-top-4 duration-500">

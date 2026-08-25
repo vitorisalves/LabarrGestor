@@ -93,11 +93,11 @@ export const SectorDashboardView: React.FC<SectorDashboardViewProps> = ({ setore
     >
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
         <div>
-          <h1 className="text-2xl md:text-4xl font-black text-slate-900 tracking-tight mb-1 md:mb-2 text-balance flex items-center gap-3">
-            <PieChart className="w-8 h-8 text-indigo-700" />
-            Dashboard de Setores
-          </h1>
-          <p className="text-sm md:text-base text-slate-500 font-medium">Gasto mensal por setor comparado ao limite configurado</p>
+          <h2 className="text-xl md:text-2xl font-black text-slate-900 tracking-tight mb-1 uppercase flex items-center gap-3">
+            <PieChart className="w-6 h-6 text-indigo-700" />
+            Gasto por Setor
+          </h2>
+          <p className="text-slate-600 text-[10px] font-black uppercase tracking-wider">Gasto mensal por setor comparado ao limite configurado</p>
         </div>
         <select
           value={selectedMonth}
