@@ -1028,16 +1028,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
 
     addSystemLog('category', `Setor do produto "${name}" ${targetCode ? `(Cód: ${targetCode})` : ''} alterado para "${newSetor}".`);
 
-    if (!isTestMode) {
-      try {
-        await fetch("/api/xml/products/update-setor", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ code: targetCode, name, setor: newSetor })
-        });
-      } catch (err) {
-        console.error("Erro ao salvar setor no servidor:", err);
-      }
+    try {
+      await fetch("/api/xml/products/update-setor", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: targetCode, name, setor: newSetor })
+      });
+    } catch (err) {
+      console.error("Erro ao salvar setor no servidor:", err);
     }
   };
 
