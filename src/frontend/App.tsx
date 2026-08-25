@@ -617,6 +617,28 @@ export default function App() {
     setIsAdding(true);
   }, [suppliers, setEditingSupplierId, setProductList, setFormState, setEditingProductIndex, setIsAdding]);
 
+  const onAddNewProduct = React.useCallback((supplierName: string) => {
+    const supplier = suppliers.find(s => s.name === supplierName);
+    if (!supplier) return;
+
+    setEditingSupplierId(supplier.id);
+    setProductList(supplier.products || []);
+
+    setFormState({
+        name: supplier.name,
+        phone: supplier.phone,
+        productName: '',
+        productPrice: '',
+        productCategories: [],
+        productLastPurchaseDate: '',
+        productPaymentMethod: '',
+        productCode: ''
+    });
+
+    setEditingProductIndex(null);
+    setIsAdding(true);
+  }, [suppliers, setEditingSupplierId, setProductList, setFormState, setEditingProductIndex, setIsAdding]);
+
   // --- RENDER HELPERS ---
   const mainSuppliers = React.useMemo(() => 
     suppliers.filter(s => 
@@ -763,6 +785,7 @@ export default function App() {
               handleSyncSheets={onSyncSheets}
               addNotification={addNotification}
               onEditProduct={onEditProductFromShopping}
+              onAddNewProduct={onAddNewProduct}
               saveSupplier={saveSupplier}
             />
           )}

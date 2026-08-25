@@ -350,17 +350,17 @@ export const SupplierModal: React.FC<SupplierModalProps> = ({
               </div>
             </div>
 
-            <div className="p-6 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">
+            <div className="p-4 sm:p-6 bg-slate-50 border-t border-slate-100 flex flex-col-reverse sm:flex-row sm:justify-end gap-3">
               <button
                 onClick={onClose}
-                className="px-6 py-3 text-slate-500 text-sm font-bold hover:text-slate-900 transition-all"
+                className="w-full sm:w-auto px-6 py-3 text-slate-500 text-sm font-bold hover:text-slate-900 transition-all"
               >
                 Cancelar
               </button>
               <button
                 onClick={onSave}
                 disabled={isSaving || !name || !phone || (productList.length === 0 && !productName.trim())}
-                className="px-8 py-3 bg-indigo-600 text-white rounded-xl text-sm font-bold shadow-md hover:bg-indigo-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className="w-full sm:w-auto px-8 py-3 bg-indigo-600 text-white rounded-xl text-sm font-bold shadow-md hover:bg-indigo-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {isSaving && <Loader2 className="w-4 h-4 animate-spin" />}
                 {editingSupplierId ? 'Salvar Alterações' : 'Cadastrar Fornecedor'}

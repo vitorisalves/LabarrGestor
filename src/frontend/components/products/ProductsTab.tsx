@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { Pencil } from 'lucide-react';
+import { Pencil, Plus } from 'lucide-react';
 import { Product } from '../../types';
 import { formatCurrency, normalizeText } from '../../utils';
 import { SearchBar, QuantitySelector, EmptyState } from '../common';
@@ -22,6 +22,7 @@ interface ProductsTabProps {
   searchTerm: string;
   setSearchTerm: (v: string) => void;
   onEditProduct: (product: Product, supplierName: string) => void;
+  onAddNewProduct?: (supplierName: string) => void;
   onAddToCart: (product: Product, supplierName: string, quantity: number, setor: string) => void;
   purchaseSetores: Record<string, string>;
   setPurchaseSetores: React.Dispatch<React.SetStateAction<Record<string, string>>>;
@@ -35,6 +36,7 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
   searchTerm,
   setSearchTerm,
   onEditProduct,
+  onAddNewProduct,
   onAddToCart,
   purchaseSetores,
   setPurchaseSetores
@@ -42,6 +44,8 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
   const { catalog, updateProductCategories } = useProductCatalog(suppliers, saveSupplier);
   const [categoryFilter, setCategoryFilter] = React.useState('ALL');
   const [quantities, setQuantities] = React.useState<Record<string, string>>({});
+  const sortedSuppliers = React.useMemo(() => [...suppliers].sort((a, b) => a.name.localeCompare(b.name)), [suppliers]);
+  const [newProductSupplier, setNewProductSupplier] = React.useState('');
 
   const filtered = React.useMemo(() => {
     const normalizedSearch = normalizeText(searchTerm);
@@ -98,6 +102,28 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
           </select>
         </div>
       </div>
+
+      {onAddNewProduct && (
+        <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex flex-col sm:flex-row sm:items-center gap-3">
+          <span className="text-[10px] font-black uppercase text-slate-400 shrink-0">Novo Produto</span>
+          <select
+            value={newProductSupplier}
+            onChange={e => setNewProductSupplier(e.target.value)}
+            className="w-full sm:flex-1 py-2.5 px-3 text-xs bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none cursor-pointer"
+          >
+            <option value="">Selecione o fornecedor...</option>
+            {sortedSuppliers.map(s => <option key={s.id || s.name} value={s.name}>{s.name}</option>)}
+          </select>
+          <button
+            onClick={() => newProductSupplier && onAddNewProduct(newProductSupplier)}
+            disabled={!newProductSupplier}
+            className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-sm text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Plus className="w-4 h-4" />
+            Adicionar Produto
+          </button>
+        </div>
+      )}
 
       <SearchBar value={searchTerm} onChange={setSearchTerm} placeholder="Buscar produto por nome, fornecedor ou categoria..." />
 

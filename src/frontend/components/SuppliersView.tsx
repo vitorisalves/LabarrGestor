@@ -53,6 +53,7 @@ interface SuppliersViewProps {
   onTabChange?: (tab: 'fornecedores' | 'produtos' | 'importar_xml') => void;
   addNotification?: (message: string, count: number, type?: 'cart' | 'info') => void;
   onEditProduct: (product: Product, supplierName: string) => void;
+  onAddNewProduct?: (supplierName: string) => void;
   saveSupplier: (supplier: Supplier) => Promise<void>;
 }
 
@@ -76,6 +77,7 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
   onTabChange,
   addNotification,
   onEditProduct,
+  onAddNewProduct,
   saveSupplier
 }) => {
   const [internalTab, setInternalTab] = React.useState<'fornecedores' | 'produtos' | 'importar_xml'>('fornecedores');
@@ -454,6 +456,7 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
           searchTerm={searchTerm}
           setSearchTerm={setSearchTerm}
           onEditProduct={onEditProduct}
+          onAddNewProduct={onAddNewProduct}
           onAddToCart={addToCart}
           purchaseSetores={purchaseSetores}
           setPurchaseSetores={setPurchaseSetores}
