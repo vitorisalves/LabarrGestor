@@ -16,5 +16,6 @@ gestor-fornecedores@0.0.0
 tsc
 *.mjs
 DRAFT_*
+.vercel/
 
 
