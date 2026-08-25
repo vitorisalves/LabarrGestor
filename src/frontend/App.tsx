@@ -143,6 +143,7 @@ export default function App() {
     purchaseOrders,
     isLoading: isPurchaseOrdersLoading,
     createPurchaseOrder,
+    approveRequisition,
     approveOrder,
     rejectOrder,
     updateObservacao,
@@ -735,6 +736,7 @@ export default function App() {
               key="purchase-orders"
               purchaseOrders={purchaseOrders}
               isLoading={isPurchaseOrdersLoading}
+              approveRequisition={approveRequisition}
               approveOrder={approveOrder}
               rejectOrder={rejectOrder}
               updateObservacao={updateObservacao}

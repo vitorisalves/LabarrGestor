@@ -802,6 +802,19 @@ app.post("/api/xml/purchase_orders", asyncHandler(async (req: Request, res: Resp
   res.json({ status: "success", order });
 }));
 
+app.post("/api/xml/purchase_orders/approve-requisition", asyncHandler(async (req: Request, res: Response) => {
+  const { id, approvedBy, observacao } = req.body;
+  if (!id) return res.status(400).json({ error: "ID é obrigatório" });
+  await fsOps.update(fsOps.doc('purchase_orders', id), {
+    status: 'requisition_approved',
+    requisitionApprovedBy: approvedBy || '',
+    requisitionApprovedAt: new Date().toISOString(),
+    observacao: observacao || ''
+  }, 'purchase_orders/' + id);
+  fsOps.invalidateCache('purchase_orders');
+  res.json({ status: "success" });
+}));
+
 app.post("/api/xml/purchase_orders/approve", asyncHandler(async (req: Request, res: Response) => {
   const { id, approvedBy, observacao } = req.body;
   if (!id) return res.status(400).json({ error: "ID é obrigatório" });

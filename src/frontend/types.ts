@@ -60,8 +60,10 @@ export interface PurchaseOrder {
   total: number;
   shippingFee: number;
   createdBy?: string;
-  status: 'pending' | 'approved' | 'rejected';
+  status: 'pending' | 'requisition_approved' | 'approved' | 'rejected';
   observacao?: string;
+  requisitionApprovedBy?: string;
+  requisitionApprovedAt?: string;
   approvedBy?: string;
   approvedAt?: string;
   rejectedBy?: string;

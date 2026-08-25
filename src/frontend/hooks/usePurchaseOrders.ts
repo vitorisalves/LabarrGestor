@@ -55,6 +55,20 @@ export const usePurchaseOrders = (loggedName: string) => {
     }
   }, [loggedName, fetchPurchaseOrders]);
 
+  const approveRequisition = useCallback(async (id: string, observacao?: string) => {
+    setPurchaseOrders(prev => prev.map(o => o.id === id ? { ...o, status: 'requisition_approved', requisitionApprovedBy: loggedName, observacao } : o));
+    try {
+      await fetch('/api/xml/purchase_orders/approve-requisition', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, approvedBy: loggedName, observacao })
+      });
+      await fetchPurchaseOrders(true);
+    } catch (err) {
+      console.error('Erro ao aprovar requisição:', err);
+    }
+  }, [loggedName, fetchPurchaseOrders]);
+
   const approveOrder = useCallback(async (id: string, observacao?: string) => {
     setPurchaseOrders(prev => prev.map(o => o.id === id ? { ...o, status: 'approved', approvedBy: loggedName, observacao } : o));
     try {
@@ -128,6 +142,7 @@ export const usePurchaseOrders = (loggedName: string) => {
     isLoading,
     fetchPurchaseOrders,
     createPurchaseOrder,
+    approveRequisition,
     approveOrder,
     rejectOrder,
     updateObservacao,
