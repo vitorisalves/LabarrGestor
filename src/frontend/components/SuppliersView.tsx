@@ -349,7 +349,7 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
                         })
                         .sort((a, b) => a.name.localeCompare(b.name))
                         .map((product, idx) => {
-                          const qKey = `${supplier.id || 'sup'}-${String(product.name)}-${idx}`;
+                          const qKey = `${supplier.id || supplier.name}-${String(product.name)}`;
                           return (
                             <div key={qKey} className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col justify-between group hover:border-indigo-200 transition-all">
                               <div>

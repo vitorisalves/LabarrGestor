@@ -106,7 +106,7 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {filtered.map((row) => {
-            const qKey = `${row.supplierId}-${row.product.name}-${row.productIndex}`;
+            const qKey = `${row.supplierId}-${row.product.name}`;
             return (
               <div key={qKey} className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col justify-between group hover:border-indigo-200 transition-all">
                 <div>
