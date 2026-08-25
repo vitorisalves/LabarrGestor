@@ -146,9 +146,14 @@ export default function App() {
     approveOrder,
     rejectOrder,
     updateObservacao,
-    sendToShoppingList,
+    sendToShoppingList: sendPurchaseOrderToShoppingList,
     deleteOrder: deletePurchaseOrder
   } = usePurchaseOrders(loggedName);
+
+  const sendToShoppingList = React.useCallback(async (id: string) => {
+    await sendPurchaseOrderToShoppingList(id);
+    await refreshLists();
+  }, [sendPurchaseOrderToShoppingList, refreshLists]);
 
   const {
     deliveredProducts,
