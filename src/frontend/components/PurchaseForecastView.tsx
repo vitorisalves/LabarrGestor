@@ -360,7 +360,8 @@ export const PurchaseForecastView: React.FC<Props> = ({ suppliers, saveSupplier,
                 />
             </div>
             <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-                <table className="w-full border-collapse">
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse min-w-[640px]">
                     <thead>
                         <tr className="bg-slate-50 text-left">
                             <th className="p-4 text-slate-400 text-xs font-bold uppercase tracking-widest border-b">Produto</th>
@@ -436,6 +437,7 @@ export const PurchaseForecastView: React.FC<Props> = ({ suppliers, saveSupplier,
                         )))}
                     </tbody>
                 </table>
+              </div>
                 {totalPages > 1 && (
                     <div className="p-4 flex items-center justify-between border-t border-slate-100">
                         <button 

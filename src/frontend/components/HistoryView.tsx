@@ -326,7 +326,8 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
                             </button>
                         </div>
                         <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-                          <table className="w-full text-left">
+                          <div className="overflow-x-auto">
+                          <table className="w-full text-left min-w-[640px]">
                             <thead>
                               <tr className="bg-slate-900">
                                 <th className="px-6 py-4 text-[9px] font-bold text-white uppercase tracking-widest">Status</th>
@@ -353,6 +354,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
                                 ))}
                             </tbody>
                           </table>
+                          </div>
                         </div>
                       </div>
                     </motion.div>

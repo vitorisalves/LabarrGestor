@@ -111,8 +111,8 @@ export const CartModal: React.FC<CartModalProps> = ({
               ) : (
                 <div className="space-y-3">
                   {cart.map((item, i) => (
-                    <div key={i} className="flex items-center justify-between p-4 bg-white rounded-xl border border-slate-100 hover:border-indigo-100 transition-all">
-                      <div className="flex-1">
+                    <div key={i} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 bg-white rounded-xl border border-slate-100 hover:border-indigo-100 transition-all">
+                      <div className="flex-1 min-w-0">
                         <p className="font-bold text-slate-700 tracking-tight leading-tight">{item.name}</p>
                         <div className="flex flex-wrap items-center gap-2 mt-1 leading-tight">
                           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
@@ -138,7 +138,7 @@ export const CartModal: React.FC<CartModalProps> = ({
                           )}
                         </div>
                       </div>
-                      <div className="flex items-center gap-4">
+                      <div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-4 flex-wrap">
                         <div className="flex items-center gap-2 bg-slate-50 px-2 py-1.5 rounded-lg border border-slate-100">
                           <button onClick={() => updateCartQuantity(item.name, item.supplierName, -1)} className="text-slate-400 hover:text-red-500 transition-colors p-0.5 cursor-pointer">
                             <Minus className="w-3 h-3" />
@@ -197,7 +197,7 @@ export const CartModal: React.FC<CartModalProps> = ({
             </div>
 
             {cart.length > 0 && (
-              <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-4">
+              <div className="p-4 bg-slate-50 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div className="shrink-0 px-2 flex flex-col gap-1">
                   <div className="flex justify-between gap-4">
                     <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-none">Subtotal</p>
@@ -219,7 +219,7 @@ export const CartModal: React.FC<CartModalProps> = ({
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 flex-1 justify-end max-w-[280px]">
+                <div className="flex items-center gap-2 w-full sm:flex-1 sm:justify-end sm:max-w-[280px]">
                   <button
                     onClick={finalizeList}
                     disabled={!listName.trim() || isFinalizing}
