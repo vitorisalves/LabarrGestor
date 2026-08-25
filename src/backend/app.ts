@@ -756,6 +756,16 @@ app.get("/api/xml/shopping_lists", handleCacheAndEtag("shopping_lists"), asyncHa
   }
 }));
 
+app.post("/api/xml/shopping_lists/update-items", asyncHandler(async (req: Request, res: Response) => {
+  const { listId, items } = req.body;
+  if (!listId || !Array.isArray(items)) {
+    return res.status(400).json({ error: "listId e items são obrigatórios" });
+  }
+  await fsOps.update(fsOps.doc('shopping_lists', listId), { items }, 'shopping_lists/' + listId);
+  fsOps.invalidateCache('shopping_lists');
+  res.json({ status: "success" });
+}));
+
 app.get("/api/xml/purchase_orders", handleCacheAndEtag("purchase_orders"), asyncHandler(async (req: Request, res: Response) => {
   try {
     const forceNoCache = req.query.fresh === 'true' || req.headers['cache-control'] === 'no-cache' || req.headers['pragma'] === 'no-cache';

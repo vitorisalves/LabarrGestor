@@ -213,7 +213,11 @@ export const useCart = (
     
     try {
       if (!listId.startsWith('temp-')) {
-        await updateDoc(doc(db, 'shopping_lists', listId), { items: updatedItems.map(item => cleanObject(item)) });
+        await fetch('/api/xml/shopping_lists/update-items', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ listId, items: updatedItems.map(item => cleanObject(item)) })
+        });
         await invalidateBackendCache('shopping_lists');
       }
     } catch (e) {
