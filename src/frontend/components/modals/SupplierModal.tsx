@@ -126,7 +126,7 @@ export const SupplierModal: React.FC<SupplierModalProps> = ({
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Telefone</label>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Telefone (opcional)</label>
                   <input
                     type="text"
                     placeholder="(00) 00000-0000"
@@ -359,7 +359,7 @@ export const SupplierModal: React.FC<SupplierModalProps> = ({
               </button>
               <button
                 onClick={onSave}
-                disabled={isSaving || !name || !phone || (productList.length === 0 && !productName.trim())}
+                disabled={isSaving || !name || (productList.length === 0 && !productName.trim())}
                 className="w-full sm:w-auto px-8 py-3 bg-indigo-600 text-white rounded-xl text-sm font-bold shadow-md hover:bg-indigo-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {isSaving && <Loader2 className="w-4 h-4 animate-spin" />}

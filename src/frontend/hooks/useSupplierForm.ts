@@ -165,7 +165,7 @@ export const useSupplierForm = (
                 }
             }
 
-            if (!formState.name || !formState.phone || finalProductList.length === 0) {
+            if (!formState.name || finalProductList.length === 0) {
                 setIsSaving(false);
                 return;
             }
