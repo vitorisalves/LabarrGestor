@@ -87,15 +87,62 @@ aside > div {
    nervura leve entre eles, como os quadrados de uma barra de chocolate.
    ========================================================================== */
 .choc-bar {
-  display: flex;
-  gap: 2px;
+  position: relative;
+  height: 0.625rem;
   border-radius: 6px;
   overflow: hidden;
   background: var(--color-slate-200);
 }
 
-.choc-bar > .choc-bar-fill {
-  background: linear-gradient(180deg, var(--color-indigo-500), var(--color-indigo-700));
-  background-image:
-    repeating-linear-gradient(90deg, transparent 0, transparent calc(100% / 8 - 2px), rgba(0,0,0,0.25) calc(100% / 8 - 2px), rgba(0,0,0,0.25) calc(100% / 8));
+.choc-bar-fill {
+  height: 100%;
+  border-radius: 6px;
+  background-color: var(--color-indigo-500);
+  background-image: repeating-linear-gradient(
+    90deg,
+    transparent 0,
+    transparent calc(12.5% - 2px),
+    rgba(0, 0, 0, 0.28) calc(12.5% - 2px),
+    rgba(0, 0, 0, 0.28) 12.5%
+  );
+  transition: width 0.4s ease;
+}
+
+.choc-bar-fill.is-over {
+  background-color: var(--color-rose-500, #e11d48);
+}
+
+.choc-bar-fill.is-loading {
+  width: 100% !important;
+  animation: choc-bar-loading 1.6s ease-in-out infinite;
+}
+
+@keyframes choc-bar-loading {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+/* Trilho de abas — nervura sutil sob o grupo de abas, no lugar de uma
+   linha reta genérica. */
+.choc-tabs {
+  position: relative;
+  padding-bottom: 10px;
+}
+
+.choc-tabs::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 4px;
+  border-radius: 4px;
+  background-color: var(--color-slate-200);
+  background-image: repeating-linear-gradient(
+    90deg,
+    transparent 0,
+    transparent calc(4% - 2px),
+    rgba(0, 0, 0, 0.25) calc(4% - 2px),
+    rgba(0, 0, 0, 0.25) 4%
+  );
 }

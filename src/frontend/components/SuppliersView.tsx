@@ -191,7 +191,7 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
         </div>
       </div>
 
-      <div className="flex items-center gap-2 overflow-x-auto pb-3 scrollbar-hide -mx-4 px-4 md:mx-0 md:px-0">
+      <div className="choc-tabs flex items-center gap-2 overflow-x-auto scrollbar-hide -mx-4 px-4 md:mx-0 md:px-0">
           {[
           { id: 'fornecedores', label: 'Fornecedores' },
           { id: 'produtos', label: 'Produtos' },

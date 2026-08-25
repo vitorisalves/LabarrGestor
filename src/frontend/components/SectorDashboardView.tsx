@@ -142,9 +142,9 @@ export const SectorDashboardView: React.FC<SectorDashboardViewProps> = ({ setore
                 </div>
 
                 {limit > 0 && (
-                  <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
+                  <div className="choc-bar w-full">
                     <div
-                      className={`h-full rounded-full transition-all ${overLimit ? 'bg-rose-500' : 'bg-indigo-500'}`}
+                      className={`choc-bar-fill ${overLimit ? 'is-over' : ''}`}
                       style={{ width: `${pct}%` }}
                     />
                   </div>

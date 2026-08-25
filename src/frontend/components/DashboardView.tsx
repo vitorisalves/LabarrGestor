@@ -1453,10 +1453,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
                 </span>
                 <span className="text-[10px] font-black uppercase tracking-wider text-indigo-600">Aguarde...</span>
               </div>
-              <div className="w-full bg-indigo-100/70 h-2.5 rounded-full overflow-hidden relative">
-                <div className="h-full bg-gradient-to-r from-indigo-500 via-indigo-600 to-indigo-500 rounded-full w-full animate-pulse relative overflow-hidden">
-                  <div className="absolute inset-0 bg-white/30 skew-x-12 animate-[shimmer_1.5s_infinite_linear]" style={{ backgroundImage: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.6), transparent)' }} />
-                </div>
+              <div className="choc-bar w-full">
+                <div className="choc-bar-fill is-loading" />
               </div>
             </div>
           )}
