@@ -5,7 +5,7 @@
 
 import { useState, useEffect } from 'react';
 import { db } from '../firebase';
-import { collection, onSnapshot, doc, setDoc, deleteDoc, getDocs, query, where } from 'firebase/firestore';
+import { collection, onSnapshot, doc, setDoc, deleteDoc, getDocs } from 'firebase/firestore';
 import { Supplier, Product } from '../types';
 import { generateId, extractErrorMessage, safeStringify, handleFirestoreError, OperationType, cleanObject } from '../utils';
 
@@ -253,8 +253,11 @@ export const useSuppliers = (isAuthReady: boolean, isApproved: boolean) => {
     });
 
     try {
-      const id = generateId();
-      await setDoc(doc(db, 'categories', id), { name });
+      await fetch('/api/xml/categories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name })
+      });
       await invalidateBackendCache('categories');
     } catch (err: any) {
       handleFirestoreError(err, OperationType.WRITE, `categories/${name}`);
@@ -271,10 +274,11 @@ export const useSuppliers = (isAuthReady: boolean, isApproved: boolean) => {
     });
 
     try {
-      const q = query(collection(db, 'categories'), where('name', '==', name));
-      const snapshot = await getDocs(q);
-      const deletePromises = snapshot.docs.map(d => deleteDoc(d.ref));
-      await Promise.all(deletePromises);
+      await fetch('/api/xml/categories/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name })
+      });
       await invalidateBackendCache('categories');
     } catch (err: any) {
        handleFirestoreError(err, OperationType.DELETE, `categories/${name}`);
@@ -293,8 +297,11 @@ export const useSuppliers = (isAuthReady: boolean, isApproved: boolean) => {
     });
 
     try {
-      const id = generateId();
-      await setDoc(doc(db, 'setores', id), { name });
+      await fetch('/api/xml/setores', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name })
+      });
       await invalidateBackendCache('setores');
     } catch (err: any) {
       handleFirestoreError(err, OperationType.WRITE, `setores/${name}`);
@@ -311,10 +318,11 @@ export const useSuppliers = (isAuthReady: boolean, isApproved: boolean) => {
     });
 
     try {
-      const q = query(collection(db, 'setores'), where('name', '==', name));
-      const snapshot = await getDocs(q);
-      const deletePromises = snapshot.docs.map(d => deleteDoc(d.ref));
-      await Promise.all(deletePromises);
+      await fetch('/api/xml/setores/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name })
+      });
       await invalidateBackendCache('setores');
     } catch (err: any) {
       handleFirestoreError(err, OperationType.DELETE, `setores/${name}`);

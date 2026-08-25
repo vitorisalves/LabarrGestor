@@ -653,6 +653,64 @@ app.get("/api/xml/setores", handleCacheAndEtag("setores"), asyncHandler(async (r
   }
 }));
 
+app.post("/api/xml/setores", asyncHandler(async (req: Request, res: Response) => {
+  const { name } = req.body;
+  if (!name || !String(name).trim()) {
+    return res.status(400).json({ error: "Nome do setor é obrigatório" });
+  }
+  const trimmed = String(name).trim();
+  const id = trimmed.toLowerCase().replace(/\s+/g, "_");
+  await fsOps.set(fsOps.doc('setores', id), { name: trimmed }, 'setores/' + id);
+  fsOps.invalidateCache('setores');
+  res.json({ status: "success" });
+}));
+
+app.post("/api/xml/setores/delete", asyncHandler(async (req: Request, res: Response) => {
+  const { name } = req.body;
+  if (!name) {
+    return res.status(400).json({ error: "Nome do setor é obrigatório" });
+  }
+  const snapshot = await fsOps.getDocs('setores', 'setores', true);
+  const matches = snapshot.docs.filter((doc: any) => {
+    const d = typeof doc.data === 'function' ? doc.data() : doc.data;
+    return d?.name === name;
+  });
+  for (const doc of matches) {
+    await fsOps.delete(fsOps.doc('setores', doc.id), 'setores/' + doc.id);
+  }
+  fsOps.invalidateCache('setores');
+  res.json({ status: "success", deletedCount: matches.length });
+}));
+
+app.post("/api/xml/categories", asyncHandler(async (req: Request, res: Response) => {
+  const { name } = req.body;
+  if (!name || !String(name).trim()) {
+    return res.status(400).json({ error: "Nome da categoria é obrigatório" });
+  }
+  const trimmed = String(name).trim();
+  const id = trimmed.toLowerCase().replace(/\s+/g, "_");
+  await fsOps.set(fsOps.doc('categories', id), { name: trimmed }, 'categories/' + id);
+  fsOps.invalidateCache('categories');
+  res.json({ status: "success" });
+}));
+
+app.post("/api/xml/categories/delete", asyncHandler(async (req: Request, res: Response) => {
+  const { name } = req.body;
+  if (!name) {
+    return res.status(400).json({ error: "Nome da categoria é obrigatório" });
+  }
+  const snapshot = await fsOps.getDocs('categories', 'categories', true);
+  const matches = snapshot.docs.filter((doc: any) => {
+    const d = typeof doc.data === 'function' ? doc.data() : doc.data;
+    return d?.name === name;
+  });
+  for (const doc of matches) {
+    await fsOps.delete(fsOps.doc('categories', doc.id), 'categories/' + doc.id);
+  }
+  fsOps.invalidateCache('categories');
+  res.json({ status: "success", deletedCount: matches.length });
+}));
+
 app.get("/api/xml/delivered_products", handleCacheAndEtag("delivered_products"), asyncHandler(async (req: Request, res: Response) => {
   try {
     const forceNoCache = req.query.fresh === 'true' || req.headers['cache-control'] === 'no-cache' || req.headers['pragma'] === 'no-cache';
