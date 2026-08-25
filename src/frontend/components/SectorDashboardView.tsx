@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { PieChart, AlertTriangle, CheckCircle, Pencil, Check, X } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, isWithinInterval, parseISO } from 'date-fns';
@@ -13,6 +13,8 @@ import { useSetorLimits } from '../hooks/useSetorLimits';
 
 interface SectorDashboardViewProps {
   setores: string[];
+  invoices: any[];
+  isLoading?: boolean;
 }
 
 const parseDateSafe = (dateStr: string): Date | null => {
@@ -27,9 +29,7 @@ const parseDateSafe = (dateStr: string): Date | null => {
   }
 };
 
-export const SectorDashboardView: React.FC<SectorDashboardViewProps> = ({ setores }) => {
-  const [invoices, setInvoices] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+export const SectorDashboardView: React.FC<SectorDashboardViewProps> = ({ setores, invoices, isLoading = false }) => {
   const [selectedMonth, setSelectedMonth] = useState(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -37,14 +37,6 @@ export const SectorDashboardView: React.FC<SectorDashboardViewProps> = ({ setore
   const { setorLimits, updateSetorLimit } = useSetorLimits();
   const [editingSetor, setEditingSetor] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
-
-  useEffect(() => {
-    fetch('/api/xml/invoices')
-      .then(res => res.json())
-      .then(data => setInvoices(Array.isArray(data) ? data : data.data || []))
-      .catch(err => console.error('Erro ao buscar notas para o dashboard de setores:', err))
-      .finally(() => setIsLoading(false));
-  }, []);
 
   const spendBySetor = useMemo(() => {
     const [y, m] = selectedMonth.split('-').map(Number);
