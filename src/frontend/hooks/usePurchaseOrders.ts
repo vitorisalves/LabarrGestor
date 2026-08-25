@@ -6,7 +6,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { CartItem, PurchaseOrder } from '../types';
 
-export const usePurchaseOrders = (loggedName: string) => {
+export const usePurchaseOrders = (loggedName: string, addAppNotification: (title: string, message: string) => void) => {
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -48,14 +48,16 @@ export const usePurchaseOrders = (loggedName: string) => {
       if (!res.ok) return null;
       const data = await res.json();
       await fetchPurchaseOrders(true);
+      addAppNotification('Nova Requisição de Compra', `"${data.order.name}" foi criada por ${loggedName} e aguarda aprovação.`);
       return data.order as PurchaseOrder;
     } catch (err) {
       console.error('Erro ao criar ordem de compra:', err);
       return null;
     }
-  }, [loggedName, fetchPurchaseOrders]);
+  }, [loggedName, fetchPurchaseOrders, addAppNotification]);
 
   const approveRequisition = useCallback(async (id: string, observacao?: string) => {
+    const order = purchaseOrders.find(o => o.id === id);
     setPurchaseOrders(prev => prev.map(o => o.id === id ? { ...o, status: 'requisition_approved', requisitionApprovedBy: loggedName, observacao } : o));
     try {
       await fetch('/api/xml/purchase_orders/approve-requisition', {
@@ -64,12 +66,14 @@ export const usePurchaseOrders = (loggedName: string) => {
         body: JSON.stringify({ id, approvedBy: loggedName, observacao })
       });
       await fetchPurchaseOrders(true);
+      addAppNotification('Requisição Aprovada', `"${order?.name || 'Requisição'}" foi aprovada por ${loggedName} e aguarda aprovação de compra.`);
     } catch (err) {
       console.error('Erro ao aprovar requisição:', err);
     }
-  }, [loggedName, fetchPurchaseOrders]);
+  }, [loggedName, fetchPurchaseOrders, addAppNotification, purchaseOrders]);
 
   const approveOrder = useCallback(async (id: string, observacao?: string) => {
+    const order = purchaseOrders.find(o => o.id === id);
     setPurchaseOrders(prev => prev.map(o => o.id === id ? { ...o, status: 'approved', approvedBy: loggedName, observacao } : o));
     try {
       await fetch('/api/xml/purchase_orders/approve', {
@@ -78,10 +82,11 @@ export const usePurchaseOrders = (loggedName: string) => {
         body: JSON.stringify({ id, approvedBy: loggedName, observacao })
       });
       await fetchPurchaseOrders(true);
+      addAppNotification('Compra Aprovada', `"${order?.name || 'Compra'}" foi aprovada por ${loggedName} e está pronta para ir à lista de compras.`);
     } catch (err) {
       console.error('Erro ao aprovar ordem de compra:', err);
     }
-  }, [loggedName, fetchPurchaseOrders]);
+  }, [loggedName, fetchPurchaseOrders, addAppNotification, purchaseOrders]);
 
   const rejectOrder = useCallback(async (id: string, observacao?: string) => {
     setPurchaseOrders(prev => prev.map(o => o.id === id ? { ...o, status: 'rejected', rejectedBy: loggedName, observacao } : o));

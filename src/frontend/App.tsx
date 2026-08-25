@@ -149,7 +149,7 @@ export default function App() {
     updateObservacao,
     sendToShoppingList: sendPurchaseOrderToShoppingList,
     deleteOrder: deletePurchaseOrder
-  } = usePurchaseOrders(loggedName);
+  } = usePurchaseOrders(loggedName, addAppNotification);
 
   const sendToShoppingList = React.useCallback(async (id: string) => {
     await sendPurchaseOrderToShoppingList(id);
@@ -491,7 +491,6 @@ export default function App() {
           setIsCartOpen(false);
           setCurrentPage('purchase-orders');
           addNotification('Enviado para aprovação!', 1);
-          addAppNotification('Ordem de Compra Criada', `A lista "${newOrder.name}" foi enviada para aprovação.`);
         }
       }
     } finally {
