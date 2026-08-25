@@ -196,7 +196,19 @@ export const handleFirestoreError = (error: unknown, operationType: OperationTyp
   };
 
   const errStr = errInfo.error.toLowerCase();
-  const isQuota = errStr.includes('quota') || errStr.includes('resource-exhausted') || errStr.includes('limit') || errStr.includes('permission_denied') || errStr.includes('insufficient permissions');
+  const isPermission = errStr.includes('permission_denied') || errStr.includes('insufficient permissions') || errStr.includes('permission-denied');
+  const isQuota = !isPermission && (errStr.includes('quota') || errStr.includes('resource-exhausted') || errStr.includes('limit'));
+
+  if (isPermission) {
+    // Erro de regra de segurança do Firestore para esta coleção específica.
+    // NÃO é um problema de cota, e não vai se resolver sozinho com o tempo —
+    // tratar como "cota excedida" aqui esconderia o erro real (a coleção
+    // ficaria vazia por até 1h em vez de mostrar o erro de permissão) e
+    // ainda derrubaria o acesso de TODAS as outras coleções na mesma
+    // instância. Só loga, deixa o chamador decidir o que fazer.
+    console.error(`[FirestoreError] Permissão negada (${operationType}) em ${path}. Verifique as regras do Firestore para esta coleção.`, safeStringify(errInfo));
+    return errInfo;
+  }
 
   if (isQuota) {
     setQuotaExceededActive();

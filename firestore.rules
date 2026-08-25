@@ -146,6 +146,18 @@ service cloud.firestore {
     match /test_pending_list_products/{document=**} {
       allow read, write: if true;
     }
+    match /test_setores/{document=**} {
+      allow read, write: if true;
+    }
+    match /test_product_setores/{document=**} {
+      allow read, write: if true;
+    }
+    match /test_setor_limits/{document=**} {
+      allow read, write: if true;
+    }
+    match /test_purchase_orders/{document=**} {
+      allow read, write: if true;
+    }
 
     match /pending_list_products/{pendingId} {
       allow read, write: if true;
@@ -186,6 +198,22 @@ service cloud.firestore {
     }
 
     match /product_categories/{pcId} {
+      allow read, write: if true;
+    }
+
+    match /setores/{setorId} {
+      allow read, write: if true;
+    }
+
+    match /product_setores/{psId} {
+      allow read, write: if true;
+    }
+
+    match /setor_limits/{limitId} {
+      allow read, write: if true;
+    }
+
+    match /purchase_orders/{orderId} {
       allow read, write: if true;
     }
 
