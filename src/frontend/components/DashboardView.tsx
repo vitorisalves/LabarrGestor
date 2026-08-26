@@ -1201,7 +1201,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
     let realNFValue = 0;
     let realNFCount = 0;
 
-    xmlSpendings.forEach(spending => {
+    // Usa `invoices`, não `xmlSpendings` - a cópia em xml_spendings não carrega a
+    // lista de produtos (fica vazia), então o valor bruto (vUnComGross) nunca dava
+    // certo por ali; em invoices os produtos vêm completos.
+    invoices.forEach(spending => {
       const dateStr = spending.dhEmi || spending.date || spending.createdAt;
       if (!dateStr) return;
       const spendingDate = parseDateSafe(dateStr);
@@ -1236,7 +1239,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
       totalExpenseMissingNF: Math.max(0, semNFValue - realNFValue),
       activeInvoicesMissingNFCount: Math.max(0, semNFCount - realNFCount)
     };
-  }, [xmlSpendings, endDate]);
+  }, [invoices, endDate]);
 
   // List of invoices inside range
   const invoicesInRange = useMemo(() => {
