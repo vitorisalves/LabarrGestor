@@ -15,6 +15,8 @@ import { ImportModal } from './modals/ImportModal';
 interface ModalsProps {
   isAdding: boolean;
   setIsAdding: (open: boolean) => void;
+  isProductOnlyMode: boolean;
+  setIsProductOnlyMode: (v: boolean) => void;
   editingSupplierId: string | null;
   newName: string;
   setNewName: (name: string) => void;
@@ -108,9 +110,10 @@ interface ModalsProps {
 export const Modals: React.FC<ModalsProps> = (props) => {
   return (
     <>
-      <SupplierModal 
+      <SupplierModal
         isOpen={props.isAdding}
-        onClose={() => { props.setIsAdding(false); props.resetForm(); }}
+        onClose={() => { props.setIsAdding(false); props.resetForm(); props.setIsProductOnlyMode(false); }}
+        isProductOnlyMode={props.isProductOnlyMode}
         editingSupplierId={props.editingSupplierId}
         name={props.newName}
         setName={props.setNewName}

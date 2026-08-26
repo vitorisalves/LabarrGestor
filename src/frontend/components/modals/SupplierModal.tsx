@@ -9,6 +9,7 @@ import { CategoryMultiSelect } from '../products/CategoryMultiSelect';
 interface SupplierModalProps {
   isOpen: boolean;
   onClose: () => void;
+  isProductOnlyMode?: boolean;
   editingSupplierId: string | null;
   name: string;
   setName: (name: string) => void;
@@ -40,6 +41,7 @@ interface SupplierModalProps {
 export const SupplierModal: React.FC<SupplierModalProps> = ({
   isOpen,
   onClose,
+  isProductOnlyMode = false,
   editingSupplierId,
   name,
   setName,
@@ -100,9 +102,11 @@ export const SupplierModal: React.FC<SupplierModalProps> = ({
             <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
               <div>
                 <h2 className="text-lg md:text-xl font-bold text-slate-900 leading-tight">
-                  {editingSupplierId ? 'Editar Fornecedor' : 'Novo Fornecedor'}
+                  {isProductOnlyMode ? 'Novo Produto' : (editingSupplierId ? 'Editar Fornecedor' : 'Novo Fornecedor')}
                 </h2>
-                <p className="text-[10px] md:text-xs text-slate-400 font-bold uppercase tracking-widest">Informações do parceiro e catálogo</p>
+                <p className="text-[10px] md:text-xs text-slate-400 font-bold uppercase tracking-widest">
+                  {isProductOnlyMode ? 'Informações do produto' : 'Informações do parceiro e catálogo'}
+                </p>
               </div>
               <button 
                 onClick={onClose}
@@ -114,35 +118,37 @@ export const SupplierModal: React.FC<SupplierModalProps> = ({
 
             <div className="flex-1 overflow-y-auto p-6 space-y-8">
               {/* Info Básica */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Empresa</label>
-                  <input
-                    type="text"
-                    placeholder="Ex: Distribuidora"
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-100 focus:border-indigo-500 focus:bg-white rounded-xl outline-none transition-all font-medium text-sm"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                  />
+              {!isProductOnlyMode && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Empresa</label>
+                    <input
+                      type="text"
+                      placeholder="Ex: Distribuidora"
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-100 focus:border-indigo-500 focus:bg-white rounded-xl outline-none transition-all font-medium text-sm"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Telefone (opcional)</label>
+                    <input
+                      type="text"
+                      placeholder="(00) 00000-0000"
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-100 focus:border-indigo-500 focus:bg-white rounded-xl outline-none transition-all font-medium text-sm"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                    />
+                  </div>
                 </div>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Telefone (opcional)</label>
-                  <input
-                    type="text"
-                    placeholder="(00) 00000-0000"
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-100 focus:border-indigo-500 focus:bg-white rounded-xl outline-none transition-all font-medium text-sm"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                  />
-                </div>
-              </div>
+              )}
 
               {/* Seção de Produtos */}
               <div className="space-y-6">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                   <h3 className="text-base font-bold text-slate-800 flex items-center gap-3 uppercase tracking-tight">
                     <Package className="w-5 h-5 text-indigo-600" />
-                    Catálogo de Produtos
+                    {isProductOnlyMode ? 'Produtos Sem Fornecedor' : 'Catálogo de Produtos'}
                   </h3>
                   <div className="flex items-center gap-3">
                     <div className="relative">
@@ -363,7 +369,7 @@ export const SupplierModal: React.FC<SupplierModalProps> = ({
                 className="w-full sm:w-auto px-8 py-3 bg-indigo-600 text-white rounded-xl text-sm font-bold shadow-md hover:bg-indigo-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {isSaving && <Loader2 className="w-4 h-4 animate-spin" />}
-                {editingSupplierId ? 'Salvar Alterações' : 'Cadastrar Fornecedor'}
+                {isProductOnlyMode ? 'Salvar Produto' : (editingSupplierId ? 'Salvar Alterações' : 'Cadastrar Fornecedor')}
               </button>
             </div>
           </motion.div>

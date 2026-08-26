@@ -402,6 +402,7 @@ export default function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isFinalizing, setIsFinalizing] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
+  const [isProductOnlyMode, setIsProductOnlyMode] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
     return localStorage.getItem('theme_mode') === 'dark';
@@ -614,13 +615,30 @@ export default function App() {
     const productIndex = supplier.products.findIndex(p => p.name === product.name);
     setEditingProductIndex(productIndex);
 
+    setIsProductOnlyMode(false);
     setIsAdding(true);
   }, [suppliers, setEditingSupplierId, setProductList, setFormState, setEditingProductIndex, setIsAdding]);
 
+  const DEFAULT_PRODUCT_SUPPLIER_NAME = 'Sem Fornecedor';
+
   const onOpenNewProduct = React.useCallback(() => {
-    resetForm();
+    const existing = suppliers.find(s => s.name.trim().toLowerCase() === DEFAULT_PRODUCT_SUPPLIER_NAME.toLowerCase());
+    setEditingSupplierId(existing?.id || null);
+    setProductList(existing?.products || []);
+    setFormState({
+        name: DEFAULT_PRODUCT_SUPPLIER_NAME,
+        phone: existing?.phone || '',
+        productName: '',
+        productPrice: '',
+        productCategories: [],
+        productLastPurchaseDate: '',
+        productPaymentMethod: '',
+        productCode: ''
+    });
+    setEditingProductIndex(null);
+    setIsProductOnlyMode(true);
     setIsAdding(true);
-  }, [resetForm, setIsAdding]);
+  }, [suppliers, setEditingSupplierId, setProductList, setFormState, setEditingProductIndex, setIsAdding]);
 
   // --- RENDER HELPERS ---
   const mainSuppliers = React.useMemo(() => 
@@ -759,8 +777,8 @@ export default function App() {
               onRefresh={refreshSuppliers}
               searchTerm={searchTerm}
               setSearchTerm={setSearchTerm}
-              setIsAdding={setIsAdding}
-              handleEditSupplier={(s) => onEditSupplier(s, setIsAdding)}
+              setIsAdding={(v) => { if (v) setIsProductOnlyMode(false); setIsAdding(v); }}
+              handleEditSupplier={(s) => { setIsProductOnlyMode(false); onEditSupplier(s, setIsAdding); }}
               setSupplierToDelete={(id) => setDeletion('supplier', id)}
               addToCart={handleAddToCart}
               handleExportExcel={handleExportExcel}
@@ -852,9 +870,11 @@ export default function App() {
         </React.Suspense>
       </AnimatePresence>
 
-      <Modals 
+      <Modals
         isAdding={isAdding}
         setIsAdding={setIsAdding}
+        isProductOnlyMode={isProductOnlyMode}
+        setIsProductOnlyMode={setIsProductOnlyMode}
         editingSupplierId={editingSupplierId}
         newName={formState.name}
         setNewName={(name) => setFormState(prev => ({ ...prev, name }))}
