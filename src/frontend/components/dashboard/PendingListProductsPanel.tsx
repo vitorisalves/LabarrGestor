@@ -22,6 +22,7 @@ interface PendingListProductsPanelProps {
   handlePendingQuantityChange: (id: string, newQuantity: number) => Promise<void>;
   handlePendingCategoryChange: (id: string, newCategory: string) => Promise<void>;
   handlePendingSetorChange: (id: string, newSetor: string) => Promise<void>;
+  handlePendingNFChange: (id: string, hasNF: boolean) => Promise<void>;
   handleToggleSelectAllPending: () => void;
   handleToggleSelectPending: (id: string) => void;
   handleApplyBulkPendingCategory: () => Promise<void>;
@@ -49,6 +50,7 @@ export const PendingListProductsPanel: React.FC<PendingListProductsPanelProps> =
   handlePendingQuantityChange,
   handlePendingCategoryChange,
   handlePendingSetorChange,
+  handlePendingNFChange,
   handleToggleSelectAllPending,
   handleToggleSelectPending,
   handleApplyBulkPendingCategory,
@@ -207,6 +209,7 @@ export const PendingListProductsPanel: React.FC<PendingListProductsPanelProps> =
                     <th className="p-3.5 w-36">Total (R$)</th>
                     <th className="p-3.5 w-48">Categoria</th>
                     <th className="p-3.5 w-40">Setor</th>
+                    <th className="p-3.5 w-32">NF</th>
                     <th className="p-3.5 w-16 text-center">Ações</th>
                   </tr>
                 </thead>
@@ -274,6 +277,20 @@ export const PendingListProductsPanel: React.FC<PendingListProductsPanelProps> =
                             {setores.map((s) => (
                               <option key={s} value={s}>{s}</option>
                             ))}
+                          </select>
+                        </td>
+                        <td className="p-3.5">
+                          <select
+                            value={p.hasNF === true ? 'NF' : 'SEM_NF'}
+                            onChange={(e) => handlePendingNFChange(p.id, e.target.value === 'NF')}
+                            className={`w-full border font-black rounded-lg px-2.5 py-1 text-[11px] uppercase tracking-wide outline-none ${
+                              p.hasNF === true
+                                ? 'bg-emerald-50 border-emerald-200 text-emerald-700 focus:border-emerald-500'
+                                : 'bg-amber-50 border-amber-200 text-amber-700 focus:border-amber-500'
+                            }`}
+                          >
+                            <option value="SEM_NF">Sem NF</option>
+                            <option value="NF">NF</option>
                           </select>
                         </td>
                         <td className="p-3.5 text-center">

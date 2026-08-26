@@ -1435,6 +1435,7 @@ app.post("/api/xml/pending-list-products/confirm", asyncHandler(async (req: Requ
       vNF: totalVal,
       total: totalVal,
       source: 'shopping_list',
+      hasNF: it.hasNF === true,
       listName: it.listName || 'Minhas Listas',
       products: [{
         code: `LIST_${String(it.productName || 'PROD').toUpperCase()}`,

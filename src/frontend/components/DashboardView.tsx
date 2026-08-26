@@ -1174,6 +1174,34 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
     return activeInvoicesCount > 0 ? totalExpense / activeInvoicesCount : 0;
   }, [totalExpense, activeInvoicesCount]);
 
+  // Produtos confirmados pela lista de compras que ainda não têm NF real (source
+  // 'shopping_list' e hasNF !== true) contam à parte, para não misturar com o
+  // gasto/notas já lastreados por uma nota fiscal de verdade.
+  const isMissingNF = (item: any) => item?.source === 'shopping_list' && item?.hasNF !== true;
+
+  const { totalExpenseMissingNF, activeInvoicesMissingNFCount } = useMemo(() => {
+    const start = new Date(startDate + 'T00:00:00');
+    const end = new Date(endDate + 'T23:59:59');
+    let value = 0;
+    let count = 0;
+
+    xmlSpendings.forEach(spending => {
+      const dateStr = spending.dhEmi || spending.date || spending.createdAt;
+      if (!dateStr) return;
+      const spendingDate = parseDateSafe(dateStr);
+      if (!spendingDate || !isWithinInterval(spendingDate, { start, end })) return;
+      if (!isMissingNF(spending)) return;
+
+      const val = typeof spending.vTotTrib === 'number' && spending.vTotTrib > 0
+        ? spending.vTotTrib
+        : (spending.vNF || spending.total || 0);
+      value += val;
+      count += 1;
+    });
+
+    return { totalExpenseMissingNF: value, activeInvoicesMissingNFCount: count };
+  }, [xmlSpendings, startDate, endDate]);
+
   // List of invoices inside range
   const invoicesInRange = useMemo(() => {
     const start = new Date(startDate + 'T00:00:00');
@@ -1405,12 +1433,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
       </div>
 
       <DashboardStatsCards
-        totalExpense={totalExpense}
-        activeInvoicesCount={activeInvoicesCount}
+        totalExpense={selectedCategoryName ? totalExpense : totalExpense - totalExpenseMissingNF}
+        activeInvoicesCount={selectedCategoryName ? activeInvoicesCount : activeInvoicesCount - activeInvoicesMissingNFCount}
         averageInvoiceValue={averageInvoiceValue}
         isLoading={isLoading}
         selectedCategoryName={selectedCategoryName}
         xmlSpendings={xmlSpendings}
+        totalExpenseMissingNF={selectedCategoryName ? 0 : totalExpenseMissingNF}
+        activeInvoicesMissingNFCount={selectedCategoryName ? 0 : activeInvoicesMissingNFCount}
       />
 
       <PendingListProductsPanel

@@ -95,6 +95,19 @@ export const usePendingListProductsPanel = (
     }
   };
 
+  const handlePendingNFChange = async (id: string, hasNF: boolean) => {
+    const updated = pendingListProducts.map(p => p.id === id ? { ...p, hasNF } : p);
+    setPendingListProducts(updated);
+    const target = updated.find(p => p.id === id);
+    if (target) {
+      await fetch('/api/xml/pending-list-products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ item: target })
+      }).catch(console.error);
+    }
+  };
+
   const handleToggleSelectAllPending = () => {
     if (selectedPendingIds.length === pendingListProducts.length) {
       setSelectedPendingIds([]);
@@ -243,6 +256,7 @@ export const usePendingListProductsPanel = (
     handlePendingQuantityChange,
     handlePendingCategoryChange,
     handlePendingSetorChange,
+    handlePendingNFChange,
     handleToggleSelectAllPending,
     handleToggleSelectPending,
     handleApplyBulkPendingCategory,

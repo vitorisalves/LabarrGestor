@@ -269,6 +269,7 @@ export default function App() {
           price: item.price || 0,
           category: 'Ingredientes',
           setor: (item as any).setor || '',
+          hasNF: false,
           date: now.toISOString(),
           status: 'pending'
         };

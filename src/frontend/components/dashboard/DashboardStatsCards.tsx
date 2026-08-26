@@ -14,6 +14,8 @@ interface DashboardStatsCardsProps {
   isLoading?: boolean;
   selectedCategoryName?: string;
   xmlSpendings?: any[];
+  totalExpenseMissingNF?: number;
+  activeInvoicesMissingNFCount?: number;
 }
 
 export const DashboardStatsCards: React.FC<DashboardStatsCardsProps> = ({
@@ -22,7 +24,9 @@ export const DashboardStatsCards: React.FC<DashboardStatsCardsProps> = ({
   averageInvoiceValue,
   isLoading = false,
   selectedCategoryName = '',
-  xmlSpendings = []
+  xmlSpendings = [],
+  totalExpenseMissingNF = 0,
+  activeInvoicesMissingNFCount = 0
 }) => {
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -34,9 +38,22 @@ export const DashboardStatsCards: React.FC<DashboardStatsCardsProps> = ({
         <p className="text-[10px] font-black text-slate-600 uppercase tracking-widest mb-2">
           {selectedCategoryName ? `Gasto no Período (${selectedCategoryName})` : "Gasto no Período (XML)"}
         </p>
-        <h3 className="text-3xl font-black text-indigo-700 tracking-tighter">
-          {isLoading ? "Carregando..." : formatCurrency(totalExpense)}
-        </h3>
+        <div className="flex items-end gap-4 flex-wrap">
+          <div>
+            <h3 className="text-3xl font-black text-indigo-700 tracking-tighter">
+              {isLoading ? "Carregando..." : formatCurrency(totalExpense)}
+            </h3>
+            <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest mt-0.5">Com NF</p>
+          </div>
+          {totalExpenseMissingNF > 0 && (
+            <div>
+              <h3 className="text-xl font-black text-amber-600 tracking-tighter">
+                {isLoading ? "..." : formatCurrency(totalExpenseMissingNF)}
+              </h3>
+              <p className="text-[9px] text-amber-600/80 font-black uppercase tracking-widest mt-0.5">Faltando NF</p>
+            </div>
+          )}
+        </div>
         <p className="text-xs text-slate-500 font-bold mt-2">
           {selectedCategoryName ? `Filtrado pela categoria "${selectedCategoryName}"` : "Data de Emissão (dhEmi) filtrada"}
         </p>
@@ -48,9 +65,22 @@ export const DashboardStatsCards: React.FC<DashboardStatsCardsProps> = ({
           <FileText className="w-24 h-24 text-emerald-600" />
         </div>
         <p className="text-[10px] font-black text-slate-600 uppercase tracking-widest mb-2">Notas Emitidas no Período</p>
-        <h3 className="text-3xl font-black text-emerald-600 tracking-tighter">
-          {isLoading ? "..." : `${activeInvoicesCount} notas`}
-        </h3>
+        <div className="flex items-end gap-4 flex-wrap">
+          <div>
+            <h3 className="text-3xl font-black text-emerald-600 tracking-tighter">
+              {isLoading ? "..." : `${activeInvoicesCount} notas`}
+            </h3>
+            <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest mt-0.5">Emitidas</p>
+          </div>
+          {activeInvoicesMissingNFCount > 0 && (
+            <div>
+              <h3 className="text-xl font-black text-amber-600 tracking-tighter">
+                {isLoading ? "..." : `${activeInvoicesMissingNFCount} notas`}
+              </h3>
+              <p className="text-[9px] text-amber-600/80 font-black uppercase tracking-widest mt-0.5">Faltando</p>
+            </div>
+          )}
+        </div>
         <p className="text-xs text-slate-500 font-bold mt-2">Total geral enviado: {xmlSpendings.length}</p>
       </div>
 
