@@ -513,6 +513,17 @@ export const fsOps = {
         empty: docs.length === 0
       };
     }
+
+    // No Vercel, o Modo de Teste lê direto da coleção real "test_<nome>" (ver acima),
+    // mas cada instância serverless tem sua própria cópia do cache em memória/disco
+    // desta função — uma instância pode confirmar/excluir um item enquanto outra,
+    // com cache ainda "quente", devolve o dado antigo. Como o Modo de Teste é para
+    // testes manuais (volume baixo), sempre buscamos direto do Firestore nesse caso,
+    // sem usar ou alimentar esse cache entre instâncias.
+    if (isTestModeActive() && IS_VERCEL) {
+      forceNoCache = true;
+    }
+
     let cacheKey = typeof collOrQuery === 'string' ? collOrQuery : (path.split('/')[0] || 'query');
     if (cacheKey !== 'query' && prefix && !cacheKey.startsWith(prefix)) {
       cacheKey = prefix + cacheKey;
@@ -660,6 +671,10 @@ export const fsOps = {
         data: () => (found ? found.data : {}),
         id: ref.id
       };
+    }
+
+    if (isTestModeActive() && IS_VERCEL) {
+      forceNoCache = true;
     }
 
     const prefix = getCollectionPrefix();
