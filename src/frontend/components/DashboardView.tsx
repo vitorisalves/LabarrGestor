@@ -96,6 +96,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
   const [categories, setCategories] = useState<any[]>([]);
   const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
   const [bulkCategory, setBulkCategory] = useState<string>('');
+  const [bulkSetor, setBulkSetor] = useState<string>('');
 
 
   const [selectedChartCategory, setSelectedChartCategory] = useState<string>('');
@@ -379,6 +380,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
           vUnCom,
           quantity: qTrib,
           categoryId: productMemory[code] || '',
+          setor: '',
           deleted: false
         });
       }
@@ -461,6 +463,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
     });
   };
 
+  const handleProductSetorChange = (invoiceIdx: number, productIdx: number, setor: string) => {
+    setBatchPreview(prev => {
+      const next = [...prev];
+      next[invoiceIdx].products[productIdx].setor = setor;
+      return next;
+    });
+  };
+
   const handleToggleProductDeletion = (invoiceIdx: number, productIdx: number) => {
     setBatchPreview(prev => {
       const next = [...prev];
@@ -488,6 +498,20 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
     });
     setSelectedProducts([]);
     setBulkCategory('');
+  };
+
+  const handleBulkSetorize = () => {
+    if (!bulkSetor) return;
+    setBatchPreview(prev => {
+      const next = [...prev];
+      selectedProducts.forEach(id => {
+        const [iIdx, pIdx] = id.split('-').map(Number);
+        next[iIdx].products[pIdx].setor = bulkSetor;
+      });
+      return next;
+    });
+    setSelectedProducts([]);
+    setBulkSetor('');
   };
 
   const handleBulkDelete = () => {
@@ -526,9 +550,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
 
     try {
       const payloads = batchPreview.map(p => {
-        const overrides: Record<string, { categoryId?: string, deleted?: boolean }> = {};
+        const overrides: Record<string, { categoryId?: string, deleted?: boolean, setor?: string }> = {};
         p.products.forEach((prod: any) => {
-          overrides[prod.code] = { categoryId: prod.categoryId, deleted: prod.deleted };
+          overrides[prod.code] = { categoryId: prod.categoryId, deleted: prod.deleted, setor: prod.setor };
         });
         return { xmlText: p.xmlText, overrides };
       });
@@ -1355,13 +1379,18 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
           setBatchPreview([]);
         }}
         onProductCategoryChange={handleProductCategoryChange}
+        onProductSetorChange={handleProductSetorChange}
         onToggleProductDeletion={handleToggleProductDeletion}
         onBulkCategorize={handleBulkCategorize}
+        onBulkSetorize={handleBulkSetorize}
         onBulkDelete={handleBulkDelete}
         onConfirm={handleConfirmBatchImport}
         categories={normalizedCategories}
+        setores={setores}
         bulkCategory={bulkCategory}
         setBulkCategory={setBulkCategory}
+        bulkSetor={bulkSetor}
+        setBulkSetor={setBulkSetor}
         selectedProducts={selectedProducts}
         setSelectedProducts={setSelectedProducts}
         toggleProductSelection={toggleProductSelection}

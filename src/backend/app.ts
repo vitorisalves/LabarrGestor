@@ -323,6 +323,7 @@ app.post("/api/xml/process-batch", asyncHandler(async (req: Request, res: Respon
           const over = item.overrides[p.code];
           if (over?.deleted) return false;
           if (over?.categoryId) p.categoryId = over.categoryId;
+          if (over?.setor) p.setor = over.setor;
           return true;
         });
         // Recalculate invoice total based on remaining products

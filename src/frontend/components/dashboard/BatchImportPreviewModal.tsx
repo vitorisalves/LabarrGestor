@@ -16,13 +16,18 @@ interface BatchImportPreviewModalProps {
   batchPreview: any[];
   onClose: () => void;
   onProductCategoryChange: (invoiceIdx: number, productIdx: number, categoryId: string) => void;
+  onProductSetorChange: (invoiceIdx: number, productIdx: number, setor: string) => void;
   onToggleProductDeletion: (invoiceIdx: number, productIdx: number) => void;
   onBulkCategorize: () => void;
+  onBulkSetorize: () => void;
   onBulkDelete: () => void;
   onConfirm: () => Promise<void>;
   categories: any[];
+  setores: string[];
   bulkCategory: string;
   setBulkCategory: (value: string) => void;
+  bulkSetor: string;
+  setBulkSetor: (value: string) => void;
   selectedProducts: string[];
   setSelectedProducts: (value: string[]) => void;
   toggleProductSelection: (id: string) => void;
@@ -35,13 +40,18 @@ export const BatchImportPreviewModal: React.FC<BatchImportPreviewModalProps> = (
   batchPreview,
   onClose,
   onProductCategoryChange,
+  onProductSetorChange,
   onToggleProductDeletion,
   onBulkCategorize,
+  onBulkSetorize,
   onBulkDelete,
   onConfirm,
   categories,
+  setores,
   bulkCategory,
   setBulkCategory,
+  bulkSetor,
+  setBulkSetor,
   selectedProducts,
   setSelectedProducts,
   toggleProductSelection,
@@ -97,6 +107,24 @@ export const BatchImportPreviewModal: React.FC<BatchImportPreviewModalProps> = (
             >
               Categorizar Selecionados
             </button>
+            <select
+              value={bulkSetor}
+              onChange={(e) => setBulkSetor(e.target.value)}
+              className="bg-white border border-slate-200 text-slate-700 text-xs font-bold rounded-lg px-3 py-2 outline-none focus:border-indigo-500"
+            >
+              <option value="">-- Selecionar Setor --</option>
+              {setores.map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={onBulkSetorize}
+              disabled={!bulkSetor || selectedProducts.length === 0}
+              className="px-3 py-2 bg-indigo-100 text-indigo-700 hover:bg-indigo-200 disabled:opacity-50 text-xs font-black uppercase rounded-lg transition-colors"
+            >
+              Setorizar Selecionados
+            </button>
             <button
               type="button"
               onClick={onBulkDelete}
@@ -130,6 +158,7 @@ export const BatchImportPreviewModal: React.FC<BatchImportPreviewModalProps> = (
                   <th className="p-3 text-right text-[10px] font-black text-slate-600 uppercase tracking-wider">Valor Un.</th>
                   <th className="p-3 text-right text-[10px] font-black text-slate-600 uppercase tracking-wider">Qtd</th>
                   <th className="p-3 text-[10px] font-black text-slate-600 uppercase tracking-wider">Categoria</th>
+                  <th className="p-3 text-[10px] font-black text-slate-600 uppercase tracking-wider">Setor</th>
                   <th className="p-3 text-center text-[10px] font-black text-slate-600 uppercase tracking-wider">Status</th>
                 </tr>
               </thead>
@@ -167,6 +196,18 @@ export const BatchImportPreviewModal: React.FC<BatchImportPreviewModalProps> = (
                               <option value="">Sem Categoria</option>
                               {categories.map((c: any) => (
                                 <option key={c.id} value={c.id}>{c.name}</option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="p-3">
+                            <select
+                              value={prod.setor || ''}
+                              onChange={(e) => onProductSetorChange(iIdx, pIdx, e.target.value)}
+                              className="w-full bg-white border border-slate-200 text-slate-700 text-xs font-bold rounded-lg px-2 py-1 outline-none focus:border-indigo-500"
+                            >
+                              <option value="">-- Selecionar --</option>
+                              {setores.map((s) => (
+                                <option key={s} value={s}>{s}</option>
                               ))}
                             </select>
                           </td>
