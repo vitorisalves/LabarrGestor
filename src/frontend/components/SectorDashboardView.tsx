@@ -47,6 +47,9 @@ export const SectorDashboardView: React.FC<SectorDashboardViewProps> = ({ setore
     const map = new Map<string, number>();
 
     invoices.forEach((inv: any) => {
+      // Entradas confirmadas pela lista de compras (source 'shopping_list') não são
+      // NF de verdade - ficam de fora daqui, só entram em "Faltando NF" abaixo.
+      if (inv.source === 'shopping_list') return;
       const dateStr = inv.date || inv.dhEmi || inv.createdAt;
       if (!dateStr) return;
       const spendingDate = parseDateSafe(dateStr);
@@ -62,6 +65,47 @@ export const SectorDashboardView: React.FC<SectorDashboardViewProps> = ({ setore
     });
 
     return map;
+  }, [invoices, selectedMonth]);
+
+  // Mesma lógica de saldo do "Faltando NF" do Dashboard XML, só que por setor:
+  // cada produto confirmado Sem NF soma na dívida daquele setor, e cada NF real
+  // (produto com o mesmo setor, valor bruto antes de desconto) abate essa dívida,
+  // olhando para trás desde o início até o fim do mês selecionado.
+  const missingNFBySetor = useMemo(() => {
+    const [y, m] = selectedMonth.split('-').map(Number);
+    const end = endOfMonth(new Date(y, m - 1, 1));
+
+    const semNF = new Map<string, number>();
+    const realNF = new Map<string, number>();
+
+    invoices.forEach((inv: any) => {
+      const dateStr = inv.date || inv.dhEmi || inv.createdAt;
+      if (!dateStr) return;
+      const spendingDate = parseDateSafe(dateStr);
+      if (!spendingDate || spendingDate > end) return;
+
+      const isMissing = inv.source === 'shopping_list' && inv.hasNF !== true;
+
+      (inv.products || []).filter((p: any) => !p.deleted).forEach((p: any) => {
+        if (!p.setor) return;
+        if (isMissing) {
+          const val = p.totalNet !== undefined
+            ? p.totalNet
+            : (p.vUnCom || p.price || 0) * (p.quantity || 1);
+          semNF.set(p.setor, (semNF.get(p.setor) || 0) + val);
+        } else if (inv.source !== 'shopping_list') {
+          const grossVal = (p.vUnComGross || p.vUnCom || p.price || 0) * (p.quantity || 1);
+          realNF.set(p.setor, (realNF.get(p.setor) || 0) + grossVal);
+        }
+      });
+    });
+
+    const result = new Map<string, number>();
+    const allSetores = new Set([...semNF.keys(), ...realNF.keys()]);
+    allSetores.forEach(s => {
+      result.set(s, Math.max(0, (semNF.get(s) || 0) - (realNF.get(s) || 0)));
+    });
+    return result;
   }, [invoices, selectedMonth]);
 
   const startEdit = (setor: string) => {
@@ -120,6 +164,7 @@ export const SectorDashboardView: React.FC<SectorDashboardViewProps> = ({ setore
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
           {setores.map(setor => {
             const spent = spendBySetor.get(setor) || 0;
+            const missingNF = missingNFBySetor.get(setor) || 0;
             const limit = setorLimits[setor] || 0;
             const pct = limit > 0 ? Math.min(100, (spent / limit) * 100) : 0;
             const overLimit = limit > 0 && spent > limit;
@@ -136,9 +181,17 @@ export const SectorDashboardView: React.FC<SectorDashboardViewProps> = ({ setore
                   ) : null}
                 </div>
 
-                <div>
-                  <span className="text-2xl font-black text-slate-900">{formatCurrency(spent)}</span>
-                  <span className="text-xs font-bold text-slate-400 ml-1">gasto no mês</span>
+                <div className="flex items-end gap-3 flex-wrap">
+                  <div>
+                    <span className="text-2xl font-black text-slate-900">{formatCurrency(spent)}</span>
+                    <span className="text-xs font-bold text-slate-400 ml-1">gasto no mês</span>
+                  </div>
+                  {missingNF > 0 && (
+                    <div>
+                      <span className="text-base font-black text-amber-600">{formatCurrency(missingNF)}</span>
+                      <p className="text-[9px] text-amber-600/80 font-black uppercase tracking-widest">Faltando NF</p>
+                    </div>
+                  )}
                 </div>
 
                 {limit > 0 && (
