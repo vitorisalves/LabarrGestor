@@ -1174,33 +1174,46 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
     return activeInvoicesCount > 0 ? totalExpense / activeInvoicesCount : 0;
   }, [totalExpense, activeInvoicesCount]);
 
-  // Produtos confirmados pela lista de compras que ainda não têm NF real (source
-  // 'shopping_list' e hasNF !== true) contam à parte, para não misturar com o
-  // gasto/notas já lastreados por uma nota fiscal de verdade.
+  // "Faltando NF" é um saldo acumulado, não um pareamento produto a produto: cada
+  // produto confirmado como Sem NF soma nesse saldo, e cada nota fiscal real que
+  // entra (de qualquer produto) abate esse saldo, até idealmente chegar a zero.
+  // Por isso o valor "faltando" de um período é a diferença entre tudo que já foi
+  // confirmado Sem NF e tudo que já entrou como NF real, olhando para trás desde o
+  // início (não só dentro do intervalo selecionado) até o fim do período escolhido —
+  // assim dá pra voltar num mês passado e ver quanto ainda estava faltando na época.
   const isMissingNF = (item: any) => item?.source === 'shopping_list' && item?.hasNF !== true;
 
   const { totalExpenseMissingNF, activeInvoicesMissingNFCount } = useMemo(() => {
-    const start = new Date(startDate + 'T00:00:00');
     const end = new Date(endDate + 'T23:59:59');
-    let value = 0;
-    let count = 0;
+    let semNFValue = 0;
+    let semNFCount = 0;
+    let realNFValue = 0;
+    let realNFCount = 0;
 
     xmlSpendings.forEach(spending => {
       const dateStr = spending.dhEmi || spending.date || spending.createdAt;
       if (!dateStr) return;
       const spendingDate = parseDateSafe(dateStr);
-      if (!spendingDate || !isWithinInterval(spendingDate, { start, end })) return;
-      if (!isMissingNF(spending)) return;
+      if (!spendingDate || spendingDate > end) return;
 
       const val = typeof spending.vTotTrib === 'number' && spending.vTotTrib > 0
         ? spending.vTotTrib
         : (spending.vNF || spending.total || 0);
-      value += val;
-      count += 1;
+
+      if (isMissingNF(spending)) {
+        semNFValue += val;
+        semNFCount += 1;
+      } else {
+        realNFValue += val;
+        realNFCount += 1;
+      }
     });
 
-    return { totalExpenseMissingNF: value, activeInvoicesMissingNFCount: count };
-  }, [xmlSpendings, startDate, endDate]);
+    return {
+      totalExpenseMissingNF: Math.max(0, semNFValue - realNFValue),
+      activeInvoicesMissingNFCount: Math.max(0, semNFCount - realNFCount)
+    };
+  }, [xmlSpendings, endDate]);
 
   // List of invoices inside range
   const invoicesInRange = useMemo(() => {
