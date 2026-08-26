@@ -595,6 +595,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
     const processedInvoiceIds = new Set<string>();
 
     invoices.forEach(inv => {
+      // Entradas confirmadas pela lista de compras (source 'shopping_list') são
+      // provisórias, não uma NF de verdade — não entram no Gasto no Período pra
+      // não duplicar quando a NF real do mesmo valor chegar depois. Elas só
+      // alimentam o saldo "Faltando NF" (calculado mais abaixo).
+      if (inv.source === 'shopping_list') return;
       const dateStr = inv.date || inv.dhEmi || inv.createdAt;
       if (!dateStr) return;
       const spendingDate = parseDateSafe(dateStr);
@@ -671,6 +676,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
     if (!selectedChartCategory) {
       xmlSpendings.forEach(spending => {
         if (spending.id && processedInvoiceIds.has(spending.id)) return;
+        if (spending.source === 'shopping_list') return;
         const dateStr = spending.dhEmi || spending.date || spending.createdAt;
         if (!dateStr) return;
         const spendingDate = parseDateSafe(dateStr);
@@ -693,6 +699,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
     const processedInvoiceIds = new Set<string>();
 
     invoices.forEach(inv => {
+      if (inv.source === 'shopping_list') return;
       const dateStr = inv.date || inv.dhEmi || inv.createdAt;
       if (!dateStr) return;
       const spendingDate = parseDateSafe(dateStr);
@@ -759,6 +766,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
     // em invoices também entram, agrupadas em "Sem Categoria".
     xmlSpendings.forEach(spending => {
       if (spending.id && processedInvoiceIds.has(spending.id)) return;
+      if (spending.source === 'shopping_list') return;
       const dateStr = spending.dhEmi || spending.date || spending.createdAt;
       if (!dateStr) return;
       const spendingDate = parseDateSafe(dateStr);
@@ -1163,6 +1171,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
     const end = new Date(endDate + 'T23:59:59');
     
     return xmlSpendings.filter(spending => {
+      // Só conta nota fiscal de verdade (importada via XML) - entradas confirmadas
+      // pela lista de compras não são uma NF emitida.
+      if (spending.source === 'shopping_list') return false;
       const dateStr = spending.dhEmi || spending.date || spending.createdAt;
       if (!dateStr) return false;
       const spendingDate = parseDateSafe(dateStr);
@@ -1201,9 +1212,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
         : (spending.vNF || spending.total || 0);
 
       if (isMissingNF(spending)) {
+        // Confirmado pela lista de compras, ainda sem NF real: soma na dívida.
         semNFValue += val;
         semNFCount += 1;
-      } else {
+      } else if (spending.source !== 'shopping_list') {
+        // NF real (importada via XML): abate a dívida. Um item da lista marcado
+        // manualmente como "NF" não conta aqui nem em Gasto no Período - ele só
+        // sai da dívida, sem gerar um segundo lançamento de gasto.
         realNFValue += val;
         realNFCount += 1;
       }
@@ -1446,8 +1461,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
       </div>
 
       <DashboardStatsCards
-        totalExpense={selectedCategoryName ? totalExpense : totalExpense - totalExpenseMissingNF}
-        activeInvoicesCount={selectedCategoryName ? activeInvoicesCount : activeInvoicesCount - activeInvoicesMissingNFCount}
+        totalExpense={totalExpense}
+        activeInvoicesCount={activeInvoicesCount}
         averageInvoiceValue={averageInvoiceValue}
         isLoading={isLoading}
         selectedCategoryName={selectedCategoryName}
