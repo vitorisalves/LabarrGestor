@@ -484,7 +484,7 @@ export const fsOps = {
     const prefix = getCollectionPrefix();
     const realColl = prefix && !coll.startsWith(prefix) ? prefix + coll : coll;
 
-    if (isTestModeActive()) {
+    if (isTestModeActive() && !IS_VERCEL) {
       const docs = loadLocalTestCollection(realColl).slice(0, limitCount);
       return {
         docs: docs.map(d => ({ id: d.id, data: () => d.data, exists: () => true })),
@@ -505,7 +505,7 @@ export const fsOps = {
   getDocs: async (collOrQuery: any, path: string = 'unknown', forceNoCache: boolean = false) => {
     const prefix = getCollectionPrefix();
 
-    if (isTestModeActive() && typeof collOrQuery === 'string') {
+    if (isTestModeActive() && !IS_VERCEL && typeof collOrQuery === 'string') {
       const realColl = prefix && !collOrQuery.startsWith(prefix) ? prefix + collOrQuery : collOrQuery;
       const docs = loadLocalTestCollection(realColl);
       return {
@@ -644,7 +644,7 @@ export const fsOps = {
   doc: async (coll: string, id: string) => {
     const prefix = getCollectionPrefix();
     const realColl = prefix && !coll.startsWith(prefix) ? prefix + coll : coll;
-    if (isTestModeActive()) {
+    if (isTestModeActive() && !IS_VERCEL) {
       return { __local: true, collection: realColl, id };
     }
     const db: any = await getDb();

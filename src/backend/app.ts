@@ -928,7 +928,19 @@ app.post("/api/test-mode/reset", asyncHandler(async (req: Request, res: Response
   const deletedCounts: Record<string, number> = {};
 
   for (const collectionName of TEST_MODE_COLLECTIONS) {
-    deletedCounts[collectionName] = clearLocalTestCollection(`test_${collectionName}`);
+    if (IS_VERCEL) {
+      // No Vercel o Modo de Teste grava na coleção real "test_<nome>" do Firestore
+      // (o disco local é efêmero/não compartilhado entre instâncias serverless),
+      // então o reset precisa apagar os documentos de lá em vez do arquivo local.
+      const snapshot = await fsOps.getDocs(collectionName, `test-reset/${collectionName}`, true);
+      for (const docSnap of snapshot.docs) {
+        const docRef = await fsOps.doc(collectionName, docSnap.id);
+        await fsOps.delete(docRef, `${collectionName}/${docSnap.id}`);
+      }
+      deletedCounts[collectionName] = snapshot.docs.length;
+    } else {
+      deletedCounts[collectionName] = clearLocalTestCollection(`test_${collectionName}`);
+    }
     fsOps.invalidateCache(collectionName);
   }
 
