@@ -5,7 +5,7 @@
 
 import { useState, useEffect } from 'react';
 import { db } from '../firebase';
-import { collection, getDocs, addDoc, query, orderBy, deleteDoc, doc, updateDoc, limit } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy, limit } from 'firebase/firestore';
 import { Product, SavedList, CartItem } from '../types';
 import { extractErrorMessage, safeStringify, handleFirestoreError, OperationType, cleanObject } from '../utils';
 
@@ -169,7 +169,11 @@ export const useCart = (
       clearCart();
       
       try {
-        await updateDoc(doc(db, 'shopping_lists', editingListId), listData);
+        await fetch('/api/xml/shopping_lists', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: editingListId, ...listData })
+        });
         await invalidateBackendCache('shopping_lists');
       } catch (err: any) {
         handleFirestoreError(err, OperationType.UPDATE, `shopping_lists/${editingListId}`);
@@ -184,11 +188,16 @@ export const useCart = (
       clearCart();
 
       try {
-        const docRef = await addDoc(collection(db, 'shopping_lists'), listData);
+        const res = await fetch('/api/xml/shopping_lists', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(listData)
+        });
+        const data = await res.json();
         await invalidateBackendCache('shopping_lists');
         // Replace temp ID with real ID
-        setSavedLists(prev => prev.map(l => l.id === tempId ? { ...l, id: docRef.id } : l));
-        return { id: docRef.id, ...listData };
+        setSavedLists(prev => prev.map(l => l.id === tempId ? { ...l, id: data.id } : l));
+        return { id: data.id, ...listData };
       } catch (err: any) {
         handleFirestoreError(err, OperationType.WRITE, 'shopping_lists');
         console.warn("Could not sync new list:", err.message);
@@ -232,7 +241,11 @@ export const useCart = (
     
     try {
       if (!id.startsWith('temp-')) {
-        await deleteDoc(doc(db, 'shopping_lists', id));
+        await fetch('/api/xml/shopping_lists/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id })
+        });
         await invalidateBackendCache('shopping_lists');
       }
     } catch (err: any) {
@@ -278,7 +291,11 @@ export const useCart = (
 
     try {
       if (!listId.startsWith('temp-')) {
-        await updateDoc(doc(db, 'shopping_lists', listId), updatedListData);
+        await fetch('/api/xml/shopping_lists/update-items', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ listId, items: updatedItems, total: newTotal, date: newDate })
+        });
         await invalidateBackendCache('shopping_lists');
       }
     } catch (err: any) {
@@ -322,9 +339,10 @@ export const useCart = (
     for (const list of listsToSync) {
       if (!list.id.startsWith('temp-')) {
         try {
-          await updateDoc(doc(db, 'shopping_lists', list.id), {
-            items: list.items,
-            total: list.total
+          await fetch('/api/xml/shopping_lists/update-items', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ listId: list.id, items: list.items, total: list.total })
           });
         } catch (err: any) {
           if (err.code === 'not-found' || err.message.toLowerCase().includes('not found') || err.message.includes('404')) {

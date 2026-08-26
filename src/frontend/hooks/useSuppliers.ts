@@ -5,7 +5,7 @@
 
 import { useState, useEffect } from 'react';
 import { db } from '../firebase';
-import { collection, onSnapshot, doc, setDoc, deleteDoc, getDocs } from 'firebase/firestore';
+import { collection, getDocs } from 'firebase/firestore';
 import { Supplier, Product } from '../types';
 import { generateId, extractErrorMessage, safeStringify, handleFirestoreError, OperationType, cleanObject } from '../utils';
 
@@ -189,7 +189,11 @@ export const useSuppliers = (isAuthReady: boolean, isApproved: boolean) => {
 
     try {
       const cleaned = cleanObject(sanitizedSupplier);
-      await setDoc(doc(db, 'suppliers', sanitizedSupplier.id), cleaned);
+      await fetch('/api/xml/suppliers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(cleaned)
+      });
       await invalidateBackendCache('suppliers');
     } catch (err: any) {
       handleFirestoreError(err, OperationType.WRITE, `suppliers/${sanitizedSupplier.id}`);
@@ -207,7 +211,11 @@ export const useSuppliers = (isAuthReady: boolean, isApproved: boolean) => {
     });
 
     try {
-      await deleteDoc(doc(db, 'suppliers', id));
+      await fetch('/api/xml/suppliers/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id })
+      });
       await invalidateBackendCache('suppliers');
     } catch (err: any) {
       handleFirestoreError(err, OperationType.DELETE, `suppliers/${id}`);
@@ -227,15 +235,7 @@ export const useSuppliers = (isAuthReady: boolean, isApproved: boolean) => {
     });
 
     try {
-      const q = collection(db, 'suppliers');
-      const snapshot = await getDocs(q);
-      const deletePromises = snapshot.docs
-        .filter(d => {
-          const name = (d.data().name as string || '').trim().toUpperCase();
-          return name !== 'MERCADO' && name !== 'MATERIAIS';
-        })
-        .map(d => deleteDoc(d.ref));
-      await Promise.all(deletePromises);
+      await fetch('/api/xml/suppliers/delete-all', { method: 'POST' });
       await invalidateBackendCache('suppliers');
     } catch (err: any) {
       console.warn("Cloud batch delete failed:", err.message);

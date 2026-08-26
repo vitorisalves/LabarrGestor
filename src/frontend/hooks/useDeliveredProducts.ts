@@ -4,14 +4,11 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { 
-  collection, 
-  getDocs, 
-  doc, 
-  setDoc, 
-  deleteDoc, 
-  query, 
-  orderBy 
+import {
+  collection,
+  getDocs,
+  query,
+  orderBy
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { DeliveredProduct } from '../types';
@@ -143,9 +140,12 @@ export function useDeliveredProducts(
     });
 
     try {
-      const docRef = doc(db, 'delivered_products', product.id);
       const cleanedData = cleanObject(product);
-      await setDoc(docRef, cleanedData);
+      await fetch('/api/xml/delivered_products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(cleanedData)
+      });
       await invalidateBackendCache('delivered_products');
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, `delivered_products/${product.id}`);
@@ -162,7 +162,11 @@ export function useDeliveredProducts(
     });
 
     try {
-      await deleteDoc(doc(db, 'delivered_products', id));
+      await fetch('/api/xml/delivered_products/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id })
+      });
       await invalidateBackendCache('delivered_products');
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `delivered_products/${id}`);

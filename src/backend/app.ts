@@ -575,6 +575,44 @@ app.get("/api/xml/suppliers", handleCacheAndEtag("suppliers"), asyncHandler(asyn
   }
 }));
 
+app.post("/api/xml/suppliers", asyncHandler(async (req: Request, res: Response) => {
+  const supplier = req.body;
+  if (!supplier || !supplier.id) {
+    return res.status(400).json({ error: "Fornecedor inválido: id ausente." });
+  }
+  const { id, ...rest } = supplier;
+  const docRef = fsOps.doc('suppliers', id);
+  await fsOps.set(docRef, rest, 'suppliers/' + id);
+  fsOps.invalidateCache('suppliers');
+  res.json({ status: "success" });
+}));
+
+app.post("/api/xml/suppliers/delete", asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.body;
+  if (!id) {
+    return res.status(400).json({ error: "id ausente." });
+  }
+  const docRef = fsOps.doc('suppliers', id);
+  await fsOps.delete(docRef, 'suppliers/' + id);
+  fsOps.invalidateCache('suppliers');
+  res.json({ status: "success" });
+}));
+
+app.post("/api/xml/suppliers/delete-all", asyncHandler(async (req: Request, res: Response) => {
+  const snapshot = await fsOps.getDocs('suppliers', 'suppliers', true);
+  let count = 0;
+  for (const docSnap of snapshot.docs) {
+    const d = typeof docSnap.data === 'function' ? docSnap.data() : docSnap.data;
+    const name = String(d?.name || '').trim().toUpperCase();
+    if (name === 'MERCADO' || name === 'MATERIAIS') continue;
+    const docRef = fsOps.doc('suppliers', docSnap.id);
+    await fsOps.delete(docRef, 'suppliers/' + docSnap.id);
+    count++;
+  }
+  fsOps.invalidateCache('suppliers');
+  res.json({ status: "success", count });
+}));
+
 app.get("/api/xml/authorized_users", handleCacheAndEtag("authorized_users"), asyncHandler(async (req: Request, res: Response) => {
   try {
     const forceNoCache = req.query.fresh === 'true' || req.headers['cache-control'] === 'no-cache' || req.headers['pragma'] === 'no-cache';
@@ -727,6 +765,27 @@ app.get("/api/xml/delivered_products", handleCacheAndEtag("delivered_products"),
   }
 }));
 
+app.post("/api/xml/delivered_products", asyncHandler(async (req: Request, res: Response) => {
+  const product = req.body;
+  if (!product || !product.id) {
+    return res.status(400).json({ error: "Produto entregue inválido: id ausente." });
+  }
+  const { id, ...rest } = product;
+  await fsOps.set(fsOps.doc('delivered_products', id), rest, 'delivered_products/' + id);
+  fsOps.invalidateCache('delivered_products');
+  res.json({ status: "success" });
+}));
+
+app.post("/api/xml/delivered_products/delete", asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.body;
+  if (!id) {
+    return res.status(400).json({ error: "id ausente." });
+  }
+  await fsOps.delete(fsOps.doc('delivered_products', id), 'delivered_products/' + id);
+  fsOps.invalidateCache('delivered_products');
+  res.json({ status: "success" });
+}));
+
 app.get("/api/xml/reminders", handleCacheAndEtag("reminders"), asyncHandler(async (req: Request, res: Response) => {
   try {
     const forceNoCache = req.query.fresh === 'true' || req.headers['cache-control'] === 'no-cache' || req.headers['pragma'] === 'no-cache';
@@ -758,11 +817,32 @@ app.get("/api/xml/shopping_lists", handleCacheAndEtag("shopping_lists"), asyncHa
 }));
 
 app.post("/api/xml/shopping_lists/update-items", asyncHandler(async (req: Request, res: Response) => {
-  const { listId, items } = req.body;
+  const { listId, items, total, date } = req.body;
   if (!listId || !Array.isArray(items)) {
     return res.status(400).json({ error: "listId e items são obrigatórios" });
   }
-  await fsOps.update(fsOps.doc('shopping_lists', listId), { items }, 'shopping_lists/' + listId);
+  const updates: any = { items };
+  if (typeof total === 'number') updates.total = total;
+  if (typeof date === 'string') updates.date = date;
+  await fsOps.update(fsOps.doc('shopping_lists', listId), updates, 'shopping_lists/' + listId);
+  fsOps.invalidateCache('shopping_lists');
+  res.json({ status: "success" });
+}));
+
+app.post("/api/xml/shopping_lists", asyncHandler(async (req: Request, res: Response) => {
+  const { id, ...listData } = req.body;
+  const listId = id || `list_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+  await fsOps.set(fsOps.doc('shopping_lists', listId), listData, 'shopping_lists/' + listId);
+  fsOps.invalidateCache('shopping_lists');
+  res.json({ status: "success", id: listId });
+}));
+
+app.post("/api/xml/shopping_lists/delete", asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.body;
+  if (!id) {
+    return res.status(400).json({ error: "id ausente." });
+  }
+  await fsOps.delete(fsOps.doc('shopping_lists', id), 'shopping_lists/' + id);
   fsOps.invalidateCache('shopping_lists');
   res.json({ status: "success" });
 }));
