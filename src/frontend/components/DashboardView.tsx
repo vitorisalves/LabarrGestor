@@ -1207,19 +1207,27 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
       const spendingDate = parseDateSafe(dateStr);
       if (!spendingDate || spendingDate > end) return;
 
-      const val = typeof spending.vTotTrib === 'number' && spending.vTotTrib > 0
-        ? spending.vTotTrib
-        : (spending.vNF || spending.total || 0);
-
       if (isMissingNF(spending)) {
-        // Confirmado pela lista de compras, ainda sem NF real: soma na dívida.
+        // Confirmado pela lista de compras, ainda sem NF real: soma na dívida
+        // pelo valor cheio do produto (não tem desconto de nota aqui).
+        const val = typeof spending.vTotTrib === 'number' && spending.vTotTrib > 0
+          ? spending.vTotTrib
+          : (spending.vNF || spending.total || 0);
         semNFValue += val;
         semNFCount += 1;
       } else if (spending.source !== 'shopping_list') {
-        // NF real (importada via XML): abate a dívida. Um item da lista marcado
-        // manualmente como "NF" não conta aqui nem em Gasto no Período - ele só
-        // sai da dívida, sem gerar um segundo lançamento de gasto.
-        realNFValue += val;
+        // NF real (importada via XML): abate a dívida. Usamos o valor CHEIO dos
+        // produtos (antes do desconto da nota, não o vTotTrib/total já
+        // descontado), porque a dívida em "Faltando NF" foi criada com o valor
+        // cheio do produto - se a nota vier com desconto, o valor pago é menor
+        // que o produto valia, então abater só o valor pago deixaria sobra
+        // artificial em Faltando NF mesmo com a nota já tendo entrado.
+        const grossVal = (spending.products || []).reduce((acc: number, p: any) =>
+          acc + ((p.vUnComGross || p.vUnCom || p.price || 0) * (p.quantity || 1)), 0);
+        const netVal = typeof spending.vTotTrib === 'number' && spending.vTotTrib > 0
+          ? spending.vTotTrib
+          : (spending.vNF || spending.total || 0);
+        realNFValue += grossVal > 0 ? grossVal : netVal;
         realNFCount += 1;
       }
     });
