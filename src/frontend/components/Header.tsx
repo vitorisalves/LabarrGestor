@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { ShoppingCart, Menu, CloudOff, RefreshCw, LayoutGrid, Beaker, Trash2, CheckCircle2, XCircle } from 'lucide-react';
+import { ShoppingCart, Menu, CloudOff, RefreshCw, LayoutGrid, Beaker, Trash2, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
 import { NotificationCenter } from './NotificationCenter';
 import { ConfirmationModal } from './modals/ConfirmationModal';
 import { UINotification, AppNotification, CartItem } from '../types';
@@ -107,6 +107,14 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
 
       <div className="flex items-center gap-3 md:gap-4 ml-auto">
+        {isOffline && (
+          <span
+            title="Quota Exceeded: o limite de requisições do Firestore foi atingido. Os dados podem aparecer desatualizados ou vazios até o limite ser renovado (geralmente em minutos)."
+            className="p-2 text-rose-600 cursor-help"
+          >
+            <AlertTriangle className="w-5 h-5" />
+          </span>
+        )}
         <button
           onClick={toggleTestMode}
           className={`flex items-center gap-2 px-3 py-2 border rounded-xl shadow-sm transition-all text-xs font-bold ${
