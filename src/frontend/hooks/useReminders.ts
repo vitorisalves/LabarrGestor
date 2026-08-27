@@ -51,7 +51,10 @@ export const useReminders = (
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ id: reminder.id, notified: true })
             })
-              .then(() => invalidateBackendCache('reminders'))
+              .then(res => {
+                if (!res.ok) throw new Error(`reminders/update failed: ${res.status}`);
+                return invalidateBackendCache('reminders');
+              })
               .catch(err => {
                 handleFirestoreError(err, OperationType.UPDATE, `reminders/${reminder.id}`);
                 console.warn("Could not sync reminder status:", err.message);
@@ -137,6 +140,7 @@ export const useReminders = (
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ productName, date })
       });
+      if (!r.ok) throw new Error(`reminders create failed: ${r.status}`);
       const { id } = await r.json();
       await invalidateBackendCache('reminders');
       // Replace temporary ID with real backend ID
@@ -153,11 +157,12 @@ export const useReminders = (
     
     try {
       if (!id.startsWith('temp-')) {
-        await fetch('/api/xml/reminders/delete', {
+        const res = await fetch('/api/xml/reminders/delete', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ id })
         });
+        if (!res.ok) throw new Error(`reminders/delete failed: ${res.status}`);
         await invalidateBackendCache('reminders');
       }
     } catch (err: any) {
