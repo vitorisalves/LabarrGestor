@@ -1,10 +1,9 @@
 import type { DataRepo } from './types.js';
 import { firestoreRepo } from './firestoreRepo.js';
+import { makeSupabaseRepo } from './supabaseRepo.js';
 
 const backend = (process.env.DATA_BACKEND || 'firestore').toLowerCase();
 
-if (backend === 'supabase') {
-  console.warn('[data] DATA_BACKEND=supabase not implemented yet; falling back to firestore');
-}
-
-export const repo: DataRepo = firestoreRepo;
+// `makeSupabaseRepo()` é side-effect-free (não toca no client até um método rodar),
+// portanto importá-lo sob o backend firestore é inofensivo.
+export const repo: DataRepo = backend === 'supabase' ? makeSupabaseRepo() : firestoreRepo;
