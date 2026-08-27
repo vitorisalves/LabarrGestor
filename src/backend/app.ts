@@ -639,6 +639,68 @@ app.get("/api/xml/authorized_users", handleCacheAndEtag("authorized_users"), asy
   }
 }));
 
+// authorized_users writes are token-verified (identitytoolkit REST) — no Admin SDK needed
+async function verifyUid(idToken: string | undefined): Promise<string | null> {
+  if (!idToken) return null;
+  const token = idToken.startsWith('Bearer ') ? idToken.slice(7) : idToken;
+  try {
+    const { apiKey } = await getFirebaseConfig();
+    const r = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${apiKey}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idToken: token }),
+    });
+    if (!r.ok) return null;
+    const j: any = await r.json();
+    return j.users?.[0]?.localId ?? null;
+  } catch { return null; }
+}
+async function callerIsAdmin(uid: string): Promise<boolean> {
+  const d = await repo.getDoc(repo.doc('authorized_users', uid), 'authorized_users/' + uid, true);
+  return d.exists() && (d.data() as any).role === 'admin';
+}
+
+app.get("/api/auth/users", asyncHandler(async (req: Request, res: Response) => {
+  const snap = await repo.getDocs('authorized_users', 'authorized_users', req.query.fresh === 'true');
+  res.json(snap.docs.map((d: any) => ({ id: d.id, ...(typeof d.data === 'function' ? d.data() : d.data) })));
+}));
+
+app.get("/api/auth/users/me", asyncHandler(async (req: Request, res: Response) => {
+  const uid = String(req.query.uid || '');
+  if (!uid) return res.status(400).json({ error: "uid ausente." });
+  const d = await repo.getDoc(repo.doc('authorized_users', uid), 'authorized_users/' + uid, true);
+  res.json(d.exists() ? { id: d.id, ...(d.data() as any) } : null);
+}));
+
+app.post("/api/auth/users/upsert", asyncHandler(async (req: Request, res: Response) => {
+  const { uid, user } = req.body;
+  if (!uid || !user) return res.status(400).json({ error: "uid e user são obrigatórios" });
+  const tokUid = await verifyUid(req.headers.authorization);
+  if (!tokUid || tokUid !== uid) return res.status(401).json({ error: "unauthorized" });
+  await repo.set(repo.doc('authorized_users', uid), user, 'authorized_users/' + uid);
+  repo.invalidateCache('authorized_users');
+  res.json({ status: "success" });
+}));
+
+app.post("/api/auth/users/status", asyncHandler(async (req: Request, res: Response) => {
+  const { uid, status } = req.body;
+  if (!uid || !status) return res.status(400).json({ error: "uid e status são obrigatórios" });
+  const tokUid = await verifyUid(req.headers.authorization);
+  if (!tokUid || !(await callerIsAdmin(tokUid))) return res.status(401).json({ error: "unauthorized" });
+  if (status === 'denied') await repo.delete(repo.doc('authorized_users', uid), 'authorized_users/' + uid);
+  else await repo.update(repo.doc('authorized_users', uid), { status }, 'authorized_users/' + uid);
+  repo.invalidateCache('authorized_users');
+  res.json({ status: "success" });
+}));
+
+app.post("/api/auth/users/delete", asyncHandler(async (req: Request, res: Response) => {
+  const { uid } = req.body;
+  if (!uid) return res.status(400).json({ error: "uid ausente." });
+  const tokUid = await verifyUid(req.headers.authorization);
+  if (!tokUid || !(await callerIsAdmin(tokUid))) return res.status(401).json({ error: "unauthorized" });
+  await repo.delete(repo.doc('authorized_users', uid), 'authorized_users/' + uid);
+  repo.invalidateCache('authorized_users');
+  res.json({ status: "success" });
+}));
+
 app.get("/api/xml/spendings", handleCacheAndEtag("xml_spendings"), asyncHandler(async (req: Request, res: Response) => {
   try {
     const forceNoCache = req.query.fresh === 'true' || req.headers['cache-control'] === 'no-cache' || req.headers['pragma'] === 'no-cache';
@@ -810,6 +872,31 @@ app.get("/api/xml/reminders", handleCacheAndEtag("reminders"), asyncHandler(asyn
     console.error("Error fetching cached reminders:", error);
     res.status(500).json({ error: "Error fetching reminders", message: error.message });
   }
+}));
+
+app.post("/api/xml/reminders", asyncHandler(async (req: Request, res: Response) => {
+  const { id, productName, date, ...rest } = req.body;
+  if (!productName || !date) return res.status(400).json({ error: "productName e date são obrigatórios" });
+  const remId = id || `rem_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  await repo.set(repo.doc('reminders', remId), { productName, date, notified: false, ...rest }, 'reminders/' + remId);
+  repo.invalidateCache('reminders');
+  res.json({ status: "success", id: remId });
+}));
+
+app.post("/api/xml/reminders/update", asyncHandler(async (req: Request, res: Response) => {
+  const { id, ...patch } = req.body;
+  if (!id) return res.status(400).json({ error: "id ausente." });
+  await repo.update(repo.doc('reminders', id), patch, 'reminders/' + id);
+  repo.invalidateCache('reminders');
+  res.json({ status: "success" });
+}));
+
+app.post("/api/xml/reminders/delete", asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.body;
+  if (!id) return res.status(400).json({ error: "id ausente." });
+  await repo.delete(repo.doc('reminders', id), 'reminders/' + id);
+  repo.invalidateCache('reminders');
+  res.json({ status: "success" });
 }));
 
 app.get("/api/xml/shopping_lists", handleCacheAndEtag("shopping_lists"), asyncHandler(async (req: Request, res: Response) => {
