@@ -6,7 +6,6 @@
 import React from 'react';
 import {
   Building2,
-  ShoppingCart,
   ListChecks,
   Globe,
   Truck,
@@ -56,7 +55,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
         { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
         { id: 'purchase-orders', label: 'Ordem de Compra', icon: ClipboardList },
         { id: 'suppliers', label: 'Produtos', icon: Building2 },
-        { id: 'shopping', label: 'Fazer Compras', icon: ShoppingCart },
         { id: 'history', label: 'Minhas Listas', icon: ListChecks },
         { id: 'delivered', label: 'Produtos Entregues', icon: Truck },
         { id: 'reminders', label: 'Lembretes', icon: Bell },

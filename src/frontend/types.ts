@@ -8,6 +8,7 @@ export interface Product {
   name: string;
   price: number;
   categories: string[];
+  setor?: string;
   lastPurchaseDate?: string;
   paymentMethod?: string;
 }

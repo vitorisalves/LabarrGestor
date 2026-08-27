@@ -32,6 +32,7 @@ import { XmlImportTab, ImportRow } from './suppliers/XmlImportTab';
 import { useXmlImport } from '../hooks/useXmlImport';
 import { ProductsTab } from './products/ProductsTab';
 import { PurchaseSetorPicker } from './products/PurchaseSetorPicker';
+import { ConfirmationModal } from './modals/ConfirmationModal';
 
 interface SuppliersViewProps {
   suppliers: Supplier[];
@@ -116,6 +117,59 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
   const [expandedSupplier, setExpandedSupplier] = React.useState<string | null>(null);
   const [quantities, setQuantities] = React.useState<Record<string, string>>({});
   const [purchaseSetores, setPurchaseSetores] = React.useState<Record<string, string>>({});
+  const [selectedBySupplier, setSelectedBySupplier] = React.useState<Record<string, Set<number>>>({});
+  const [bulkCategoryBySupplier, setBulkCategoryBySupplier] = React.useState<Record<string, string>>({});
+  const [bulkSetorBySupplier, setBulkSetorBySupplier] = React.useState<Record<string, string>>({});
+  const [supplierBulkDeleteConfirm, setSupplierBulkDeleteConfirm] = React.useState<{ supplierId: string; count: number } | null>(null);
+
+  const toggleProductSelected = (supplierId: string, index: number) => {
+    setSelectedBySupplier(prev => {
+      const next = new Set(prev[supplierId] || []);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return { ...prev, [supplierId]: next };
+    });
+  };
+
+  const toggleSelectAllForSupplier = (supplierId: string, indexes: number[]) => {
+    setSelectedBySupplier(prev => {
+      const current = prev[supplierId] || new Set<number>();
+      const allSelected = indexes.length > 0 && indexes.every(i => current.has(i));
+      return { ...prev, [supplierId]: allSelected ? new Set<number>() : new Set(indexes) };
+    });
+  };
+
+  const applyBulkCategoryToSupplier = async (supplier: Supplier) => {
+    const supplierId = supplier.id || supplier.name;
+    const category = bulkCategoryBySupplier[supplierId];
+    const selected = selectedBySupplier[supplierId];
+    if (!category || !selected || selected.size === 0) return;
+    const updatedProducts = supplier.products.map((p, idx) => selected.has(idx) ? { ...p, categories: [category] } : p);
+    await saveSupplier({ ...supplier, products: updatedProducts });
+    setBulkCategoryBySupplier(prev => ({ ...prev, [supplierId]: '' }));
+    setSelectedBySupplier(prev => ({ ...prev, [supplierId]: new Set() }));
+  };
+
+  const applyBulkSetorToSupplier = async (supplier: Supplier) => {
+    const supplierId = supplier.id || supplier.name;
+    const setor = bulkSetorBySupplier[supplierId];
+    const selected = selectedBySupplier[supplierId];
+    if (!setor || !selected || selected.size === 0) return;
+    const updatedProducts = supplier.products.map((p, idx) => selected.has(idx) ? { ...p, setor } : p);
+    await saveSupplier({ ...supplier, products: updatedProducts });
+    setBulkSetorBySupplier(prev => ({ ...prev, [supplierId]: '' }));
+    setSelectedBySupplier(prev => ({ ...prev, [supplierId]: new Set() }));
+  };
+
+  const confirmBulkDeleteForSupplier = async (supplier: Supplier) => {
+    const supplierId = supplier.id || supplier.name;
+    const selected = selectedBySupplier[supplierId];
+    if (!selected || selected.size === 0) return;
+    const updatedProducts = supplier.products.filter((_, idx) => !selected.has(idx));
+    await saveSupplier({ ...supplier, products: updatedProducts });
+    setSelectedBySupplier(prev => ({ ...prev, [supplierId]: new Set() }));
+    setSupplierBulkDeleteConfirm(null);
+  };
 
   const handleQuantityChange = (key: string, value: string) => {
     // Permite vazio, números inteiros ou decimais com ponto ou vírgula
@@ -340,35 +394,98 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
                   className="overflow-hidden bg-slate-50/20"
                 >
                   <div className="p-6 pt-0 border-t border-slate-50">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mt-6">
-                      {supplier.products
-                        .filter(p => {
+                    {(() => {
+                      const supplierId = supplier.id || supplier.name;
+                      const visibleProducts = supplier.products
+                        .map((p, originalIndex) => ({ product: p, originalIndex }))
+                        .filter(({ product: p }) => {
                           if (!searchTerm) return true;
                           const normalizedSearch = normalizeText(searchTerm);
                           return normalizeText(p.name).includes(normalizedSearch) ||
                             getProductCategories(p).some(c => normalizeText(c).includes(normalizedSearch)) ||
                             normalizeText(supplier.name).includes(normalizedSearch);
                         })
-                        .sort((a, b) => a.name.localeCompare(b.name))
-                        .map((product, idx) => {
+                        .sort((a, b) => a.product.name.localeCompare(b.product.name));
+                      const selected = selectedBySupplier[supplierId] || new Set<number>();
+                      const visibleIndexes = visibleProducts.map(v => v.originalIndex);
+
+                      return (
+                        <>
+                          {visibleProducts.length > 0 && (
+                            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex flex-wrap items-center gap-3 mt-6">
+                              <label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={visibleIndexes.length > 0 && visibleIndexes.every(i => selected.has(i))}
+                                  onChange={() => toggleSelectAllForSupplier(supplierId, visibleIndexes)}
+                                  className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
+                                />
+                                <span>Selecionar Todos ({selected.size}/{visibleIndexes.length})</span>
+                              </label>
+
+                              <div className="h-4 w-px bg-slate-200" />
+
+                              <div className="flex items-center gap-2">
+                                <select
+                                  value={bulkCategoryBySupplier[supplierId] || ''}
+                                  onChange={(e) => setBulkCategoryBySupplier(prev => ({ ...prev, [supplierId]: e.target.value }))}
+                                  className="bg-white border border-slate-200 text-slate-700 text-xs font-bold rounded-xl px-3 py-1.5 outline-none focus:border-indigo-500"
+                                >
+                                  <option value="">-- Categoria em Lote --</option>
+                                  {availableCategories.map(c => <option key={c} value={c}>{c}</option>)}
+                                </select>
+                                <button
+                                  onClick={() => applyBulkCategoryToSupplier(supplier)}
+                                  disabled={!bulkCategoryBySupplier[supplierId] || selected.size === 0}
+                                  className="px-3 py-1.5 bg-indigo-100 text-indigo-700 hover:bg-indigo-200 disabled:opacity-40 text-xs font-black uppercase rounded-xl transition-colors"
+                                >
+                                  Aplicar Categoria
+                                </button>
+                              </div>
+
+                              <div className="flex items-center gap-2">
+                                <select
+                                  value={bulkSetorBySupplier[supplierId] || ''}
+                                  onChange={(e) => setBulkSetorBySupplier(prev => ({ ...prev, [supplierId]: e.target.value }))}
+                                  className="bg-white border border-slate-200 text-slate-700 text-xs font-bold rounded-xl px-3 py-1.5 outline-none focus:border-indigo-500"
+                                >
+                                  <option value="">-- Setor em Lote --</option>
+                                  {setores.map(s => <option key={s} value={s}>{s}</option>)}
+                                </select>
+                                <button
+                                  onClick={() => applyBulkSetorToSupplier(supplier)}
+                                  disabled={!bulkSetorBySupplier[supplierId] || selected.size === 0}
+                                  className="px-3 py-1.5 bg-indigo-100 text-indigo-700 hover:bg-indigo-200 disabled:opacity-40 text-xs font-black uppercase rounded-xl transition-colors"
+                                >
+                                  Aplicar Setor
+                                </button>
+                              </div>
+
+                              <button
+                                onClick={() => setSupplierBulkDeleteConfirm({ supplierId, count: selected.size })}
+                                disabled={selected.size === 0}
+                                className="ml-auto flex items-center gap-1.5 px-3.5 py-1.5 bg-rose-100 text-rose-700 hover:bg-rose-200 disabled:opacity-40 text-xs font-black uppercase rounded-xl transition-colors"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                Excluir Selecionados
+                              </button>
+                            </div>
+                          )}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mt-4">
+                      {visibleProducts
+                        .map(({ product, originalIndex }) => {
                           const qKey = `${supplier.id || supplier.name}-${String(product.name)}`;
+                          const isSelected = selected.has(originalIndex);
                           return (
-                            <div key={qKey} className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col justify-between group hover:border-indigo-200 transition-all">
+                            <div key={qKey} className={`bg-white p-6 rounded-3xl border shadow-sm flex flex-col justify-between group transition-all ${isSelected ? 'border-indigo-400 ring-1 ring-indigo-200' : 'border-slate-100 hover:border-indigo-200'}`}>
                               <div>
-                                <div className="flex justify-between items-start mb-3">
-                                  <div className="flex flex-wrap gap-1">
-                                    {getProductCategories(product).length > 0 ? (
-                                      getProductCategories(product).map(cat => (
-                                        <span key={cat} className="px-2 py-0.5 bg-slate-100 text-slate-500 rounded-full text-[9px] font-black uppercase tracking-wider">
-                                          {cat}
-                                        </span>
-                                      ))
-                                    ) : (
-                                      <span className="px-2 py-0.5 bg-amber-50 text-amber-600 rounded-full text-[9px] font-black uppercase tracking-wider">
-                                        Sem Categoria
-                                      </span>
-                                    )}
-                                  </div>
+                                <div className="flex items-center justify-between mb-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={() => toggleProductSelected(supplierId, originalIndex)}
+                                    className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
+                                  />
                                   <div className='flex gap-2 items-center'>
                                     <button onClick={() => onEditProduct(product, supplier.name)} className='p-1 hover:bg-slate-100 rounded-md'>
                                       <Pencil className="w-3 h-3 text-slate-400 hover:text-indigo-600" />
@@ -377,6 +494,24 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
                                       {formatCurrency(product.price)}
                                     </span>
                                   </div>
+                                </div>
+                                <div className="flex flex-wrap gap-1 mb-3">
+                                  {getProductCategories(product).length > 0 ? (
+                                    getProductCategories(product).map(cat => (
+                                      <span key={cat} className="px-2 py-0.5 bg-slate-100 text-slate-500 rounded-full text-[9px] font-black uppercase tracking-wider">
+                                        {cat}
+                                      </span>
+                                    ))
+                                  ) : (
+                                    <span className="px-2 py-0.5 bg-amber-50 text-amber-600 rounded-full text-[9px] font-black uppercase tracking-wider">
+                                      Sem Categoria
+                                    </span>
+                                  )}
+                                  {product.setor && (
+                                    <span className="px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded-full text-[9px] font-black uppercase tracking-wider">
+                                      {product.setor}
+                                    </span>
+                                  )}
                                 </div>
                                 <h4 
                                   className={`font-bold mb-3 transition-colors ${isLink(product.name) ? 'text-indigo-600 hover:underline cursor-pointer' : 'text-slate-900'}`}
@@ -437,7 +572,10 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
                             </div>
                           );
                         })}
-                    </div>
+                          </div>
+                        </>
+                      );
+                    })()}
                   </div>
                 </motion.div>
               </motion.div>
@@ -483,6 +621,19 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
           setDeletingRowId={setDeletingRowId}
         />
       )}
+
+      <ConfirmationModal
+        isOpen={!!supplierBulkDeleteConfirm}
+        onClose={() => setSupplierBulkDeleteConfirm(null)}
+        onConfirm={() => {
+          if (!supplierBulkDeleteConfirm) return;
+          const supplier = suppliers.find(s => (s.id || s.name) === supplierBulkDeleteConfirm.supplierId);
+          if (supplier) confirmBulkDeleteForSupplier(supplier);
+        }}
+        variant="danger"
+        title="Excluir produtos selecionados?"
+        message={`Isso vai remover ${supplierBulkDeleteConfirm?.count || 0} produto(s) permanentemente do catálogo deste fornecedor. Essa ação não pode ser desfeita.`}
+      />
     </motion.div>
   );
 };

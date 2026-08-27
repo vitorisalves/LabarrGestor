@@ -38,7 +38,6 @@ import { PermissionBanner } from './components/PermissionBanner';
 const DashboardView = React.lazy(() => import('./components/DashboardView').then(m => ({ default: m.DashboardView })));
 const PurchaseOrdersView = React.lazy(() => import('./components/PurchaseOrdersView').then(m => ({ default: m.PurchaseOrdersView })));
 const SuppliersView = React.lazy(() => import('./components/SuppliersView').then(m => ({ default: m.SuppliersView })));
-const ShoppingView = React.lazy(() => import('./components/ShoppingView').then(m => ({ default: m.ShoppingView })));
 const HistoryView = React.lazy(() => import('./components/HistoryView').then(m => ({ default: m.HistoryView })));
 const DeliveredProductsView = React.lazy(() => import('./components/DeliveredProductsView').then(m => ({ default: m.DeliveredProductsView })));
 const RemindersView = React.lazy(() => import('./components/RemindersView').then(m => ({ default: m.RemindersView })));
@@ -377,7 +376,7 @@ export default function App() {
   }, [activeTargetListId, activeTargetListName, addItemToList, addNotification, addToCart]);
 
   const [activeWindow, setActiveWindow] = useState<'compras' | 'dre'>('compras');
-  const [currentPage, setCurrentPage] = useState<'dashboard' | 'purchase-orders' | 'suppliers' | 'shopping' | 'history' | 'delivered' | 'reminders' | 'ai' | 'purchase-forecast' | 'vendas'>('dashboard');
+  const [currentPage, setCurrentPage] = useState<'dashboard' | 'purchase-orders' | 'suppliers' | 'history' | 'delivered' | 'reminders' | 'ai' | 'purchase-forecast' | 'vendas'>('dashboard');
 
   const handleWindowChange = (win: 'compras' | 'dre') => {
     setActiveWindow(win);
@@ -424,7 +423,6 @@ export default function App() {
   const [editingListId, setEditingListId] = useState<string | null>(null);
   const { deletions, setDeletion } = useDeletions();
   const [searchTerm, setSearchTerm] = useState('');
-  const [shoppingQuantities, setShoppingQuantities] = useState<Record<string, number | string>>({});
   const [newCategoryName, setNewCategoryName] = useState('');
   const [newSetorName, setNewSetorName] = useState('');
   const [reminderProductName, setReminderProductName] = useState('');
@@ -789,19 +787,6 @@ export default function App() {
               onEditProduct={onEditProductFromShopping}
               onOpenNewProduct={onOpenNewProduct}
               saveSupplier={saveSupplier}
-            />
-          )}
-          {currentPage === 'shopping' && (
-            <ShoppingView 
-              key="shopping"
-              suppliers={suppliers}
-              searchTerm={searchTerm}
-              setSearchTerm={setSearchTerm}
-              shoppingQuantities={shoppingQuantities}
-              setShoppingQuantities={setShoppingQuantities}
-              addToCart={handleAddToCart}
-              onEditProduct={onEditProductFromShopping}
-              allSetores={setores}
             />
           )}
           {currentPage === 'history' && (
