@@ -1,5 +1,5 @@
-import { query, collection, where } from 'firebase/firestore/lite';
-import { fsOps, getDb } from './firebase.js';
+import { repo } from './data/index.js';
+import { handleFirestoreError, OperationType } from './data/firestoreRepo.js';
 import { PushService } from './services/pushService.js';
 
 /**
@@ -7,34 +7,23 @@ import { PushService } from './services/pushService.js';
  */
 export const startBackgroundReminderWorker = () => {
   console.log("[ReminderWorker] Inicializando verificação de lembretes (intervalo adaptativo)...");
-  
+
   const DEFAULT_INTERVAL = 900000; // 15 minutos padrão para otimização extrema de leitura de cota
   const QUOTA_EXCEEDED_INTERVAL = 7200000; // 2 horas de pausa em caso de quota excedida
-  
+
   let currentDelay = DEFAULT_INTERVAL;
   let timerId: NodeJS.Timeout | null = null;
 
   async function checkLoop() {
     try {
-      const nowStr = new Date().toISOString();
+      const nowIso = new Date().toISOString();
       let snapshot;
-      
-      const db = await getDb();
-      if (db.collection) {
-        // Admin SDK Query
-        const q = db.collection('reminders')
-          .where('notified', '==', false)
-          .where('date', '<=', nowStr);
-        snapshot = await fsOps.getDocs(q, 'reminders_pending', true);
-      } else {
-        // Client SDK Query
-        const remindersColl = collection(db as any, 'reminders');
-        const q = query(
-          remindersColl, 
-          where('notified', '==', false),
-          where('date', '<=', nowStr)
-        );
-        snapshot = await fsOps.getDocs(q, 'reminders_pending', true);
+
+      try {
+        snapshot = await repo.getPendingReminders(nowIso);
+      } catch (err) {
+        handleFirestoreError(err, OperationType.LIST, 'reminders_pending');
+        snapshot = { docs: [], empty: true };
       }
 
       // Reset standard delay on successful check
@@ -51,8 +40,8 @@ export const startBackgroundReminderWorker = () => {
           await PushService.broadcast(title, message);
 
           try {
-            const targetRef = reminderDoc.ref || fsOps.doc('reminders', reminderDoc.id);
-            await fsOps.update(targetRef, { notified: true }, `reminders/${reminderDoc.id}`);
+            const targetRef = reminderDoc.ref || await repo.doc('reminders', reminderDoc.id);
+            await repo.update(targetRef, { notified: true }, `reminders/${reminderDoc.id}`);
           } catch (updateErr) {
             console.error(`[ReminderWorker] Erro ao atualizar lembrete ${reminderDoc.id}:`, updateErr);
           }

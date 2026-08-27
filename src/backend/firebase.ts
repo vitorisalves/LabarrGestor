@@ -2,21 +2,6 @@ import { getFirestore } from 'firebase/firestore/lite';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirebaseConfig, IS_VERCEL } from './config.js';
 
-/**
- * Compatibilidade temporária: os call sites ainda importam `fsOps` (e alguns
- * helpers de quota / Modo de Teste) de `./firebase.js`. A implementação real
- * mora agora em `./data/firestoreRepo.js` atrás da interface `DataRepo`.
- * A Task 2 migra os call sites para `repo` de `./data` e remove estas linhas.
- */
-export {
-  fsOps,
-  clearLocalTestCollection,
-  checkQuotaExceeded,
-  resetQuotaExceeded,
-  handleFirestoreError,
-  OperationType
-} from './data/firestoreRepo.js';
-
 let adminDb: any = null;
 let clientDb: any = null;
 let adminDisabled = true;

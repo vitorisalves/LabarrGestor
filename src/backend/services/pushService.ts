@@ -1,6 +1,6 @@
 import webPush from "web-push";
 import { PUSH_CONFIG } from "../config.js";
-import { fsOps } from "../firebase.js";
+import { repo } from "../data/index.js";
 
 /**
  * Serviço de Notificações Push
@@ -38,7 +38,7 @@ export class PushService {
       if (err.statusCode === 404 || err.statusCode === 410) {
         const docId = Buffer.from(subscription.endpoint).toString('base64').substring(0, 50);
         try {
-          await fsOps.delete(fsOps.doc('push_subscriptions', docId));
+          await repo.delete(repo.doc('push_subscriptions', docId));
         } catch (e) {
           console.error("[PushService] Erro ao remover inscrição inválida:", e);
         }
@@ -51,7 +51,7 @@ export class PushService {
    * Envia uma notificação para todos os inscritos
    */
   static async broadcast(title: string, message: string, url: string = '/', excludeEndpoint?: string | null) {
-    const snapshot = await fsOps.getDocs('push_subscriptions');
+    const snapshot = await repo.getDocs('push_subscriptions');
     const subscriptions = snapshot.docs
       .map((doc: any) => doc.data())
       .filter((sub: any) => !excludeEndpoint || sub.endpoint !== excludeEndpoint);
