@@ -39,3 +39,25 @@ create table if not exists test.purchase_orders (id text primary key, data jsonb
 create table if not exists test.pending_list_products (id text primary key, data jsonb not null, updated_at timestamptz not null default now());
 create table if not exists test.setor_limits    (id text primary key, data jsonb not null, updated_at timestamptz not null default now());
 create table if not exists test.push_subscriptions    (id text primary key, data jsonb not null, updated_at timestamptz not null default now());
+
+-- Row Level Security: habilitada SEM políticas em todas as tabelas.
+-- O acesso do backend usa a service_role key, que ignora RLS por completo.
+-- Qualquer outra role (anon / authenticated / a chave pública) fica sem
+-- acesso nenhum — fecha o buraco da anon key sem afetar a aplicação.
+do $$
+declare
+  s text;
+  t text;
+  tbls text[] := array[
+    'invoices','xml_spendings','price_increases','suppliers','categories','setores',
+    'product_categories','product_setores','authorized_users','delivered_products',
+    'reminders','shopping_lists','purchase_orders','pending_list_products',
+    'setor_limits','push_subscriptions'
+  ];
+begin
+  foreach s in array array['public','test'] loop
+    foreach t in array tbls loop
+      execute format('alter table %I.%I enable row level security;', s, t);
+    end loop;
+  end loop;
+end $$;

@@ -93,3 +93,8 @@ REST do identitytoolkit (sem Admin SDK). Durante o checklist de Preview, confirm
 
 Um `401` nessas rotas significa que a verificação de token está se comportando mal no runtime
 da Vercel — investigar antes de prosseguir para produção.
+
+`schema.sql` habilita **RLS sem políticas** em todas as 32 tabelas. O backend usa a
+`service_role` key, que ignora RLS, então a aplicação não é afetada; acesso via anon key
+fica bloqueado. O SQL Editor / Table Editor do Supabase roda como `postgres` (dono das
+tabelas) e continua enxergando tudo normalmente.
