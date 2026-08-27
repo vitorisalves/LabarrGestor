@@ -56,6 +56,29 @@ Em ambos, espere a lista por coleção terminando em `✓ contagens conferem` (e
 aparecer `⚠ divergências: <nomes>` (exit 1), investigue as coleções listadas antes de
 prosseguir. Use `--only=coll1,coll2` para reprocessar um subconjunto.
 
+### Quota do Firestore esgotada
+
+Se `migrate.ts` abortar com `RESOURCE_EXHAUSTED: Quota exceeded`, a cota diária de
+leituras do Firestore acabou (reseta à meia-noite no horário do Pacífico). Opções:
+
+- **Esperar o reset** e rodar `migrate.ts` de novo (é idempotente — upsert por id).
+- **Seed a partir do cache** para não ficar bloqueado: `npx tsx scripts/supabase/seed-from-cache.ts`
+  (e `--test`) popula o Postgres a partir dos snapshots `firestore_cache_*.json` da raiz
+  do repo. Serve para exercitar o app num deploy de **preview**; **não é autoritativo**.
+  Antes da virada de produção, rode `migrate.ts` ao vivo para reconciliar.
+
+### Grants do schema `test`
+
+Um schema criado pelo SQL Editor não herda os grants padrão do Supabase. Se ler/escrever
+em `test` der `permission denied for schema test`, rode no SQL Editor (já incluído no
+`schema.sql`, mas pode ser aplicado à parte):
+
+```sql
+grant usage on schema test to service_role;
+grant all privileges on all tables in schema test to service_role;
+alter default privileges in schema test grant all privileges on tables to service_role;
+```
+
 Rode o backfill de novo imediatamente antes do cutover de produção para reconciliar os
 dados criados desde a última execução.
 
