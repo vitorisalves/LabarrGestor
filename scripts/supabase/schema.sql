@@ -1,5 +1,13 @@
 create schema if not exists test;
 
+-- O schema `public` já vem com os grants padrão do Supabase; um schema novo
+-- não. O backend acessa via service_role, então só ela precisa de acesso ao
+-- schema `test`. (RLS continua sendo a barreira efetiva nas tabelas.)
+-- USAGE + default privileges aqui (antes dos CREATE TABLE de `test` abaixo);
+-- o grant sobre tabelas já existentes fica no fim do arquivo.
+grant usage on schema test to service_role;
+alter default privileges in schema test grant all privileges on tables to service_role;
+
 -- macro aplicada às 16 coleções, nos schemas public e test:
 --   invoices, xml_spendings, price_increases, suppliers, categories, setores,
 --   product_categories, product_setores, authorized_users, delivered_products,
@@ -61,3 +69,6 @@ begin
     end loop;
   end loop;
 end $$;
+
+-- Grant sobre as tabelas de `test` que já existem (as criadas acima).
+grant all privileges on all tables in schema test to service_role;
