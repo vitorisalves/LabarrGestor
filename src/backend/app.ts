@@ -1,5 +1,5 @@
 import express, { Request, Response, NextFunction } from "express";
-import { initFirebase, fsOps, clearLocalTestCollection } from "./firebase.js";
+import { initFirebase, fsOps, clearLocalTestCollection, checkQuotaExceeded, resetQuotaExceeded } from "./firebase.js";
 import { EXTERNAL_API_CONFIG, IS_VERCEL, PUSH_CONFIG, getFirebaseConfig } from "./config.js";
 import { AIService } from "./services/aiService.js";
 import { PushService } from "./services/pushService.js";
@@ -94,6 +94,15 @@ app.get("/api/health", asyncHandler(async (req: Request, res: Response) => {
     timestamp: new Date().toISOString(),
     config: { baseUrl: EXTERNAL_API_CONFIG.baseUrl }
   });
+}));
+
+app.get("/api/quota-status", asyncHandler(async (req: Request, res: Response) => {
+  res.json({ quotaExceeded: checkQuotaExceeded() });
+}));
+
+app.post("/api/quota-status/reset", asyncHandler(async (req: Request, res: Response) => {
+  resetQuotaExceeded();
+  res.json({ status: "success" });
 }));
 
 app.get("/api/debug-db", asyncHandler(async (req: Request, res: Response) => {

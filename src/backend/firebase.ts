@@ -135,7 +135,7 @@ let g_quotaExceededActive = false;
 let g_quotaExceededTime = 0;
 const QUOTA_COOLDOWN = 3600000; // 1 hora de cooldown antes de tentar o Firestore novamente
 
-function checkQuotaExceeded(): boolean {
+export function checkQuotaExceeded(): boolean {
   if (g_quotaExceededActive) {
     if (Date.now() - g_quotaExceededTime > QUOTA_COOLDOWN) {
       g_quotaExceededActive = false;
@@ -182,6 +182,15 @@ function setQuotaExceededActive() {
       } catch (e) {}
     }
   }
+}
+
+export function resetQuotaExceeded() {
+  g_quotaExceededActive = false;
+  g_quotaExceededTime = 0;
+  try {
+    const flagFile = path.join(process.cwd(), 'firestore_quota_exceeded_flag.json');
+    if (fs.existsSync(flagFile)) fs.unlinkSync(flagFile);
+  } catch (e) {}
 }
 
 /**

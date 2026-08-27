@@ -112,13 +112,37 @@ export default function App() {
     error: remindersError
   } = useReminders(isAuthReady, isApproved, addAppNotification);
 
+  // Enquanto o disjuntor de cota do servidor está ativo, ele passa a responder com
+  // sucesso (200, dados vazios) em vez de erro — então os hooks nunca veem um erro
+  // pra detectar aqui. Por isso também consultamos o estado real do servidor.
+  const [serverQuotaExceeded, setServerQuotaExceeded] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const checkQuotaStatus = async () => {
+      try {
+        const res = await fetch('/api/quota-status');
+        if (res.ok && !cancelled) {
+          const data = await res.json();
+          setServerQuotaExceeded(!!data.quotaExceeded);
+        }
+      } catch (e) {
+        // Silencioso: falha na própria checagem não deve gerar alarme falso.
+      }
+    };
+    checkQuotaStatus();
+    const interval = setInterval(checkQuotaStatus, 30000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, []);
+
   // Memoized logic for quota check
   const isQuotaExceeded = React.useMemo(() => {
     const errors = [suppliersError, authError, remindersError];
-    return errors.some(err => 
+    const hasErrorSignal = errors.some(err =>
       err?.toLowerCase().includes('quota') || err?.toLowerCase().includes('resource-exhausted')
     );
-  }, [suppliersError, authError, remindersError]);
+    return hasErrorSignal || serverQuotaExceeded;
+  }, [suppliersError, authError, remindersError, serverQuotaExceeded]);
 
   const {
     cart,
@@ -345,6 +369,10 @@ export default function App() {
     const { db, enableNetwork } = await import('./firebase');
     try {
       await enableNetwork(db);
+      // Zera o disjuntor de cota no servidor pra não esperar o cooldown de 1h
+      // se a cota já tiver se recuperado - só então refazemos as leituras.
+      await fetch('/api/quota-status/reset', { method: 'POST' }).catch(() => {});
+      setServerQuotaExceeded(false);
       refreshSuppliers();
       refreshLists();
       refreshReminders();
