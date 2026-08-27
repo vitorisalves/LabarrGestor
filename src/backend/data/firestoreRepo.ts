@@ -346,7 +346,11 @@ export const fsOps = {
       console.warn(`[FirestoreCache] [Bypass Ativo] Servindo cache local/memória para a coleção: ${cacheKey}`);
       if (cached) {
         return {
-          docs: cached.docs,
+          docs: cached.docs.map((d: any) => ({
+            id: d.id,
+            data: typeof d.data === 'function' ? d.data : () => d.data,
+            exists: () => true,
+          })),
           empty: cached.docs.length === 0
         };
       }
@@ -363,7 +367,11 @@ export const fsOps = {
 
     if (!isCacheExpired && cached) {
       return {
-        docs: cached.docs,
+        docs: cached.docs.map((d: any) => ({
+          id: d.id,
+          data: typeof d.data === 'function' ? d.data : () => d.data,
+          exists: () => true,
+        })),
         empty: cached.docs.length === 0
       };
     }
@@ -408,7 +416,14 @@ export const fsOps = {
       handleFirestoreError(err, OperationType.LIST, cacheKey);
       if (cached) {
         console.warn(`[FirestoreCache] Erro ao ler ${cacheKey}, retornando cache de memória como fallback.`);
-        return { docs: cached.docs, empty: cached.docs.length === 0 };
+        return {
+          docs: cached.docs.map((d: any) => ({
+            id: d.id,
+            data: typeof d.data === 'function' ? d.data : () => d.data,
+            exists: () => true,
+          })),
+          empty: cached.docs.length === 0
+        };
       }
       return { docs: [], empty: true };
     }
@@ -616,18 +631,29 @@ export const fsOps = {
  * hoje em `reminderWorker.ts` na coleção `reminders`).
  */
 async function getPendingReminders(nowIso: string): Promise<QuerySnapshot> {
-  const db: any = await getDb();
-  let snap: any;
-  if (db.collection) {
-    snap = await db.collection('reminders').where('notified', '==', false).where('date', '<=', nowIso).get();
-  } else {
-    snap = await getDocs(query(collection(db, 'reminders'), where('notified', '==', false), where('date', '<=', nowIso)));
+  // Bypass de cota: o worker só precisa evitar disparar pushes duplicados;
+  // servir vazio aqui é seguro e não consome NENHUMA leitura do Firestore.
+  if (checkQuotaExceeded()) {
+    return { docs: [], empty: true };
   }
-  const docs = snap.docs.map((d: any) => {
-    const data = typeof d.data === 'function' ? d.data() : d.data;
-    return { id: d.id, data: () => data, exists: () => true };
-  });
-  return { docs, empty: docs.length === 0 };
+
+  try {
+    const db: any = await getDb();
+    let snap: any;
+    if (db.collection) {
+      snap = await db.collection('reminders').where('notified', '==', false).where('date', '<=', nowIso).get();
+    } else {
+      snap = await getDocs(query(collection(db, 'reminders'), where('notified', '==', false), where('date', '<=', nowIso)));
+    }
+    const docs = snap.docs.map((d: any) => {
+      const data = typeof d.data === 'function' ? d.data() : d.data;
+      return { id: d.id, data: () => data, exists: () => true };
+    });
+    return { docs, empty: docs.length === 0 };
+  } catch (err) {
+    handleFirestoreError(err, OperationType.LIST, 'reminders_pending');
+    return { docs: [], empty: true };
+  }
 }
 
 export const firestoreRepo: DataRepo = { ...fsOps, getPendingReminders } as unknown as DataRepo;

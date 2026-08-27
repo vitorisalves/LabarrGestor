@@ -1106,8 +1106,13 @@ app.post("/api/test-mode/reset", asyncHandler(async (req: Request, res: Response
 
   const deletedCounts: Record<string, number> = {};
 
+  // Caminho backend-agnóstico (via `repo`): usado no Vercel OU quando o backend
+  // de dados é o Supabase/Postgres. O caminho de arquivo JSON local
+  // (`clearLocalTestCollection`) só se aplica ao Firestore rodando localmente.
+  const useRepoPath = IS_VERCEL || (process.env.DATA_BACKEND || '').toLowerCase() === 'supabase';
+
   for (const collectionName of TEST_MODE_COLLECTIONS) {
-    if (IS_VERCEL) {
+    if (useRepoPath) {
       // No Vercel o Modo de Teste grava na coleção real "test_<nome>" do Firestore
       // (o disco local é efêmero/não compartilhado entre instâncias serverless),
       // então o reset precisa apagar os documentos de lá em vez do arquivo local.

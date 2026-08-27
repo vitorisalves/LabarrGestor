@@ -53,7 +53,7 @@ export class PushService {
   static async broadcast(title: string, message: string, url: string = '/', excludeEndpoint?: string | null) {
     const snapshot = await repo.getDocs('push_subscriptions');
     const subscriptions = snapshot.docs
-      .map((doc: any) => doc.data())
+      .map((doc: any) => (typeof doc.data === 'function' ? doc.data() : doc.data))
       .filter((sub: any) => !excludeEndpoint || sub.endpoint !== excludeEndpoint);
 
     const results = await Promise.all(

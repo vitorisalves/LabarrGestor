@@ -13,6 +13,7 @@
  */
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { getCollectionPrefix, isTestModeActive } from '../context.js';
+import { IS_VERCEL } from '../config.js';
 import {
   CachedDocs,
   g_docsCache,
@@ -75,6 +76,10 @@ export function makeSupabaseRepo(clientOverride?: SupabaseClient): DataRepo {
   };
 
   async function readSnapshot(coll: string, cacheKey: string, forceNoCache: boolean, limitN?: number): Promise<QuerySnapshot> {
+    // Modo de Teste no Vercel: cada instância serverless tem seu próprio cache
+    // em memória — uma pode apagar enquanto outra serve dado obsoleto.
+    if (isTestModeActive() && IS_VERCEL) forceNoCache = true;
+
     if (forceNoCache) {
       const clean = cacheKey.split('/')[0];
       g_collectionVersions[clean] = g_collectionVersions[clean] ? g_collectionVersions[clean] + 1 : 2;
@@ -86,8 +91,17 @@ export function makeSupabaseRepo(clientOverride?: SupabaseClient): DataRepo {
     const version = getCollectionVersion(cacheKey.split('/')[0]);
     const isCacheExpired = forceNoCache || !cached || (now - cached.timestamp > ttl) || (cached.version !== version);
 
+    const fromCache = (c: CachedDocs): QuerySnapshot => ({
+      docs: c.docs.map((d: any) => ({
+        id: d.id,
+        data: typeof d.data === 'function' ? d.data : () => d.data,
+        exists: () => true,
+      })),
+      empty: c.docs.length === 0,
+    });
+
     if (!isCacheExpired && cached) {
-      return { docs: cached.docs as any, empty: cached.docs.length === 0 };
+      return fromCache(cached);
     }
 
     try {
@@ -96,7 +110,7 @@ export function makeSupabaseRepo(clientOverride?: SupabaseClient): DataRepo {
       const { data, error } = await q;
       if (error) {
         console.error(`[SupabaseRepo] Erro ao ler ${cacheKey}:`, error.message ?? error);
-        if (cached) return { docs: cached.docs as any, empty: cached.docs.length === 0 };
+        if (cached) return fromCache(cached);
         return { docs: [], empty: true };
       }
       const docs = (data ?? []).map((row: any) => ({
@@ -113,7 +127,7 @@ export function makeSupabaseRepo(clientOverride?: SupabaseClient): DataRepo {
       return { docs, empty: docs.length === 0 };
     } catch (err: any) {
       console.error(`[SupabaseRepo] Falha ao ler ${cacheKey}:`, err?.message ?? err);
-      if (cached) return { docs: cached.docs as any, empty: cached.docs.length === 0 };
+      if (cached) return fromCache(cached);
       return { docs: [], empty: true };
     }
   }

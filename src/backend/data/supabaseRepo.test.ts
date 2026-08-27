@@ -85,6 +85,24 @@ test('delete remove o registro', async () => {
   assert.equal(d.exists(), false);
 });
 
+test('getPendingReminders retorna só lembretes não notificados e vencidos, com shape callable', async () => {
+  const store = {
+    reminders: [
+      { id: 'r1', data: { notified: false, date: '2020-01-01' } },
+      { id: 'r2', data: { notified: true, date: '2020-01-01' } },
+      { id: 'r3', data: { notified: false, date: '2999-01-01' } }
+    ]
+  };
+  const repo = makeSupabaseRepo(fakeClient(store));
+  const snap = await repo.getPendingReminders('2021-01-01');
+  assert.equal(snap.empty, false);
+  assert.equal(snap.docs.length, 1);
+  assert.equal(snap.docs[0].id, 'r1');
+  assert.equal(typeof snap.docs[0].data, 'function');
+  assert.equal(snap.docs[0].data().notified, false);
+  assert.equal(snap.docs[0].exists(), true);
+});
+
 test('normalizeTimestamps converte Timestamp e Date, preserva o resto', () => {
   const out = normalizeTimestamps({
     ts: { toDate: () => new Date('2020-01-01T00:00:00Z') },
