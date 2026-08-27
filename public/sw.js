@@ -3,7 +3,7 @@
  * Especializado em persistência offline e notificações push.
  */
 
-const CACHE_NAME = 'gestor-fornecedores-v6';
+const CACHE_NAME = 'gestor-fornecedores-v7';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -81,39 +81,69 @@ self.addEventListener('fetch', (event) => {
 });
 
 /**
- * Evento Push: Processa notificações em segundo plano enviadas via servidor.
+ * Evento Push: Processa notificações enviadas via servidor.
+ *
+ * Separação de responsabilidade:
+ *  - PWA aberto e visível: entrega o payload para a página exibir o aviso
+ *    in-app; a notificação do sistema é mostrada apenas brevemente para
+ *    cumprir o contrato `userVisibleOnly` e então fechada.
+ *  - PWA fechado / em segundo plano: o próprio Service Worker exibe e
+ *    mantém a notificação do sistema.
+ *
+ * Sem ícones remotos: `showNotification` nunca depende de rede, evitando
+ * "push silencioso" e a consequente penalização/bloqueio pelo navegador.
  */
 self.addEventListener('push', (event) => {
-  let data = {};
-  
-  if (event.data) {
-    try {
-      data = event.data.json();
-    } catch (e) {
-      data = { title: 'Gestor Fornecedores', body: event.data.text() };
+  event.waitUntil((async () => {
+    let data = {};
+    if (event.data) {
+      try {
+        data = event.data.json();
+      } catch (e) {
+        data = { title: 'Gestor Fornecedores', body: event.data.text() };
+      }
     }
-  }
-  
-  const title = data.title || 'Gestor Fornecedores';
-  const options = {
-    body: data.body || data.message || 'Nova atualização disponível.',
-    icon: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTF8VmLyweYpbSL_D3D1F-hsvmGwm9EHcPi5A&s',
-    badge: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTF8VmLyweYpbSL_D3D1F-hsvmGwm9EHcPi5A&s',
-    vibrate: [200, 100, 200, 100, 200],
-    tag: data.tag || 'gestor-update',
-    renotify: true,
-    data: { 
-      url: data.url || '/',
-      id: data.id || Date.now()
-    },
-    // Parâmetros críticos para Android/iOS exibirem na tela de bloqueio
-    actions: [
-      { action: 'open', title: 'Abrir App' },
-      { action: 'close', title: 'Fechar' }
-    ]
-  };
 
-  event.waitUntil(self.registration.showNotification(title, options));
+    const title = data.title || 'Gestor Fornecedores';
+    const tag = data.tag || 'gestor-update';
+    const payload = {
+      title,
+      body: data.body || data.message || 'Nova atualização disponível.',
+      url: data.url || '/',
+      tag,
+      id: data.id || Date.now()
+    };
+
+    const options = {
+      body: payload.body,
+      vibrate: [200, 100, 200, 100, 200],
+      tag,
+      renotify: true,
+      data: { url: payload.url, id: payload.id },
+      // Parâmetros críticos para Android/iOS exibirem na tela de bloqueio
+      actions: [
+        { action: 'open', title: 'Abrir App' },
+        { action: 'close', title: 'Fechar' }
+      ]
+    };
+
+    const allClients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const focusedClient = allClients.find((c) => c.focused || c.visibilityState === 'visible');
+
+    if (focusedClient) {
+      // PWA aberto: a página cuida da exibição (toast / central de avisos).
+      focusedClient.postMessage({ type: 'PUSH_NOTIFICATION', payload });
+      // Cumpre userVisibleOnly com uma notificação efêmera.
+      await self.registration.showNotification(title, options);
+      setTimeout(async () => {
+        const shown = await self.registration.getNotifications({ tag });
+        shown.forEach((n) => n.close());
+      }, 4000);
+    } else {
+      // PWA fechado / segundo plano: o Service Worker executa a tarefa.
+      await self.registration.showNotification(title, options);
+    }
+  })());
 });
 
 /**

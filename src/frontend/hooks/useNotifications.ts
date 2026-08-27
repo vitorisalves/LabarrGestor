@@ -68,6 +68,31 @@ export const useNotifications = () => {
     }
   };
 
+  // Endpoint da própria inscrição push deste dispositivo, para que o backend
+  // não reenvie via push aquilo que já foi exibido localmente.
+  const getOwnEndpoint = async (): Promise<string | null> => {
+    try {
+      if (!('serviceWorker' in navigator)) return null;
+      const registration = await navigator.serviceWorker.ready;
+      const subscription = await registration.pushManager.getSubscription();
+      return subscription?.endpoint ?? null;
+    } catch {
+      return null;
+    }
+  };
+
+  const pushAppNotification = useCallback((title: string, message: string, type: 'forecast' | 'default' = 'default') => {
+    const id = Math.random().toString(36).substr(2, 9);
+    setAppNotifications(prev => [{
+      id,
+      title,
+      message,
+      date: new Date().toISOString(),
+      read: false,
+      type
+    }, ...prev]);
+  }, []);
+
   const requestPermission = async () => {
     if (!('Notification' in window)) {
       alert('Seu navegador não suporta notificações nativas.');
@@ -117,54 +142,37 @@ export const useNotifications = () => {
   }, []);
 
   const addAppNotification = useCallback((title: string, message: string, type?: 'forecast' | 'default') => {
-    const id = Math.random().toString(36).substr(2, 9);
-    const newNotif: AppNotification = {
-      id,
-      title,
-      message,
-      date: new Date().toISOString(),
-      read: false,
-      type
+    // Registro imediato na central de avisos do app.
+    pushAppNotification(title, message, type ?? 'default');
+
+    // Entrega ao servidor: o Service Worker é o único ponto que decide entre
+    // aviso in-app (PWA aberto) e notificação do sistema (PWA fechado).
+    // `excludeEndpoint` evita eco de push para este mesmo dispositivo.
+    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+      getOwnEndpoint().then(excludeEndpoint => {
+        fetch('/api/notifications/broadcast', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title, message, excludeEndpoint })
+        }).catch(err => console.warn('Falha no broadcast push:', err));
+      });
+    }
+  }, [pushAppNotification]);
+
+  // PWA aberto: o Service Worker repassa o push para exibição in-app.
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
+
+    const handler = (event: MessageEvent) => {
+      const data = event.data;
+      if (!data || data.type !== 'PUSH_NOTIFICATION') return;
+      const payload = data.payload || {};
+      pushAppNotification(payload.title || 'Aviso', payload.body || '', 'default');
     };
 
-    // Notificação Nativa do Navegador (Sistema/Celular)
-    if (typeof window !== 'undefined' && 'Notification' in window) {
-      if (Notification.permission === 'granted') {
-        const options: any = {
-          body: message,
-          icon: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTF8VmLyweYpbSL_D3D1F-hsvmGwm9EHcPi5A&s',
-          badge: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTF8VmLyweYpbSL_D3D1F-hsvmGwm9EHcPi5A&s',
-          tag: title.replace(/\s+/g, '-').toLowerCase(),
-          requireInteraction: true,
-          vibrate: [200, 100, 200, 100, 200],
-          actions: [
-            { action: 'open', title: 'Ver Agora' }
-          ]
-        };
-
-        try {
-          // 1. Notificação Local via Service Worker (Imediato)
-          if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.ready.then(registration => {
-              registration.showNotification(title, options);
-            });
-          }
-
-          // 2. Notificação via Push API (Para outros dispositivos e segundo plano real)
-          fetch('/api/notifications/broadcast', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ title, message })
-          }).catch(err => console.warn('Falha no broadcast push:', err));
-
-        } catch (e) {
-          console.warn('Erro ao enviar notificação:', e);
-        }
-      }
-    }
-
-    setAppNotifications(prev => [newNotif, ...prev]);
-  }, []);
+    navigator.serviceWorker.addEventListener('message', handler);
+    return () => navigator.serviceWorker.removeEventListener('message', handler);
+  }, [pushAppNotification]);
 
   const markAllAsRead = () => {
     setAppNotifications(prev => prev.map(n => ({ ...n, read: true })));

@@ -50,9 +50,11 @@ export class PushService {
   /**
    * Envia uma notificação para todos os inscritos
    */
-  static async broadcast(title: string, message: string, url: string = '/') {
+  static async broadcast(title: string, message: string, url: string = '/', excludeEndpoint?: string | null) {
     const snapshot = await fsOps.getDocs('push_subscriptions');
-    const subscriptions = snapshot.docs.map((doc: any) => doc.data());
+    const subscriptions = snapshot.docs
+      .map((doc: any) => doc.data())
+      .filter((sub: any) => !excludeEndpoint || sub.endpoint !== excludeEndpoint);
 
     const results = await Promise.all(
       subscriptions.map((sub: any) => this.sendNotification(sub, title, message, url))

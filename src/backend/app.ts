@@ -1574,8 +1574,8 @@ app.post("/api/notifications/subscribe", asyncHandler(async (req: Request, res: 
 }));
 
 app.post("/api/notifications/broadcast", asyncHandler(async (req: Request, res: Response) => {
-  const { title, message, url } = req.body;
-  const count = await PushService.broadcast(title || "Aviso", message || "Novidade!", url);
+  const { title, message, url, excludeEndpoint } = req.body;
+  const count = await PushService.broadcast(title || "Aviso", message || "Novidade!", url, excludeEndpoint);
   res.json({ sent_to: count });
 }));
 
