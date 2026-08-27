@@ -37,8 +37,27 @@ Vercel — **Preview** e **Production** (Settings → Environment Variables):
 
 ## Backfill
 
-Rode `npx tsx scripts/supabase/migrate.ts` (e `npx tsx scripts/supabase/migrate.ts --test`)
-depois que o script de migração chegar na Task 8; espere `✓ contagens conferem`.
+Pré-requisitos:
+
+- `.env` com `SUPABASE_URL` e `SUPABASE_SERVICE_KEY` (o script tem um carregador de `.env`
+  embutido; não depende de `dotenv`).
+- Rodar **localmente** com credenciais do Firebase Admin SDK — o Admin SDK só inicializa
+  fora da Vercel, via `gcloud auth application-default login` ou
+  `GOOGLE_APPLICATION_CREDENTIALS=/caminho/para/service-account.json`. Sem isso o script
+  aborta com "Admin SDK unavailable".
+
+Passos:
+
+1. `npx tsx scripts/supabase/migrate.ts` — coleções sem prefixo → schema `public`.
+2. `npx tsx scripts/supabase/migrate.ts --test` — coleções `test_*` → schema `test`
+   (várias podem ter 0 docs; tudo bem).
+
+Em ambos, espere a lista por coleção terminando em `✓ contagens conferem` (exit 0). Se
+aparecer `⚠ divergências: <nomes>` (exit 1), investigue as coleções listadas antes de
+prosseguir. Use `--only=coll1,coll2` para reprocessar um subconjunto.
+
+Rode o backfill de novo imediatamente antes do cutover de produção para reconciliar os
+dados criados desde a última execução.
 
 ## Preview cutover checklist
 
