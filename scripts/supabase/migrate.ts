@@ -2,19 +2,23 @@
  * One-shot backfill: Firestore -> Supabase (Postgres).
  *
  * Uso:
- *   npx tsx scripts/supabase/migrate.ts            # coleções sem prefixo -> schema public
- *   npx tsx scripts/supabase/migrate.ts --test     # coleções test_*      -> schema test
+ *   npx tsx scripts/supabase/migrate.ts                 # coleções sem prefixo -> schema public
+ *   npx tsx scripts/supabase/migrate.ts --test          # coleções test_*      -> schema test
  *   npx tsx scripts/supabase/migrate.ts --only=suppliers,categories
+ *   npx tsx scripts/supabase/migrate.ts --truncate      # apaga cada tabela alvo antes de reinserir
+ *                                                       # (backfill autoritativo — remove órfãos de um seed anterior)
  *
  * Pré-condições:
  *   - `.env` (ou ambiente) com SUPABASE_URL e SUPABASE_SERVICE_KEY.
- *   - Rodar LOCALMENTE com credenciais do Firebase Admin SDK
- *     (GOOGLE_APPLICATION_CREDENTIALS ou `gcloud auth application-default login`).
+ *   - Rodar LOCALMENTE com GOOGLE_APPLICATION_CREDENTIALS apontando para o
+ *     JSON de uma service account do Firebase com acesso de leitura ao Firestore.
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import { createClient } from '@supabase/supabase-js';
-import { getDb, initFirebase } from '../../src/backend/firebase.js';
+import { initializeApp, cert } from 'firebase-admin/app';
+import { getFirestore } from 'firebase-admin/firestore';
+import { getFirebaseConfig } from '../../src/backend/config.js';
 import { normalizeTimestamps } from '../../src/backend/data/supabaseRepo.js';
 
 // --- carregador de .env minimalista (sem dependência de dotenv) ---
@@ -39,6 +43,7 @@ const COLLECTIONS = [
 
 const args = process.argv.slice(2);
 const useTest = args.includes('--test');
+const doTruncate = args.includes('--truncate');
 const only = args.find(a => a.startsWith('--only='))?.split('=')[1]?.split(',').map(s => s.trim()).filter(Boolean);
 const schema = useTest ? 'test' : 'public';
 const prefix = useTest ? 'test_' : '';
@@ -50,28 +55,41 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
   process.exit(1);
 }
 
+const GAC = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+if (!GAC || !fs.existsSync(GAC)) {
+  console.error('GOOGLE_APPLICATION_CREDENTIALS ausente ou aponta para arquivo inexistente.');
+  console.error('Baixe uma chave de service account do Firebase (Configurações do projeto -> Contas de serviço) e aponte esta variável para o .json.');
+  process.exit(1);
+}
+
 const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, { db: { schema } });
 
 async function run() {
-  await initFirebase();
-  const db: any = await getDb();
-  if (typeof db?.collection !== 'function') {
-    throw new Error('Admin SDK unavailable — run locally with GOOGLE_APPLICATION_CREDENTIALS / application-default credentials');
-  }
+  const serviceAccount = JSON.parse(fs.readFileSync(GAC!, 'utf8'));
+  const cfg = await getFirebaseConfig();
+  const databaseId = cfg.firestoreDatabaseId || '(default)';
+  const app = initializeApp({ credential: cert(serviceAccount), projectId: serviceAccount.project_id });
+  const db = getFirestore(app, databaseId);
 
   const list = only ?? COLLECTIONS;
   const report: Record<string, { firestore: number; supabase: number }> = {};
 
-  console.log(`Backfill schema=${schema} prefix="${prefix}" coleções=${list.length}`);
+  console.log(`Backfill schema=${schema} prefix="${prefix}" db="${databaseId}" coleções=${list.length}${doTruncate ? ' (com --truncate)' : ''}`);
 
   for (const coll of list) {
     const srcName = prefix + coll;
     const snap = await db.collection(srcName).get();
-    const rows = snap.docs.map((d: any) => ({
+    const rows = snap.docs.map((d) => ({
       id: d.id,
       data: normalizeTimestamps(d.data()),
       updated_at: new Date().toISOString(),
     }));
+
+    if (doTruncate) {
+      // PostgREST exige um filtro no delete; `id >= ''` casa todas as linhas (id é text).
+      const { error: delErr } = await sb.from(coll).delete().gte('id', '');
+      if (delErr) throw new Error(`truncate ${coll}: ${delErr.message}`);
+    }
 
     for (let i = 0; i < rows.length; i += 500) {
       const chunk = rows.slice(i, i + 500);
