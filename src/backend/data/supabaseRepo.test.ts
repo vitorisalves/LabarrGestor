@@ -14,9 +14,12 @@ function fakeClient(store: Record<string, { id: string; data: any }[]>) {
     const q: any = {
       _filterId: undefined as string | undefined,
       _limit: undefined as number | undefined,
+      _rangeFrom: undefined as number | undefined,
+      _rangeTo: undefined as number | undefined,
       select() { return q; },
       eq(_c: string, v: string) { q._filterId = v; return q; },
       limit(n: number) { q._limit = n; return q; },
+      range(from: number, to: number) { q._rangeFrom = from; q._rangeTo = to; return q; },
       maybeSingle() {
         let data = rows().map(r => ({ id: r.id, data: r.data }));
         if (q._filterId !== undefined) data = data.filter(r => r.id === q._filterId);
@@ -26,6 +29,12 @@ function fakeClient(store: Record<string, { id: string; data: any }[]>) {
         let data = rows().map(r => ({ id: r.id, data: r.data }));
         if (q._filterId !== undefined) data = data.filter(r => r.id === q._filterId);
         if (q._limit !== undefined) data = data.slice(0, q._limit);
+        if (q._rangeFrom !== undefined) {
+          // PostgREST devolve no máximo 1000 linhas por página, mesmo que o
+          // range pedido seja maior — o repo pagina até esgotar.
+          const end = Math.min(q._rangeFrom + 1000, (q._rangeTo ?? q._rangeFrom) + 1);
+          data = data.slice(q._rangeFrom, end);
+        }
         return Promise.resolve(resolve({ data, error: null }));
       },
       upsert(row: any) {
@@ -57,6 +66,22 @@ test('getDocs de coleção vazia → empty true', async () => {
   const snap = await repo.getDocs('vazia', 'vazia', true);
   assert.equal(snap.empty, true);
   assert.deepEqual(snap.docs, []);
+});
+
+test('getDocs pagina além de 1000 linhas (PostgREST max-rows)', async () => {
+  const many = Array.from({ length: 2350 }, (_, i) => ({ id: `d${i}`, data: { n: i } }));
+  const repo = makeSupabaseRepo(fakeClient({ invoices: many }));
+  const snap = await repo.getDocs('invoices', 'invoices', true);
+  assert.equal(snap.docs.length, 2350);
+  assert.equal(snap.docs[0].id, 'd0');
+  assert.equal(snap.docs[2349].id, 'd2349');
+});
+
+test('getDocsWithLimit respeita o teto sem paginar', async () => {
+  const many = Array.from({ length: 1500 }, (_, i) => ({ id: `d${i}`, data: { n: i } }));
+  const repo = makeSupabaseRepo(fakeClient({ invoices: many }));
+  const snap = await repo.getDocsWithLimit('invoices', 10, true);
+  assert.equal(snap.docs.length, 10);
 });
 
 test('set faz upsert e getDoc lê de volta', async () => {

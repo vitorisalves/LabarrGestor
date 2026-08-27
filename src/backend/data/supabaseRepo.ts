@@ -105,9 +105,28 @@ export function makeSupabaseRepo(clientOverride?: SupabaseClient): DataRepo {
     }
 
     try {
-      let q = table(coll).select('id,data');
-      if (typeof limitN === 'number') q = q.limit(limitN);
-      const { data, error } = await q;
+      let data: any[] | null = null;
+      let error: any = null;
+
+      if (typeof limitN === 'number') {
+        // Caller pediu um teto explícito (getDocsWithLimit) — uma página basta.
+        ({ data, error } = await table(coll).select('id,data').limit(limitN));
+      } else {
+        // Leitura completa: o PostgREST limita a resposta a `max-rows` (1000 por
+        // padrão no Supabase), então paginamos com range() até esgotar. Sem isso
+        // coleções com >1000 docs (ex.: invoices) voltariam truncadas em silêncio.
+        const PAGE = 1000;
+        const acc: any[] = [];
+        for (let from = 0; ; from += PAGE) {
+          const res = await table(coll).select('id,data').range(from, from + PAGE - 1);
+          if (res.error) { error = res.error; break; }
+          const page: any[] = res.data ?? [];
+          acc.push(...page);
+          if (page.length < PAGE) break;
+        }
+        if (!error) data = acc;
+      }
+
       if (error) {
         console.error(`[SupabaseRepo] Erro ao ler ${cacheKey}:`, error.message ?? error);
         if (cached) return fromCache(cached);

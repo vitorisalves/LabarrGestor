@@ -4,12 +4,14 @@ import { makeSupabaseRepo } from './supabaseRepo.ts';
 
 // Compara apenas a FORMA do retorno para uma coleção vazia — sem tocar a rede.
 test('getDocs de coleção inexistente devolve exatamente {docs,empty}', async () => {
+  const empty = { data: [] as any[], error: null };
   const fake = {
     schema: () => fake,
     from: () => ({
       select: () => ({
-        limit: () => Promise.resolve({ data: [], error: null }),
-        then: (r: any) => Promise.resolve(r({ data: [], error: null }))
+        limit: () => Promise.resolve(empty),
+        range: () => Promise.resolve(empty),
+        then: (r: any) => Promise.resolve(r(empty))
       })
     })
   } as any;
