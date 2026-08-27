@@ -4,8 +4,6 @@
  */
 
 import { useState, useEffect } from 'react';
-import { db } from '../firebase';
-import { collection, getDocs, query, orderBy, limit } from 'firebase/firestore';
 import { Product, SavedList, CartItem } from '../types';
 import { extractErrorMessage, safeStringify, handleFirestoreError, OperationType, cleanObject } from '../utils';
 
@@ -58,31 +56,16 @@ export const useCart = (
     setIsLoadingLists(true);
     try {
       let lists: SavedList[] = [];
-      try {
-        const url = force ? '/api/xml/shopping_lists?fresh=true' : '/api/xml/shopping_lists';
-        const res = await fetch(url, force ? { headers: { 'Cache-Control': 'no-cache' } } : undefined);
-        if (res.ok) {
-          lists = await res.json() as SavedList[];
-          lists.sort((a, b) => b.date.localeCompare(a.date));
-          // Limit 25
-          if (lists.length > 25) {
-            lists = lists.slice(0, 25);
-          }
-        } else {
-          throw new Error("Backend caching route failed");
-        }
-      } catch (backendErr) {
-        console.warn("Backend shopping_lists failed, resorting to client-side Firestore:", backendErr);
-        const q = query(
-          collection(db, 'shopping_lists'), 
-          orderBy('date', 'desc'), 
-          limit(25)
-        );
-        const snapshot = await getDocs(q);
-        lists = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        })) as SavedList[];
+      const url = force ? '/api/xml/shopping_lists?fresh=true' : '/api/xml/shopping_lists';
+      const res = await fetch(url, force ? { headers: { 'Cache-Control': 'no-cache' } } : undefined);
+      if (!res.ok) {
+        throw new Error("Backend caching route failed");
+      }
+      lists = await res.json() as SavedList[];
+      // Equivalente a orderBy('date', 'desc') + limit(25)
+      lists.sort((a, b) => b.date.localeCompare(a.date));
+      if (lists.length > 25) {
+        lists = lists.slice(0, 25);
       }
 
       setSavedLists(lists);

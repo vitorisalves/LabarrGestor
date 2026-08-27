@@ -6,8 +6,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { RefreshCcw, PlusCircle, BellRing, X } from 'lucide-react';
-import { db } from './firebase';
-import { setDoc, doc, deleteDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { getProductCategories } from './utils/productCategories';
 
 // Hooks
@@ -363,7 +361,7 @@ export default function App() {
         console.error("Erro ao remover pendente:", err);
       }
     }
-  }, [savedLists, toggleSavedListItemBought, suppliers, deliveredProducts, saveSupplier, addNotification, saveDeliveredProduct, deleteDeliveredProduct, db]);
+  }, [savedLists, toggleSavedListItemBought, suppliers, deliveredProducts, saveSupplier, addNotification, saveDeliveredProduct, deleteDeliveredProduct]);
 
   const handleReconnect = React.useCallback(async () => {
     const { db, enableNetwork } = await import('./firebase');

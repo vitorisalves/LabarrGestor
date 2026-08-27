@@ -4,10 +4,8 @@
  */
 
 import { useState, useEffect } from 'react';
-import { db } from '../firebase';
-import { collection, getDocs, addDoc, doc, updateDoc, query, orderBy, deleteDoc, where } from 'firebase/firestore';
 import { Reminder } from '../types';
-import { extractErrorMessage, safeStringify, handleFirestoreError, OperationType, cleanObject } from '../utils';
+import { extractErrorMessage, safeStringify, handleFirestoreError, OperationType } from '../utils';
 
 export const useReminders = (
   isAuthReady: boolean, 
@@ -48,7 +46,11 @@ export const useReminders = (
           );
           // Mark as notified in DB
           if (reminder.id && !reminder.id.startsWith('temp-')) {
-            updateDoc(doc(db, 'reminders', reminder.id), { notified: true })
+            fetch('/api/xml/reminders/update', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ id: reminder.id, notified: true })
+            })
               .then(() => invalidateBackendCache('reminders'))
               .catch(err => {
                 handleFirestoreError(err, OperationType.UPDATE, `reminders/${reminder.id}`);
@@ -77,23 +79,12 @@ export const useReminders = (
 
     try {
       let data: Reminder[] = [];
-      try {
-        const res = await fetch('/api/xml/reminders');
-        if (res.ok) {
-          data = await res.json() as Reminder[];
-          data.sort((a, b) => a.date.localeCompare(b.date));
-        } else {
-          throw new Error("Backend caching route failed");
-        }
-      } catch (backendErr) {
-        console.warn("Backend reminders failed, resorting to client-side Firestore:", backendErr);
-        const q = query(collection(db, 'reminders'), orderBy('date', 'asc'));
-        const snapshot = await getDocs(q);
-        data = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        })) as Reminder[];
+      const res = await fetch('/api/xml/reminders');
+      if (!res.ok) {
+        throw new Error("Backend caching route failed");
       }
+      data = await res.json() as Reminder[];
+      data.sort((a, b) => a.date.localeCompare(b.date));
 
       setReminders(data);
       localStorage.setItem('cache_reminders', safeStringify(data));
@@ -141,15 +132,15 @@ export const useReminders = (
     );
 
     try {
-      const cleaned = cleanObject({
-        productName,
-        date,
-        notified: false
+      const r = await fetch('/api/xml/reminders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productName, date })
       });
-      const docRef = await addDoc(collection(db, 'reminders'), cleaned);
+      const { id } = await r.json();
       await invalidateBackendCache('reminders');
-      // Replace temporary ID with real Firestore ID
-      setReminders(prev => prev.map(r => r.id === tempId ? { ...r, id: docRef.id } : r));
+      // Replace temporary ID with real backend ID
+      setReminders(prev => prev.map(r => r.id === tempId ? { ...r, id } : r));
     } catch (err: any) {
       handleFirestoreError(err, OperationType.WRITE, `reminders/${productName}`);
       console.warn("Could not sync reminder to cloud:", err.message);
@@ -162,7 +153,11 @@ export const useReminders = (
     
     try {
       if (!id.startsWith('temp-')) {
-        await deleteDoc(doc(db, 'reminders', id));
+        await fetch('/api/xml/reminders/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id })
+        });
         await invalidateBackendCache('reminders');
       }
     } catch (err: any) {
