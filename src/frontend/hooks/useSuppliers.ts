@@ -4,8 +4,6 @@
  */
 
 import { useState, useEffect } from 'react';
-import { db } from '../firebase';
-import { collection, getDocs } from 'firebase/firestore';
 import { Supplier, Product } from '../types';
 import { generateId, extractErrorMessage, safeStringify, handleFirestoreError, OperationType, cleanObject } from '../utils';
 
@@ -54,53 +52,29 @@ export const useSuppliers = (isAuthReady: boolean, isApproved: boolean) => {
       let categoriesData: string[] = [];
       let setoresData: string[] = [];
 
-      try {
-        const suppUrl = force ? '/api/xml/suppliers?fresh=true' : '/api/xml/suppliers';
-        const catUrl = force ? '/api/xml/categories?fresh=true' : '/api/xml/categories';
-        const setUrl = force ? '/api/xml/setores?fresh=true' : '/api/xml/setores';
-        const fetchOptions = force ? { headers: { 'Cache-Control': 'no-cache' } } : undefined;
+      const suppUrl = force ? '/api/xml/suppliers?fresh=true' : '/api/xml/suppliers';
+      const catUrl = force ? '/api/xml/categories?fresh=true' : '/api/xml/categories';
+      const setUrl = force ? '/api/xml/setores?fresh=true' : '/api/xml/setores';
+      const fetchOptions = force ? { headers: { 'Cache-Control': 'no-cache' } } : undefined;
 
-        const [suppRes, catRes, setRes] = await Promise.all([
-          fetch(suppUrl, fetchOptions),
-          fetch(catUrl, fetchOptions),
-          fetch(setUrl, fetchOptions)
-        ]);
+      const [suppRes, catRes, setRes] = await Promise.all([
+        fetch(suppUrl, fetchOptions),
+        fetch(catUrl, fetchOptions),
+        fetch(setUrl, fetchOptions)
+      ]);
 
-        if (suppRes.ok && catRes.ok && setRes.ok) {
-          const sData = await suppRes.json();
-          suppliersData = sData as Supplier[];
-
-          const cData = await catRes.json();
-          categoriesData = cData.map((d: any) => d.name as string);
-
-          const setData = await setRes.json();
-          setoresData = setData.map((d: any) => d.name as string);
-        } else {
-          throw new Error("Backend caching routes failed, resorting to client SDK fallback");
-        }
-      } catch (backendErr) {
-        console.warn("Backend suppliers/categories/setores cache failed, falling back to client-side Firestore SDK:", backendErr);
-
-        const suppliersCollection = collection(db, 'suppliers');
-        const categoriesCollection = collection(db, 'categories');
-        const setoresCollection = collection(db, 'setores');
-
-        const [suppSnap, catSnap, setSnap] = await Promise.all([
-          getDocs(suppliersCollection),
-          getDocs(categoriesCollection),
-          getDocs(setoresCollection)
-        ]);
-
-        suppliersData = suppSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Supplier));
-
-        if (!catSnap.empty) {
-          categoriesData = catSnap.docs.map(doc => doc.data().name as string);
-        } else {
-          categoriesData = ['Embalagens', 'Ingredientes', 'Limpeza', 'Escritório', 'Fornecedor'];
-        }
-
-        setoresData = setSnap.docs.map(doc => doc.data().name as string);
+      if (!suppRes.ok || !catRes.ok || !setRes.ok) {
+        throw new Error("Backend caching routes failed");
       }
+
+      const sData = await suppRes.json();
+      suppliersData = sData as Supplier[];
+
+      const cData = await catRes.json();
+      categoriesData = cData.map((d: any) => d.name as string);
+
+      const setData = await setRes.json();
+      setoresData = setData.map((d: any) => d.name as string);
 
       const normalizeSuppliers = (list: Supplier[]): Supplier[] =>
         list.map(s => ({

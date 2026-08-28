@@ -1,5 +1,7 @@
 import express, { Request, Response, NextFunction } from "express";
-import { initFirebase, fsOps, clearLocalTestCollection, checkQuotaExceeded, resetQuotaExceeded } from "./firebase.js";
+import { initFirebase } from "./firebase.js";
+import { repo } from "./data/index.js";
+import { clearLocalTestCollection, checkQuotaExceeded, resetQuotaExceeded } from "./data/firestoreRepo.js";
 import { EXTERNAL_API_CONFIG, IS_VERCEL, PUSH_CONFIG, getFirebaseConfig } from "./config.js";
 import { AIService } from "./services/aiService.js";
 import { PushService } from "./services/pushService.js";
@@ -40,16 +42,16 @@ PushService.init();
 async function cleanupManualInvoices() {
   try {
     console.log("[Cleanup] Starting manual-inv- deletion...");
-    const snapshot = await fsOps.getDocs('invoices', 'invoices', true);
+    const snapshot = await repo.getDocs('invoices', 'invoices', true);
     if (snapshot && snapshot.docs) {
       const manualInvoices = snapshot.docs.filter((doc: any) => doc.id.startsWith('manual-inv-'));
       console.log(`[Cleanup] Found ${manualInvoices.length} manual invoices to delete.`);
       for (const docObj of manualInvoices) {
-        const docRef = fsOps.doc('invoices', docObj.id);
-        await fsOps.delete(docRef, `invoices/${docObj.id}`);
+        const docRef = repo.doc('invoices', docObj.id);
+        await repo.delete(docRef, `invoices/${docObj.id}`);
       }
       if (manualInvoices.length > 0) {
-        fsOps.invalidateCache('invoices');
+        repo.invalidateCache('invoices');
         console.log("[Cleanup] Finished deleting manual invoices and invalidated cache.");
       }
     }
@@ -114,7 +116,7 @@ app.get("/api/debug-db", asyncHandler(async (req: Request, res: Response) => {
     let isOfflineCacheUsed = false;
 
     try {
-      const snapshot = await fsOps.getDocs('invoices', 'invoices', true);
+      const snapshot = await repo.getDocs('invoices', 'invoices', true);
       docsCount = snapshot?.docs?.length || 0;
       if (docsCount > 0) {
         firstDocId = snapshot.docs[0].id;
@@ -180,7 +182,7 @@ app.post("/api/xml/process", asyncHandler(async (req: Request, res: Response) =>
   // 1. Busca faturas existentes para comparação antes de salvar o novo XML
   let existingInvoices: any[] = [];
   try {
-    const snapshot = await fsOps.getDocs('invoices', 'invoices');
+    const snapshot = await repo.getDocs('invoices', 'invoices');
     existingInvoices = snapshot.docs.map((doc: any) => {
       const d = typeof doc.data === 'function' ? doc.data() : doc.data;
       return { id: doc.id, ...d };
@@ -190,15 +192,15 @@ app.post("/api/xml/process", asyncHandler(async (req: Request, res: Response) =>
   }
 
   // 2. Salva no Firestore tanto na coleção invoices quanto em xml_spendings
-  const docRef = fsOps.doc('invoices', parsedData.id);
-  const docSnapshot = await fsOps.getDoc(docRef);
+  const docRef = repo.doc('invoices', parsedData.id);
+  const docSnapshot = await repo.getDoc(docRef);
   const exists = typeof docSnapshot.exists === 'function' ? docSnapshot.exists() : !!docSnapshot.exists;
   
-  await fsOps.set(docRef, parsedData, 'invoices/' + parsedData.id);
+  await repo.set(docRef, parsedData, 'invoices/' + parsedData.id);
   
   // Salva também em xml_spendings para persistência simultânea multitabelas
-  const spendingRef = fsOps.doc('xml_spendings', parsedData.id);
-  await fsOps.set(spendingRef, {
+  const spendingRef = repo.doc('xml_spendings', parsedData.id);
+  await repo.set(spendingRef, {
     id: parsedData.id,
     supplierName: parsedData.supplierName,
     dhEmi: parsedData.date,
@@ -206,8 +208,8 @@ app.post("/api/xml/process", asyncHandler(async (req: Request, res: Response) =>
     fileName: `upload_${parsedData.id}.xml`
   }, 'xml_spendings/' + parsedData.id);
 
-  fsOps.invalidateCache('xml_spendings'); // Invalida o cache de gastos XML
-  fsOps.invalidateCache('invoices'); // Invalida o cache de faturas
+  repo.invalidateCache('xml_spendings'); // Invalida o cache de gastos XML
+  repo.invalidateCache('invoices'); // Invalida o cache de faturas
   
   // 3. Comparação de preços dos produtos da nota atual com as compras anteriores
   const currentInvoiceId = parsedData.id;
@@ -274,9 +276,9 @@ app.post("/api/xml/process", asyncHandler(async (req: Request, res: Response) =>
         };
 
         // Salva o alerta de aumento de preço no Firestore
-        const piRef = fsOps.doc('price_increases', increaseId);
-        await fsOps.set(piRef, priceIncreaseDoc, 'price_increases/' + increaseId);
-        fsOps.invalidateCache('price_increases');
+        const piRef = repo.doc('price_increases', increaseId);
+        await repo.set(piRef, priceIncreaseDoc, 'price_increases/' + increaseId);
+        repo.invalidateCache('price_increases');
 
         // Gera e dispara uma notificação push informando o aumento
         try {
@@ -311,7 +313,7 @@ app.post("/api/xml/process-batch", asyncHandler(async (req: Request, res: Respon
   // 1. Busca faturas existentes exatamente uma vez para o lote inteiro
   let existingInvoices: any[] = [];
   try {
-    const snapshot = await fsOps.getDocs('invoices', 'invoices');
+    const snapshot = await repo.getDocs('invoices', 'invoices');
     existingInvoices = snapshot.docs.map((doc: any) => {
       const d = typeof doc.data === 'function' ? doc.data() : doc.data;
       return { id: doc.id, ...d };
@@ -342,16 +344,16 @@ app.post("/api/xml/process-batch", asyncHandler(async (req: Request, res: Respon
       const currentInvoiceDate = parsedData.date || new Date().toISOString();
       const currentProducts = parsedData.products || [];
 
-      const docRef = fsOps.doc('invoices', parsedData.id);
-      const docSnapshot = await fsOps.getDoc(docRef);
+      const docRef = repo.doc('invoices', parsedData.id);
+      const docSnapshot = await repo.getDoc(docRef);
       const exists = typeof docSnapshot.exists === 'function' ? docSnapshot.exists() : !!docSnapshot.exists;
 
       // Persiste na tabela invoices
-      await fsOps.set(docRef, parsedData, 'invoices/' + parsedData.id);
+      await repo.set(docRef, parsedData, 'invoices/' + parsedData.id);
 
       // Persiste simultaneamente na tabela xml_spendings
-      const spendingRef = fsOps.doc('xml_spendings', parsedData.id);
-      await fsOps.set(spendingRef, {
+      const spendingRef = repo.doc('xml_spendings', parsedData.id);
+      await repo.set(spendingRef, {
         id: parsedData.id,
         supplierName: parsedData.supplierName,
         dhEmi: parsedData.date,
@@ -415,8 +417,8 @@ app.post("/api/xml/process-batch", asyncHandler(async (req: Request, res: Respon
               createdAt: new Date().toISOString()
         };
 
-            const piRef = fsOps.doc('price_increases', increaseId);
-            await fsOps.set(piRef, priceIncreaseDoc, 'price_increases/' + increaseId);
+            const piRef = repo.doc('price_increases', increaseId);
+            await repo.set(piRef, priceIncreaseDoc, 'price_increases/' + increaseId);
           }
         }
       }
@@ -438,9 +440,9 @@ app.post("/api/xml/process-batch", asyncHandler(async (req: Request, res: Respon
   }
 
   // Invalida os caches globais UMA ÚNICA VEZ ao término de todo o lote!
-  fsOps.invalidateCache('xml_spendings');
-  fsOps.invalidateCache('invoices');
-  fsOps.invalidateCache('price_increases');
+  repo.invalidateCache('xml_spendings');
+  repo.invalidateCache('invoices');
+  repo.invalidateCache('price_increases');
 
   console.log(`[Batch XML] Lote finalizado com sucesso. Registros processados: ${results.length}`);
   res.json({ results });
@@ -448,7 +450,7 @@ app.post("/api/xml/process-batch", asyncHandler(async (req: Request, res: Respon
 
 app.get("/api/xml/price-increases", handleCacheAndEtag("price_increases"), asyncHandler(async (req: Request, res: Response) => {
   try {
-    const snapshot = await fsOps.getDocs('price_increases', 'price_increases', true);
+    const snapshot = await repo.getDocs('price_increases', 'price_increases', true);
     const data = snapshot.docs.map((doc: any) => {
       const d = typeof doc.data === 'function' ? doc.data() : doc.data;
       return { id: doc.id, ...d };
@@ -468,10 +470,10 @@ app.post("/api/xml/price-increases/delete", asyncHandler(async (req: Request, re
   }
 
   for (const id of ids) {
-    const docRef = fsOps.doc('price_increases', id);
-    await fsOps.delete(docRef, 'price_increases/' + id);
+    const docRef = repo.doc('price_increases', id);
+    await repo.delete(docRef, 'price_increases/' + id);
   }
-  fsOps.invalidateCache('price_increases');
+  repo.invalidateCache('price_increases');
   res.json({ status: "success", deletedCount: ids.length });
 }));
 
@@ -479,7 +481,7 @@ app.get("/api/xml/invoices", handleCacheAndEtag("invoices"), asyncHandler(async 
   console.log("Fetching invoices...");
   try {
     const forceNoCache = req.query.fresh === 'true' || req.headers['cache-control'] === 'no-cache' || req.headers['pragma'] === 'no-cache';
-    const snapshot = await fsOps.getDocs('invoices', 'invoices', forceNoCache);
+    const snapshot = await repo.getDocs('invoices', 'invoices', forceNoCache);
     console.log("Got snapshot, found docs:", snapshot?.docs?.length);
     if (!snapshot || !snapshot.docs) {
       throw new Error("Snapshot or snapshot.docs is undefined");
@@ -488,7 +490,7 @@ app.get("/api/xml/invoices", handleCacheAndEtag("invoices"), asyncHandler(async 
     // Load product category overrides
     let productOverridesMap = new Map<string, { category?: string; deleted?: boolean }>();
     try {
-      const pcSnap = await fsOps.getDocs('product_categories', 'product_categories', forceNoCache);
+      const pcSnap = await repo.getDocs('product_categories', 'product_categories', forceNoCache);
       if (pcSnap && pcSnap.docs) {
         pcSnap.docs.forEach((d: any) => {
           const data = typeof d.data === 'function' ? d.data() : d.data;
@@ -508,7 +510,7 @@ app.get("/api/xml/invoices", handleCacheAndEtag("invoices"), asyncHandler(async 
     // Load product setor overrides
     let setorOverridesMap = new Map<string, { setor?: string }>();
     try {
-      const psSnap = await fsOps.getDocs('product_setores', 'product_setores', forceNoCache);
+      const psSnap = await repo.getDocs('product_setores', 'product_setores', forceNoCache);
       if (psSnap && psSnap.docs) {
         psSnap.docs.forEach((d: any) => {
           const data = typeof d.data === 'function' ? d.data() : d.data;
@@ -572,7 +574,7 @@ app.get("/api/xml/invoices", handleCacheAndEtag("invoices"), asyncHandler(async 
 app.get("/api/xml/suppliers", handleCacheAndEtag("suppliers"), asyncHandler(async (req: Request, res: Response) => {
   try {
     const forceNoCache = req.query.fresh === 'true' || req.headers['cache-control'] === 'no-cache' || req.headers['pragma'] === 'no-cache';
-    const snapshot = await fsOps.getDocs('suppliers', 'suppliers', forceNoCache);
+    const snapshot = await repo.getDocs('suppliers', 'suppliers', forceNoCache);
     const data = snapshot.docs.map((doc: any) => {
       const d = typeof doc.data === 'function' ? doc.data() : doc.data;
       return { id: doc.id, ...d };
@@ -590,9 +592,9 @@ app.post("/api/xml/suppliers", asyncHandler(async (req: Request, res: Response) 
     return res.status(400).json({ error: "Fornecedor inválido: id ausente." });
   }
   const { id, ...rest } = supplier;
-  const docRef = fsOps.doc('suppliers', id);
-  await fsOps.set(docRef, rest, 'suppliers/' + id);
-  fsOps.invalidateCache('suppliers');
+  const docRef = repo.doc('suppliers', id);
+  await repo.set(docRef, rest, 'suppliers/' + id);
+  repo.invalidateCache('suppliers');
   res.json({ status: "success" });
 }));
 
@@ -601,31 +603,31 @@ app.post("/api/xml/suppliers/delete", asyncHandler(async (req: Request, res: Res
   if (!id) {
     return res.status(400).json({ error: "id ausente." });
   }
-  const docRef = fsOps.doc('suppliers', id);
-  await fsOps.delete(docRef, 'suppliers/' + id);
-  fsOps.invalidateCache('suppliers');
+  const docRef = repo.doc('suppliers', id);
+  await repo.delete(docRef, 'suppliers/' + id);
+  repo.invalidateCache('suppliers');
   res.json({ status: "success" });
 }));
 
 app.post("/api/xml/suppliers/delete-all", asyncHandler(async (req: Request, res: Response) => {
-  const snapshot = await fsOps.getDocs('suppliers', 'suppliers', true);
+  const snapshot = await repo.getDocs('suppliers', 'suppliers', true);
   let count = 0;
   for (const docSnap of snapshot.docs) {
     const d = typeof docSnap.data === 'function' ? docSnap.data() : docSnap.data;
     const name = String(d?.name || '').trim().toUpperCase();
     if (name === 'MERCADO' || name === 'MATERIAIS') continue;
-    const docRef = fsOps.doc('suppliers', docSnap.id);
-    await fsOps.delete(docRef, 'suppliers/' + docSnap.id);
+    const docRef = repo.doc('suppliers', docSnap.id);
+    await repo.delete(docRef, 'suppliers/' + docSnap.id);
     count++;
   }
-  fsOps.invalidateCache('suppliers');
+  repo.invalidateCache('suppliers');
   res.json({ status: "success", count });
 }));
 
 app.get("/api/xml/authorized_users", handleCacheAndEtag("authorized_users"), asyncHandler(async (req: Request, res: Response) => {
   try {
     const forceNoCache = req.query.fresh === 'true' || req.headers['cache-control'] === 'no-cache' || req.headers['pragma'] === 'no-cache';
-    const snapshot = await fsOps.getDocs('authorized_users', 'authorized_users', forceNoCache);
+    const snapshot = await repo.getDocs('authorized_users', 'authorized_users', forceNoCache);
     const data = snapshot.docs.map((doc: any) => {
       const d = typeof doc.data === 'function' ? doc.data() : doc.data;
       return { id: doc.id, ...d };
@@ -637,10 +639,72 @@ app.get("/api/xml/authorized_users", handleCacheAndEtag("authorized_users"), asy
   }
 }));
 
+// authorized_users writes are token-verified (identitytoolkit REST) — no Admin SDK needed
+async function verifyUid(idToken: string | undefined): Promise<string | null> {
+  if (!idToken) return null;
+  const token = idToken.startsWith('Bearer ') ? idToken.slice(7) : idToken;
+  try {
+    const { apiKey } = await getFirebaseConfig();
+    const r = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${apiKey}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idToken: token }),
+    });
+    if (!r.ok) return null;
+    const j: any = await r.json();
+    return j.users?.[0]?.localId ?? null;
+  } catch { return null; }
+}
+async function callerIsAdmin(uid: string): Promise<boolean> {
+  const d = await repo.getDoc(repo.doc('authorized_users', uid), 'authorized_users/' + uid, true);
+  return d.exists() && (d.data() as any).role === 'admin';
+}
+
+app.get("/api/auth/users", asyncHandler(async (req: Request, res: Response) => {
+  const snap = await repo.getDocs('authorized_users', 'authorized_users', req.query.fresh === 'true');
+  res.json(snap.docs.map((d: any) => ({ id: d.id, ...(typeof d.data === 'function' ? d.data() : d.data) })));
+}));
+
+app.get("/api/auth/users/me", asyncHandler(async (req: Request, res: Response) => {
+  const uid = String(req.query.uid || '');
+  if (!uid) return res.status(400).json({ error: "uid ausente." });
+  const d = await repo.getDoc(repo.doc('authorized_users', uid), 'authorized_users/' + uid, true);
+  res.json(d.exists() ? { id: d.id, ...(d.data() as any) } : null);
+}));
+
+app.post("/api/auth/users/upsert", asyncHandler(async (req: Request, res: Response) => {
+  const { uid, user } = req.body;
+  if (!uid || !user) return res.status(400).json({ error: "uid e user são obrigatórios" });
+  const tokUid = await verifyUid(req.headers.authorization);
+  if (!tokUid || tokUid !== uid) return res.status(401).json({ error: "unauthorized" });
+  await repo.set(repo.doc('authorized_users', uid), user, 'authorized_users/' + uid);
+  repo.invalidateCache('authorized_users');
+  res.json({ status: "success" });
+}));
+
+app.post("/api/auth/users/status", asyncHandler(async (req: Request, res: Response) => {
+  const { uid, status } = req.body;
+  if (!uid || !status) return res.status(400).json({ error: "uid e status são obrigatórios" });
+  const tokUid = await verifyUid(req.headers.authorization);
+  if (!tokUid || !(await callerIsAdmin(tokUid))) return res.status(401).json({ error: "unauthorized" });
+  if (status === 'denied') await repo.delete(repo.doc('authorized_users', uid), 'authorized_users/' + uid);
+  else await repo.update(repo.doc('authorized_users', uid), { status }, 'authorized_users/' + uid);
+  repo.invalidateCache('authorized_users');
+  res.json({ status: "success" });
+}));
+
+app.post("/api/auth/users/delete", asyncHandler(async (req: Request, res: Response) => {
+  const { uid } = req.body;
+  if (!uid) return res.status(400).json({ error: "uid ausente." });
+  const tokUid = await verifyUid(req.headers.authorization);
+  if (!tokUid || !(await callerIsAdmin(tokUid))) return res.status(401).json({ error: "unauthorized" });
+  await repo.delete(repo.doc('authorized_users', uid), 'authorized_users/' + uid);
+  repo.invalidateCache('authorized_users');
+  res.json({ status: "success" });
+}));
+
 app.get("/api/xml/spendings", handleCacheAndEtag("xml_spendings"), asyncHandler(async (req: Request, res: Response) => {
   try {
     const forceNoCache = req.query.fresh === 'true' || req.headers['cache-control'] === 'no-cache' || req.headers['pragma'] === 'no-cache';
-    const snapshot = await fsOps.getDocs('xml_spendings', 'xml_spendings', forceNoCache);
+    const snapshot = await repo.getDocs('xml_spendings', 'xml_spendings', forceNoCache);
     const data = snapshot.docs.map((doc: any) => {
       const d = typeof doc.data === 'function' ? doc.data() : doc.data;
       return { id: doc.id, ...d };
@@ -658,13 +722,13 @@ app.delete("/api/xml/spendings/:id", asyncHandler(async (req: Request, res: Resp
     return res.status(400).json({ status: 'error', error: 'ID not provided' });
   }
 
-  const docRef = await fsOps.doc('xml_spendings', id);
-  const docSnapshot = await fsOps.getDoc(docRef, 'xml_spendings/' + id);
+  const docRef = await repo.doc('xml_spendings', id);
+  const docSnapshot = await repo.getDoc(docRef, 'xml_spendings/' + id);
   const exists = typeof docSnapshot.exists === 'function' ? docSnapshot.exists() : !!docSnapshot.exists;
 
   if (exists) {
-    await fsOps.delete(docRef, 'xml_spendings/' + id);
-    fsOps.invalidateCache('xml_spendings');
+    await repo.delete(docRef, 'xml_spendings/' + id);
+    repo.invalidateCache('xml_spendings');
     res.json({ status: 'deleted', id });
   } else {
     res.json({ status: 'not_found', message: `Spending ${id} not found but checked.` });
@@ -674,7 +738,7 @@ app.delete("/api/xml/spendings/:id", asyncHandler(async (req: Request, res: Resp
 app.get("/api/xml/categories", handleCacheAndEtag("categories"), asyncHandler(async (req: Request, res: Response) => {
   try {
     const forceNoCache = req.query.fresh === 'true' || req.headers['cache-control'] === 'no-cache' || req.headers['pragma'] === 'no-cache';
-    const snapshot = await fsOps.getDocs('categories', 'categories', forceNoCache);
+    const snapshot = await repo.getDocs('categories', 'categories', forceNoCache);
     const data = snapshot.docs.map((doc: any) => {
       const d = typeof doc.data === 'function' ? doc.data() : doc.data;
       return { id: doc.id, ...d };
@@ -689,7 +753,7 @@ app.get("/api/xml/categories", handleCacheAndEtag("categories"), asyncHandler(as
 app.get("/api/xml/setores", handleCacheAndEtag("setores"), asyncHandler(async (req: Request, res: Response) => {
   try {
     const forceNoCache = req.query.fresh === 'true' || req.headers['cache-control'] === 'no-cache' || req.headers['pragma'] === 'no-cache';
-    const snapshot = await fsOps.getDocs('setores', 'setores', forceNoCache);
+    const snapshot = await repo.getDocs('setores', 'setores', forceNoCache);
     const data = snapshot.docs.map((doc: any) => {
       const d = typeof doc.data === 'function' ? doc.data() : doc.data;
       return { id: doc.id, ...d };
@@ -708,8 +772,8 @@ app.post("/api/xml/setores", asyncHandler(async (req: Request, res: Response) =>
   }
   const trimmed = String(name).trim();
   const id = trimmed.toLowerCase().replace(/\s+/g, "_");
-  await fsOps.set(fsOps.doc('setores', id), { name: trimmed }, 'setores/' + id);
-  fsOps.invalidateCache('setores');
+  await repo.set(repo.doc('setores', id), { name: trimmed }, 'setores/' + id);
+  repo.invalidateCache('setores');
   res.json({ status: "success" });
 }));
 
@@ -718,15 +782,15 @@ app.post("/api/xml/setores/delete", asyncHandler(async (req: Request, res: Respo
   if (!name) {
     return res.status(400).json({ error: "Nome do setor é obrigatório" });
   }
-  const snapshot = await fsOps.getDocs('setores', 'setores', true);
+  const snapshot = await repo.getDocs('setores', 'setores', true);
   const matches = snapshot.docs.filter((doc: any) => {
     const d = typeof doc.data === 'function' ? doc.data() : doc.data;
     return d?.name === name;
   });
   for (const doc of matches) {
-    await fsOps.delete(fsOps.doc('setores', doc.id), 'setores/' + doc.id);
+    await repo.delete(repo.doc('setores', doc.id), 'setores/' + doc.id);
   }
-  fsOps.invalidateCache('setores');
+  repo.invalidateCache('setores');
   res.json({ status: "success", deletedCount: matches.length });
 }));
 
@@ -737,8 +801,8 @@ app.post("/api/xml/categories", asyncHandler(async (req: Request, res: Response)
   }
   const trimmed = String(name).trim();
   const id = trimmed.toLowerCase().replace(/\s+/g, "_");
-  await fsOps.set(fsOps.doc('categories', id), { name: trimmed }, 'categories/' + id);
-  fsOps.invalidateCache('categories');
+  await repo.set(repo.doc('categories', id), { name: trimmed }, 'categories/' + id);
+  repo.invalidateCache('categories');
   res.json({ status: "success" });
 }));
 
@@ -747,22 +811,22 @@ app.post("/api/xml/categories/delete", asyncHandler(async (req: Request, res: Re
   if (!name) {
     return res.status(400).json({ error: "Nome da categoria é obrigatório" });
   }
-  const snapshot = await fsOps.getDocs('categories', 'categories', true);
+  const snapshot = await repo.getDocs('categories', 'categories', true);
   const matches = snapshot.docs.filter((doc: any) => {
     const d = typeof doc.data === 'function' ? doc.data() : doc.data;
     return d?.name === name;
   });
   for (const doc of matches) {
-    await fsOps.delete(fsOps.doc('categories', doc.id), 'categories/' + doc.id);
+    await repo.delete(repo.doc('categories', doc.id), 'categories/' + doc.id);
   }
-  fsOps.invalidateCache('categories');
+  repo.invalidateCache('categories');
   res.json({ status: "success", deletedCount: matches.length });
 }));
 
 app.get("/api/xml/delivered_products", handleCacheAndEtag("delivered_products"), asyncHandler(async (req: Request, res: Response) => {
   try {
     const forceNoCache = req.query.fresh === 'true' || req.headers['cache-control'] === 'no-cache' || req.headers['pragma'] === 'no-cache';
-    const snapshot = await fsOps.getDocs('delivered_products', 'delivered_products', forceNoCache);
+    const snapshot = await repo.getDocs('delivered_products', 'delivered_products', forceNoCache);
     const data = snapshot.docs.map((doc: any) => {
       const d = typeof doc.data === 'function' ? doc.data() : doc.data;
       return { id: doc.id, ...d };
@@ -780,8 +844,8 @@ app.post("/api/xml/delivered_products", asyncHandler(async (req: Request, res: R
     return res.status(400).json({ error: "Produto entregue inválido: id ausente." });
   }
   const { id, ...rest } = product;
-  await fsOps.set(fsOps.doc('delivered_products', id), rest, 'delivered_products/' + id);
-  fsOps.invalidateCache('delivered_products');
+  await repo.set(repo.doc('delivered_products', id), rest, 'delivered_products/' + id);
+  repo.invalidateCache('delivered_products');
   res.json({ status: "success" });
 }));
 
@@ -790,15 +854,15 @@ app.post("/api/xml/delivered_products/delete", asyncHandler(async (req: Request,
   if (!id) {
     return res.status(400).json({ error: "id ausente." });
   }
-  await fsOps.delete(fsOps.doc('delivered_products', id), 'delivered_products/' + id);
-  fsOps.invalidateCache('delivered_products');
+  await repo.delete(repo.doc('delivered_products', id), 'delivered_products/' + id);
+  repo.invalidateCache('delivered_products');
   res.json({ status: "success" });
 }));
 
 app.get("/api/xml/reminders", handleCacheAndEtag("reminders"), asyncHandler(async (req: Request, res: Response) => {
   try {
     const forceNoCache = req.query.fresh === 'true' || req.headers['cache-control'] === 'no-cache' || req.headers['pragma'] === 'no-cache';
-    const snapshot = await fsOps.getDocs('reminders', 'reminders', forceNoCache);
+    const snapshot = await repo.getDocs('reminders', 'reminders', forceNoCache);
     const data = snapshot.docs.map((doc: any) => {
       const d = typeof doc.data === 'function' ? doc.data() : doc.data;
       return { id: doc.id, ...d };
@@ -810,10 +874,35 @@ app.get("/api/xml/reminders", handleCacheAndEtag("reminders"), asyncHandler(asyn
   }
 }));
 
+app.post("/api/xml/reminders", asyncHandler(async (req: Request, res: Response) => {
+  const { id, productName, date, ...rest } = req.body;
+  if (!productName || !date) return res.status(400).json({ error: "productName e date são obrigatórios" });
+  const remId = id || `rem_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  await repo.set(repo.doc('reminders', remId), { productName, date, notified: false, ...rest }, 'reminders/' + remId);
+  repo.invalidateCache('reminders');
+  res.json({ status: "success", id: remId });
+}));
+
+app.post("/api/xml/reminders/update", asyncHandler(async (req: Request, res: Response) => {
+  const { id, ...patch } = req.body;
+  if (!id) return res.status(400).json({ error: "id ausente." });
+  await repo.update(repo.doc('reminders', id), patch, 'reminders/' + id);
+  repo.invalidateCache('reminders');
+  res.json({ status: "success" });
+}));
+
+app.post("/api/xml/reminders/delete", asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.body;
+  if (!id) return res.status(400).json({ error: "id ausente." });
+  await repo.delete(repo.doc('reminders', id), 'reminders/' + id);
+  repo.invalidateCache('reminders');
+  res.json({ status: "success" });
+}));
+
 app.get("/api/xml/shopping_lists", handleCacheAndEtag("shopping_lists"), asyncHandler(async (req: Request, res: Response) => {
   try {
     const forceNoCache = req.query.fresh === 'true' || req.headers['cache-control'] === 'no-cache' || req.headers['pragma'] === 'no-cache';
-    const snapshot = await fsOps.getDocs('shopping_lists', 'shopping_lists', forceNoCache);
+    const snapshot = await repo.getDocs('shopping_lists', 'shopping_lists', forceNoCache);
     const data = snapshot.docs.map((doc: any) => {
       const d = typeof doc.data === 'function' ? doc.data() : doc.data;
       return { id: doc.id, ...d };
@@ -833,16 +922,16 @@ app.post("/api/xml/shopping_lists/update-items", asyncHandler(async (req: Reques
   const updates: any = { items };
   if (typeof total === 'number') updates.total = total;
   if (typeof date === 'string') updates.date = date;
-  await fsOps.update(fsOps.doc('shopping_lists', listId), updates, 'shopping_lists/' + listId);
-  fsOps.invalidateCache('shopping_lists');
+  await repo.update(repo.doc('shopping_lists', listId), updates, 'shopping_lists/' + listId);
+  repo.invalidateCache('shopping_lists');
   res.json({ status: "success" });
 }));
 
 app.post("/api/xml/shopping_lists", asyncHandler(async (req: Request, res: Response) => {
   const { id, ...listData } = req.body;
   const listId = id || `list_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-  await fsOps.set(fsOps.doc('shopping_lists', listId), listData, 'shopping_lists/' + listId);
-  fsOps.invalidateCache('shopping_lists');
+  await repo.set(repo.doc('shopping_lists', listId), listData, 'shopping_lists/' + listId);
+  repo.invalidateCache('shopping_lists');
   res.json({ status: "success", id: listId });
 }));
 
@@ -851,15 +940,15 @@ app.post("/api/xml/shopping_lists/delete", asyncHandler(async (req: Request, res
   if (!id) {
     return res.status(400).json({ error: "id ausente." });
   }
-  await fsOps.delete(fsOps.doc('shopping_lists', id), 'shopping_lists/' + id);
-  fsOps.invalidateCache('shopping_lists');
+  await repo.delete(repo.doc('shopping_lists', id), 'shopping_lists/' + id);
+  repo.invalidateCache('shopping_lists');
   res.json({ status: "success" });
 }));
 
 app.get("/api/xml/purchase_orders", handleCacheAndEtag("purchase_orders"), asyncHandler(async (req: Request, res: Response) => {
   try {
     const forceNoCache = req.query.fresh === 'true' || req.headers['cache-control'] === 'no-cache' || req.headers['pragma'] === 'no-cache';
-    const snapshot = await fsOps.getDocs('purchase_orders', 'purchase_orders', forceNoCache);
+    const snapshot = await repo.getDocs('purchase_orders', 'purchase_orders', forceNoCache);
     const data = snapshot.docs.map((doc: any) => {
       const d = typeof doc.data === 'function' ? doc.data() : doc.data;
       return { id: doc.id, ...d };
@@ -887,57 +976,57 @@ app.post("/api/xml/purchase_orders", asyncHandler(async (req: Request, res: Resp
     createdBy: createdBy || '',
     status: 'pending'
   };
-  await fsOps.set(fsOps.doc('purchase_orders', id), order, 'purchase_orders/' + id);
-  fsOps.invalidateCache('purchase_orders');
+  await repo.set(repo.doc('purchase_orders', id), order, 'purchase_orders/' + id);
+  repo.invalidateCache('purchase_orders');
   res.json({ status: "success", order });
 }));
 
 app.post("/api/xml/purchase_orders/approve-requisition", asyncHandler(async (req: Request, res: Response) => {
   const { id, approvedBy, observacao } = req.body;
   if (!id) return res.status(400).json({ error: "ID é obrigatório" });
-  await fsOps.update(fsOps.doc('purchase_orders', id), {
+  await repo.update(repo.doc('purchase_orders', id), {
     status: 'requisition_approved',
     requisitionApprovedBy: approvedBy || '',
     requisitionApprovedAt: new Date().toISOString(),
     observacao: observacao || ''
   }, 'purchase_orders/' + id);
-  fsOps.invalidateCache('purchase_orders');
+  repo.invalidateCache('purchase_orders');
   res.json({ status: "success" });
 }));
 
 app.post("/api/xml/purchase_orders/approve", asyncHandler(async (req: Request, res: Response) => {
   const { id, approvedBy, observacao } = req.body;
   if (!id) return res.status(400).json({ error: "ID é obrigatório" });
-  await fsOps.update(fsOps.doc('purchase_orders', id), {
+  await repo.update(repo.doc('purchase_orders', id), {
     status: 'approved',
     approvedBy: approvedBy || '',
     approvedAt: new Date().toISOString(),
     observacao: observacao || ''
   }, 'purchase_orders/' + id);
-  fsOps.invalidateCache('purchase_orders');
+  repo.invalidateCache('purchase_orders');
   res.json({ status: "success" });
 }));
 
 app.post("/api/xml/purchase_orders/reject", asyncHandler(async (req: Request, res: Response) => {
   const { id, rejectedBy, observacao } = req.body;
   if (!id) return res.status(400).json({ error: "ID é obrigatório" });
-  await fsOps.update(fsOps.doc('purchase_orders', id), {
+  await repo.update(repo.doc('purchase_orders', id), {
     status: 'rejected',
     rejectedBy: rejectedBy || '',
     rejectedAt: new Date().toISOString(),
     observacao: observacao || ''
   }, 'purchase_orders/' + id);
-  fsOps.invalidateCache('purchase_orders');
+  repo.invalidateCache('purchase_orders');
   res.json({ status: "success" });
 }));
 
 app.post("/api/xml/purchase_orders/observacao", asyncHandler(async (req: Request, res: Response) => {
   const { id, observacao } = req.body;
   if (!id) return res.status(400).json({ error: "ID é obrigatório" });
-  await fsOps.update(fsOps.doc('purchase_orders', id), {
+  await repo.update(repo.doc('purchase_orders', id), {
     observacao: observacao || ''
   }, 'purchase_orders/' + id);
-  fsOps.invalidateCache('purchase_orders');
+  repo.invalidateCache('purchase_orders');
   res.json({ status: "success" });
 }));
 
@@ -945,7 +1034,7 @@ app.post("/api/xml/purchase_orders/send", asyncHandler(async (req: Request, res:
   const { id } = req.body;
   if (!id) return res.status(400).json({ error: "ID é obrigatório" });
 
-  const docSnap = await fsOps.getDoc(fsOps.doc('purchase_orders', id), 'purchase_orders/' + id);
+  const docSnap = await repo.getDoc(repo.doc('purchase_orders', id), 'purchase_orders/' + id);
   const exists = typeof docSnap.exists === 'function' ? docSnap.exists() : !!docSnap.exists;
   if (!exists) {
     return res.status(404).json({ error: "Ordem de compra não encontrada" });
@@ -962,26 +1051,26 @@ app.post("/api/xml/purchase_orders/send", asyncHandler(async (req: Request, res:
     createdBy: order.createdBy,
     approvedBy: order.approvedBy || ''
   };
-  await fsOps.set(fsOps.doc('shopping_lists', listId), listData, 'shopping_lists/' + listId);
-  await fsOps.delete(fsOps.doc('purchase_orders', id), 'purchase_orders/' + id);
+  await repo.set(repo.doc('shopping_lists', listId), listData, 'shopping_lists/' + listId);
+  await repo.delete(repo.doc('purchase_orders', id), 'purchase_orders/' + id);
 
-  fsOps.invalidateCache('shopping_lists');
-  fsOps.invalidateCache('purchase_orders');
+  repo.invalidateCache('shopping_lists');
+  repo.invalidateCache('purchase_orders');
   res.json({ status: "success", listId });
 }));
 
 app.post("/api/xml/purchase_orders/delete", asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.body;
   if (!id) return res.status(400).json({ error: "ID é obrigatório" });
-  await fsOps.delete(fsOps.doc('purchase_orders', id), 'purchase_orders/' + id);
-  fsOps.invalidateCache('purchase_orders');
+  await repo.delete(repo.doc('purchase_orders', id), 'purchase_orders/' + id);
+  repo.invalidateCache('purchase_orders');
   res.json({ status: "success" });
 }));
 
 app.post("/api/xml/cache/invalidate", asyncHandler(async (req: Request, res: Response) => {
   const { collection } = req.body;
   if (collection) {
-    fsOps.invalidateCache(collection);
+    repo.invalidateCache(collection);
     console.log(`[Cache Invalidation] Invalidated cache for collection: ${collection}`);
     res.json({ status: 'ok', collection });
   } else {
@@ -1017,21 +1106,26 @@ app.post("/api/test-mode/reset", asyncHandler(async (req: Request, res: Response
 
   const deletedCounts: Record<string, number> = {};
 
+  // Caminho backend-agnóstico (via `repo`): usado no Vercel OU quando o backend
+  // de dados é o Supabase/Postgres. O caminho de arquivo JSON local
+  // (`clearLocalTestCollection`) só se aplica ao Firestore rodando localmente.
+  const useRepoPath = IS_VERCEL || (process.env.DATA_BACKEND || '').toLowerCase() === 'supabase';
+
   for (const collectionName of TEST_MODE_COLLECTIONS) {
-    if (IS_VERCEL) {
+    if (useRepoPath) {
       // No Vercel o Modo de Teste grava na coleção real "test_<nome>" do Firestore
       // (o disco local é efêmero/não compartilhado entre instâncias serverless),
       // então o reset precisa apagar os documentos de lá em vez do arquivo local.
-      const snapshot = await fsOps.getDocs(collectionName, `test-reset/${collectionName}`, true);
+      const snapshot = await repo.getDocs(collectionName, `test-reset/${collectionName}`, true);
       for (const docSnap of snapshot.docs) {
-        const docRef = await fsOps.doc(collectionName, docSnap.id);
-        await fsOps.delete(docRef, `${collectionName}/${docSnap.id}`);
+        const docRef = await repo.doc(collectionName, docSnap.id);
+        await repo.delete(docRef, `${collectionName}/${docSnap.id}`);
       }
       deletedCounts[collectionName] = snapshot.docs.length;
     } else {
       deletedCounts[collectionName] = clearLocalTestCollection(`test_${collectionName}`);
     }
-    fsOps.invalidateCache(collectionName);
+    repo.invalidateCache(collectionName);
   }
 
   console.log('[Test Mode Reset] Dados de teste apagados:', deletedCounts);
@@ -1046,16 +1140,16 @@ const deleteInvoiceHelper = async (id: string, res: Response) => {
   console.log("Backend deleting invoice ID:", id);
 
   // Tenta com o ID fornecido direto
-  let docRef = await fsOps.doc('invoices', id);
-  let docSnapshot = await fsOps.getDoc(docRef, 'invoices/' + id);
+  let docRef = await repo.doc('invoices', id);
+  let docSnapshot = await repo.getDoc(docRef, 'invoices/' + id);
   let exists = typeof docSnapshot.exists === 'function' ? docSnapshot.exists() : !!docSnapshot.exists;
 
   // Se não existe e não começa com 'NFe', tenta adicionar o prefixo 'NFe'
   if (!exists && !id.startsWith('NFe')) {
     const alternativeId = 'NFe' + id;
     console.log(`ID ${id} não encontrado. Tentando ID alternativo: ${alternativeId}`);
-    docRef = await fsOps.doc('invoices', alternativeId);
-    docSnapshot = await fsOps.getDoc(docRef, 'invoices/' + alternativeId);
+    docRef = await repo.doc('invoices', alternativeId);
+    docSnapshot = await repo.getDoc(docRef, 'invoices/' + alternativeId);
     exists = typeof docSnapshot.exists === 'function' ? docSnapshot.exists() : !!docSnapshot.exists;
   }
 
@@ -1063,8 +1157,8 @@ const deleteInvoiceHelper = async (id: string, res: Response) => {
   if (!exists && id.startsWith('NFe')) {
     const alternativeId = id.substring(3);
     console.log(`ID ${id} não encontrado. Tentando ID alternativo sem NFe: ${alternativeId}`);
-    docRef = await fsOps.doc('invoices', alternativeId);
-    docSnapshot = await fsOps.getDoc(docRef, 'invoices/' + alternativeId);
+    docRef = await repo.doc('invoices', alternativeId);
+    docSnapshot = await repo.getDoc(docRef, 'invoices/' + alternativeId);
     exists = typeof docSnapshot.exists === 'function' ? docSnapshot.exists() : !!docSnapshot.exists;
   }
 
@@ -1072,9 +1166,9 @@ const deleteInvoiceHelper = async (id: string, res: Response) => {
   console.log(`Doc exists at final ID ${finalId} before delete:`, exists);
 
   if (exists) {
-    await fsOps.delete(docRef, 'invoices/' + finalId);
-    fsOps.invalidateCache('xml_spendings'); // Invalida o cache de gastos também
-    fsOps.invalidateCache('invoices'); // Invalida o cache de faturas também
+    await repo.delete(docRef, 'invoices/' + finalId);
+    repo.invalidateCache('xml_spendings'); // Invalida o cache de gastos também
+    repo.invalidateCache('invoices'); // Invalida o cache de faturas também
     res.json({ status: 'deleted', id: finalId });
   } else {
     // Retornamos 200/sucesso mesmo se não encontrar para evitar quebrar o fluxo do frontend de forma destrutiva
@@ -1106,8 +1200,8 @@ app.post("/api/xml/products/update-category", asyncHandler(async (req: Request, 
   try {
     const pcId = targetCode ? `code_${targetCode}` : `name_${targetName.replace(/\s+/g, "_")}`;
     if (pcId) {
-      const pcRef = fsOps.doc('product_categories', pcId);
-      await fsOps.set(pcRef, {
+      const pcRef = repo.doc('product_categories', pcId);
+      await repo.set(pcRef, {
         code: targetCode,
         name: targetName,
         category,
@@ -1120,7 +1214,7 @@ app.post("/api/xml/products/update-category", asyncHandler(async (req: Request, 
 
   // 2. Update Invoices
   try {
-    const invSnapshot = await fsOps.getDocs('invoices', 'invoices', true);
+    const invSnapshot = await repo.getDocs('invoices', 'invoices', true);
     const invoices = invSnapshot.docs.map((doc: any) => {
       const d = typeof doc.data === 'function' ? doc.data() : doc.data;
       return { id: doc.id, ...d };
@@ -1143,8 +1237,8 @@ app.post("/api/xml/products/update-category", asyncHandler(async (req: Request, 
       });
 
       if (invChanged && inv.id) {
-        const docRef = fsOps.doc('invoices', inv.id);
-        await fsOps.set(docRef, inv, 'invoices/' + inv.id);
+        const docRef = repo.doc('invoices', inv.id);
+        await repo.set(docRef, inv, 'invoices/' + inv.id);
       }
     }
   } catch (err) {
@@ -1153,7 +1247,7 @@ app.post("/api/xml/products/update-category", asyncHandler(async (req: Request, 
 
   // 3. Update Suppliers
   try {
-    const suppSnapshot = await fsOps.getDocs('suppliers', 'suppliers', true);
+    const suppSnapshot = await repo.getDocs('suppliers', 'suppliers', true);
     const suppliers = suppSnapshot.docs.map((doc: any) => {
       const d = typeof doc.data === 'function' ? doc.data() : doc.data;
       return { id: doc.id, ...d };
@@ -1176,8 +1270,8 @@ app.post("/api/xml/products/update-category", asyncHandler(async (req: Request, 
       });
 
       if (suppChanged && supp.id) {
-        const docRef = fsOps.doc('suppliers', supp.id);
-        await fsOps.set(docRef, supp, 'suppliers/' + supp.id);
+        const docRef = repo.doc('suppliers', supp.id);
+        await repo.set(docRef, supp, 'suppliers/' + supp.id);
       }
     }
   } catch (err) {
@@ -1187,17 +1281,17 @@ app.post("/api/xml/products/update-category", asyncHandler(async (req: Request, 
   // 4. Register Category if new
   try {
     const catId = category.toLowerCase().replace(/\s+/g, "_");
-    const catRef = fsOps.doc('categories', catId);
-    await fsOps.set(catRef, { name: category }, 'categories/' + catId);
+    const catRef = repo.doc('categories', catId);
+    await repo.set(catRef, { name: category }, 'categories/' + catId);
   } catch (err) {
     console.error("Erro ao salvar categoria:", err);
   }
 
   // 5. Invalidate caches
-  fsOps.invalidateCache('invoices');
-  fsOps.invalidateCache('suppliers');
-  fsOps.invalidateCache('categories');
-  fsOps.invalidateCache('product_categories');
+  repo.invalidateCache('invoices');
+  repo.invalidateCache('suppliers');
+  repo.invalidateCache('categories');
+  repo.invalidateCache('product_categories');
 
   res.json({ status: "success" });
 }));
@@ -1216,8 +1310,8 @@ app.post("/api/xml/products/update-setor", asyncHandler(async (req: Request, res
   try {
     const psId = targetCode ? `code_${targetCode}` : `name_${targetName.replace(/\s+/g, "_")}`;
     if (psId) {
-      const psRef = fsOps.doc('product_setores', psId);
-      await fsOps.set(psRef, {
+      const psRef = repo.doc('product_setores', psId);
+      await repo.set(psRef, {
         code: targetCode,
         name: targetName,
         setor,
@@ -1230,7 +1324,7 @@ app.post("/api/xml/products/update-setor", asyncHandler(async (req: Request, res
 
   // 2. Update Invoices
   try {
-    const invSnapshot = await fsOps.getDocs('invoices', 'invoices', true);
+    const invSnapshot = await repo.getDocs('invoices', 'invoices', true);
     const invoices = invSnapshot.docs.map((doc: any) => {
       const d = typeof doc.data === 'function' ? doc.data() : doc.data;
       return { id: doc.id, ...d };
@@ -1253,8 +1347,8 @@ app.post("/api/xml/products/update-setor", asyncHandler(async (req: Request, res
       });
 
       if (invChanged && inv.id) {
-        const docRef = fsOps.doc('invoices', inv.id);
-        await fsOps.set(docRef, inv, 'invoices/' + inv.id);
+        const docRef = repo.doc('invoices', inv.id);
+        await repo.set(docRef, inv, 'invoices/' + inv.id);
       }
     }
   } catch (err) {
@@ -1264,16 +1358,16 @@ app.post("/api/xml/products/update-setor", asyncHandler(async (req: Request, res
   // 3. Register Setor if new
   try {
     const setId = setor.toLowerCase().replace(/\s+/g, "_");
-    const setRef = fsOps.doc('setores', setId);
-    await fsOps.set(setRef, { name: setor }, 'setores/' + setId);
+    const setRef = repo.doc('setores', setId);
+    await repo.set(setRef, { name: setor }, 'setores/' + setId);
   } catch (err) {
     console.error("Erro ao salvar setor:", err);
   }
 
   // 4. Invalidate caches
-  fsOps.invalidateCache('invoices');
-  fsOps.invalidateCache('setores');
-  fsOps.invalidateCache('product_setores');
+  repo.invalidateCache('invoices');
+  repo.invalidateCache('setores');
+  repo.invalidateCache('product_setores');
 
   res.json({ status: "success" });
 }));
@@ -1281,7 +1375,7 @@ app.post("/api/xml/products/update-setor", asyncHandler(async (req: Request, res
 app.get("/api/xml/setor-limits", handleCacheAndEtag("setor_limits"), asyncHandler(async (req: Request, res: Response) => {
   try {
     const forceNoCache = req.query.fresh === 'true' || req.headers['cache-control'] === 'no-cache' || req.headers['pragma'] === 'no-cache';
-    const snapshot = await fsOps.getDocs('setor_limits', 'setor_limits', forceNoCache);
+    const snapshot = await repo.getDocs('setor_limits', 'setor_limits', forceNoCache);
     const data = snapshot.docs.map((doc: any) => {
       const d = typeof doc.data === 'function' ? doc.data() : doc.data;
       return { id: doc.id, ...d };
@@ -1299,13 +1393,13 @@ app.post("/api/xml/setor-limits", asyncHandler(async (req: Request, res: Respons
     return res.status(400).json({ error: "Setor e obrigatorio" });
   }
   const limitId = setor.toLowerCase().replace(/\s+/g, "_");
-  const limitRef = fsOps.doc('setor_limits', limitId);
-  await fsOps.set(limitRef, {
+  const limitRef = repo.doc('setor_limits', limitId);
+  await repo.set(limitRef, {
     setor,
     monthlyLimit: Number(monthlyLimit) || 0,
     updatedAt: new Date().toISOString()
   }, 'setor_limits/' + limitId);
-  fsOps.invalidateCache('setor_limits');
+  repo.invalidateCache('setor_limits');
   res.json({ status: "success" });
 }));
 
@@ -1320,8 +1414,8 @@ app.post("/api/xml/products/delete", asyncHandler(async (req: Request, res: Resp
   try {
     const pcId = targetCode ? `code_${targetCode}` : `name_${targetName.replace(/\s+/g, "_")}`;
     if (pcId) {
-      const pcRef = fsOps.doc('product_categories', pcId);
-      await fsOps.set(pcRef, {
+      const pcRef = repo.doc('product_categories', pcId);
+      await repo.set(pcRef, {
         code: targetCode,
         name: targetName,
         deleted: true,
@@ -1334,7 +1428,7 @@ app.post("/api/xml/products/delete", asyncHandler(async (req: Request, res: Resp
 
   // 2. Mark deleted in Invoices
   try {
-    const invSnapshot = await fsOps.getDocs('invoices', 'invoices', true);
+    const invSnapshot = await repo.getDocs('invoices', 'invoices', true);
     const invoices = invSnapshot.docs.map((doc: any) => {
       const d = typeof doc.data === 'function' ? doc.data() : doc.data;
       return { id: doc.id, ...d };
@@ -1357,8 +1451,8 @@ app.post("/api/xml/products/delete", asyncHandler(async (req: Request, res: Resp
       });
 
       if (invChanged && inv.id) {
-        const docRef = fsOps.doc('invoices', inv.id);
-        await fsOps.set(docRef, inv, 'invoices/' + inv.id);
+        const docRef = repo.doc('invoices', inv.id);
+        await repo.set(docRef, inv, 'invoices/' + inv.id);
       }
     }
   } catch (err) {
@@ -1367,7 +1461,7 @@ app.post("/api/xml/products/delete", asyncHandler(async (req: Request, res: Resp
 
   // 3. Remove from Suppliers
   try {
-    const suppSnapshot = await fsOps.getDocs('suppliers', 'suppliers', true);
+    const suppSnapshot = await repo.getDocs('suppliers', 'suppliers', true);
     const suppliers = suppSnapshot.docs.map((doc: any) => {
       const d = typeof doc.data === 'function' ? doc.data() : doc.data;
       return { id: doc.id, ...d };
@@ -1391,8 +1485,8 @@ app.post("/api/xml/products/delete", asyncHandler(async (req: Request, res: Resp
 
       if (suppChanged && supp.id) {
         supp.products = filteredProds;
-        const docRef = fsOps.doc('suppliers', supp.id);
-        await fsOps.set(docRef, supp, 'suppliers/' + supp.id);
+        const docRef = repo.doc('suppliers', supp.id);
+        await repo.set(docRef, supp, 'suppliers/' + supp.id);
       }
     }
   } catch (err) {
@@ -1400,9 +1494,9 @@ app.post("/api/xml/products/delete", asyncHandler(async (req: Request, res: Resp
   }
 
   // 4. Invalidate caches
-  fsOps.invalidateCache('invoices');
-  fsOps.invalidateCache('suppliers');
-  fsOps.invalidateCache('product_categories');
+  repo.invalidateCache('invoices');
+  repo.invalidateCache('suppliers');
+  repo.invalidateCache('product_categories');
 
   res.json({ status: "success" });
 }));
@@ -1418,7 +1512,7 @@ app.post("/api/xml/products/delete-item", asyncHandler(async (req: Request, res:
   const targetName = normStr(name);
 
   try {
-    const invSnapshot = await fsOps.getDocs('invoices', 'invoices', true);
+    const invSnapshot = await repo.getDocs('invoices', 'invoices', true);
     const invoices = invSnapshot.docs.map((doc: any) => {
       const d = typeof doc.data === 'function' ? doc.data() : doc.data;
       return { id: doc.id, ...d };
@@ -1444,12 +1538,12 @@ app.post("/api/xml/products/delete-item", asyncHandler(async (req: Request, res:
         });
 
         if (invChanged && inv.id) {
-          const docRef = fsOps.doc('invoices', inv.id);
-          await fsOps.set(docRef, inv, 'invoices/' + inv.id);
+          const docRef = repo.doc('invoices', inv.id);
+          await repo.set(docRef, inv, 'invoices/' + inv.id);
         }
       }
     }
-    fsOps.invalidateCache('invoices');
+    repo.invalidateCache('invoices');
     res.json({ status: "success" });
   } catch (err: any) {
     console.error("Erro ao deletar item especifico de invoice:", err);
@@ -1460,7 +1554,7 @@ app.post("/api/xml/products/delete-item", asyncHandler(async (req: Request, res:
 // --- ROTAS DE PRODUTOS PENDENTES DE LISTAS DE COMPRAS ---
 app.get("/api/xml/pending-list-products", handleCacheAndEtag("pending_list_products"), asyncHandler(async (req: Request, res: Response) => {
   const forceNoCache = req.query.fresh === 'true' || req.headers['cache-control'] === 'no-cache';
-  const snapshot = await fsOps.getDocs('pending_list_products', 'pending_list_products', forceNoCache);
+  const snapshot = await repo.getDocs('pending_list_products', 'pending_list_products', forceNoCache);
   const data = snapshot.docs.map((doc: any) => {
     const d = typeof doc.data === 'function' ? doc.data() : doc.data;
     return { id: doc.id, ...d };
@@ -1474,14 +1568,14 @@ app.post("/api/xml/pending-list-products", asyncHandler(async (req: Request, res
   
   for (const it of listToSave) {
     if (!it || !it.id) continue;
-    const docRef = fsOps.doc('pending_list_products', it.id);
-    await fsOps.set(docRef, {
+    const docRef = repo.doc('pending_list_products', it.id);
+    await repo.set(docRef, {
       ...it,
       updatedAt: new Date().toISOString()
     }, 'pending_list_products/' + it.id);
   }
   
-  fsOps.invalidateCache('pending_list_products');
+  repo.invalidateCache('pending_list_products');
   res.json({ status: "success", count: listToSave.length });
 }));
 
@@ -1490,11 +1584,11 @@ app.post("/api/xml/pending-list-products/delete", asyncHandler(async (req: Reque
   if (Array.isArray(ids)) {
     for (const id of ids) {
       if (!id) continue;
-      const docRef = fsOps.doc('pending_list_products', id);
-      await fsOps.delete(docRef, 'pending_list_products/' + id);
+      const docRef = repo.doc('pending_list_products', id);
+      await repo.delete(docRef, 'pending_list_products/' + id);
     }
   }
-  fsOps.invalidateCache('pending_list_products');
+  repo.invalidateCache('pending_list_products');
   res.json({ status: "success" });
 }));
 
@@ -1543,26 +1637,26 @@ app.post("/api/xml/pending-list-products/confirm", asyncHandler(async (req: Requ
     };
 
     // Save into xml_spendings
-    const spendingRef = fsOps.doc('xml_spendings', spendingId);
-    await fsOps.set(spendingRef, spendingPayload, 'xml_spendings/' + spendingId);
+    const spendingRef = repo.doc('xml_spendings', spendingId);
+    await repo.set(spendingRef, spendingPayload, 'xml_spendings/' + spendingId);
 
     // Also save into invoices so rangeProducts and other invoice searches pick it up
-    const invoiceRef = fsOps.doc('invoices', spendingId);
-    await fsOps.set(invoiceRef, spendingPayload, 'invoices/' + spendingId);
+    const invoiceRef = repo.doc('invoices', spendingId);
+    await repo.set(invoiceRef, spendingPayload, 'invoices/' + spendingId);
 
     // Delete from pending_list_products if it was pending
     if (it.id) {
-      const pendingRef = fsOps.doc('pending_list_products', it.id);
-      await fsOps.delete(pendingRef, 'pending_list_products/' + it.id);
+      const pendingRef = repo.doc('pending_list_products', it.id);
+      await repo.delete(pendingRef, 'pending_list_products/' + it.id);
     }
 
     confirmedCount++;
   }
 
   // Invalidate caches
-  fsOps.invalidateCache('xml_spendings');
-  fsOps.invalidateCache('invoices');
-  fsOps.invalidateCache('pending_list_products');
+  repo.invalidateCache('xml_spendings');
+  repo.invalidateCache('invoices');
+  repo.invalidateCache('pending_list_products');
 
   res.json({ status: "success", confirmedCount });
 }));
@@ -1575,7 +1669,7 @@ app.get("/api/notifications/vapid-key", (req, res) => {
 app.post("/api/notifications/subscribe", asyncHandler(async (req: Request, res: Response) => {
   const subscription = req.body;
   const docId = Buffer.from(subscription.endpoint).toString('base64').substring(0, 50);
-  await fsOps.set(fsOps.doc('push_subscriptions', docId), {
+  await repo.set(repo.doc('push_subscriptions', docId), {
     ...subscription,
     updatedAt: new Date().toISOString()
   });

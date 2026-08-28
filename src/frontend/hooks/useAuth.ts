@@ -4,8 +4,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { auth, signInAnonymously, onAuthStateChanged, db } from '../firebase';
-import { collection, onSnapshot, doc, setDoc, updateDoc, deleteDoc, getDoc, getDocs } from 'firebase/firestore';
+import { auth, signInAnonymously, onAuthStateChanged } from '../firebase';
 import { AuthorizedUser } from '../types';
 import { extractErrorMessage, safeStringify, handleFirestoreError, OperationType, cleanObject } from '../utils';
 
@@ -22,6 +21,13 @@ export const useAuth = () => {
   const [loginError, setLoginError] = useState('');
   const [authError, setAuthError] = useState<string | null>(null);
 
+  const authHeaders = async (): Promise<Record<string, string>> => {
+    const t = await auth.currentUser?.getIdToken().catch(() => undefined);
+    return t
+      ? { 'Content-Type': 'application/json', 'Authorization': `Bearer ${t}` }
+      : { 'Content-Type': 'application/json' };
+  };
+
   const invalidateBackendCache = async (collectionName: string) => {
     try {
       await fetch('/api/xml/cache/invalidate', {
@@ -35,8 +41,6 @@ export const useAuth = () => {
   };
 
   const loadAuthorizedUsers = async (force: boolean = false) => {
-    const adminEmail = 'vitorisalves1@gmail.com';
-    const isHardcodedAdmin = auth.currentUser?.email === adminEmail && auth.currentUser?.emailVerified;
     const currentUid = auth.currentUser?.uid;
     if (!currentUid) return;
 
@@ -51,19 +55,11 @@ export const useAuth = () => {
     }
 
     try {
-      let data: AuthorizedUser[] = [];
-      try {
-        const res = await fetch('/api/xml/authorized_users');
-        if (res.ok) {
-          data = await res.json() as AuthorizedUser[];
-        } else {
-          throw new Error("Backend caching route failed");
-        }
-      } catch (backendErr) {
-        console.warn("Backend authorized_users failed, resorting to client-side Firestore:", backendErr);
-        const snapshot = await getDocs(collection(db, 'authorized_users'));
-        data = snapshot.docs.map(doc => ({ ...doc.data() }) as AuthorizedUser);
+      const res = await fetch('/api/auth/users');
+      if (!res.ok) {
+        throw new Error("Backend authorized_users route failed");
       }
+      const data = await res.json() as AuthorizedUser[];
 
       // Deduplicate by CPF (keep latest request)
       const uniqueMap = new Map<string, AuthorizedUser>();
@@ -85,6 +81,53 @@ export const useAuth = () => {
       handleFirestoreError(err, OperationType.GET, 'authorized_users');
       if (cachedUsers) {
         setAuthorizedUsers(JSON.parse(cachedUsers));
+      }
+    }
+  };
+
+  const refreshMe = async () => {
+    const currentUid = auth.currentUser?.uid;
+    if (!currentUid) return;
+
+    const adminEmail = 'vitorisalves1@gmail.com';
+    const isHardcodedAdmin = auth.currentUser?.email === adminEmail && auth.currentUser?.emailVerified;
+
+    try {
+      const res = await fetch('/api/auth/users/me?uid=' + currentUid);
+      if (!res.ok) {
+        throw new Error("Failed to fetch current user");
+      }
+      const userData = await res.json() as AuthorizedUser | null;
+
+      if (userData !== null) {
+        const adminCpf = '05839352144';
+        const userIsAdmin = userData.role === 'admin' || userData.cpf === adminCpf || !!isHardcodedAdmin;
+        const userIsApproved = userData.status === 'approved' || userIsAdmin;
+
+        setIsApproved(userIsApproved);
+
+        // Fetch list if admin (LOAD FROM CACHE / ON DEMAND)
+        if (userIsAdmin) {
+          loadAuthorizedUsers(false);
+        } else {
+          setAuthorizedUsers([userData]);
+        }
+
+        // AUTO-LOGIN: Only if approved AND we have the intent to be logged in (cache_loggedCpf exists)
+        // This prevents immediate re-login after manual logout
+        if (userIsApproved && !isLoggedIn && localStorage.getItem('cache_loggedCpf') === userData.cpf) {
+          setIsLoggedIn(true);
+          setLoggedCpf(userData.cpf);
+          setLoggedName(userData.name || '');
+          localStorage.setItem('cache_isLoggedIn', 'true');
+        }
+      } else {
+        setIsApproved(!!isHardcodedAdmin);
+      }
+    } catch (error) {
+      handleFirestoreError(error, OperationType.GET, currentUid);
+      if (extractErrorMessage(error).toLowerCase().includes('quota') || extractErrorMessage(error).toLowerCase().includes('resource-exhausted')) {
+        setAuthError(extractErrorMessage(error));
       }
     }
   };
@@ -113,57 +156,31 @@ export const useAuth = () => {
 
   useEffect(() => {
     if (!isAuthReady) return;
-    
+
     const currentUid = auth.currentUser?.uid;
     if (!currentUid) return;
 
-    // Listen only to the current user's document to save reads
-    const unsubUser = onSnapshot(doc(db, 'authorized_users', currentUid), (snapshot) => {
-      const adminEmail = 'vitorisalves1@gmail.com';
-      const isHardcodedAdmin = auth.currentUser?.email === adminEmail && auth.currentUser?.emailVerified;
+    // Poll the current user's record instead of a Firestore onSnapshot listener
+    refreshMe();
 
-      if (snapshot.exists()) {
-        const userData = snapshot.data() as AuthorizedUser;
-        
-        const adminCpf = '05839352144';
-        const userIsAdmin = userData.role === 'admin' || userData.cpf === adminCpf || !!isHardcodedAdmin;
-        const userIsApproved = userData.status === 'approved' || userIsAdmin;
+    const intervalId = setInterval(refreshMe, 60000);
 
-        setIsApproved(userIsApproved);
-
-        // Fetch list if admin (LOAD FROM CACHE / ON DEMAND)
-        if (userIsAdmin) {
-          loadAuthorizedUsers(false);
-        } else {
-          setAuthorizedUsers([userData]);
-        }
-
-        // AUTO-LOGIN: Only if approved AND we have the intent to be logged in (cache_loggedCpf exists)
-        // This prevents immediate re-login after manual logout
-        if (userIsApproved && !isLoggedIn && localStorage.getItem('cache_loggedCpf') === userData.cpf) {
-          setIsLoggedIn(true);
-          setLoggedCpf(userData.cpf);
-          setLoggedName(userData.name || '');
-          localStorage.setItem('cache_isLoggedIn', 'true');
-        }
-      } else {
-        setIsApproved(!!isHardcodedAdmin);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        refreshMe();
       }
-    }, (error) => {
-      handleFirestoreError(error, OperationType.GET, currentUid);
-      if (extractErrorMessage(error).toLowerCase().includes('quota') || extractErrorMessage(error).toLowerCase().includes('resource-exhausted')) {
-        setAuthError(extractErrorMessage(error));
-      }
-    });
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
 
     return () => {
-      unsubUser();
+      clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
     };
   }, [isAuthReady, isLoggedIn]);
 
   useEffect(() => {
     if (!isAuthReady || isApproved || !isLoggedIn) return;
-    
+
     // Recovery logic for anonymous session changes
     const currentUid = auth.currentUser?.uid;
     const cachedCpf = localStorage.getItem('cache_loggedCpf');
@@ -177,7 +194,7 @@ export const useAuth = () => {
           console.log("Attempting session recovery for:", cachedCpf);
           handleLogin(cachedCpf, cachedName).catch(err => console.error("Recovery failed:", err));
         }
-      }, 2000); // Wait a bit to let onSnapshot settle
+      }, 2000); // Wait a bit to let polling settle
       return () => clearTimeout(timer);
     }
   }, [isAuthReady, isApproved, isLoggedIn]);
@@ -223,15 +240,27 @@ export const useAuth = () => {
         // Se o registro existente tinha um UID diferente, removemos o antigo para evitar duplicatas
         if (existingUserByCpf.uid && existingUserByCpf.uid !== currentUid) {
           try {
-            await deleteDoc(doc(db, 'authorized_users', existingUserByCpf.uid));
+            await fetch('/api/auth/users/delete', {
+              method: 'POST',
+              headers: await authHeaders(),
+              body: JSON.stringify({ uid: existingUserByCpf.uid })
+            });
           } catch (delErr) {
             console.warn("Could not delete duplicate user doc:", delErr);
           }
         }
         const cleaned = cleanObject(updatedUser);
-        await setDoc(doc(db, 'authorized_users', currentUid), cleaned);
+        const upsertRes = await fetch('/api/auth/users/upsert', {
+          method: 'POST',
+          headers: await authHeaders(),
+          body: JSON.stringify({ uid: currentUid, user: cleaned })
+        });
+        if (!upsertRes.ok) {
+          throw new Error("Upsert failed");
+        }
         await invalidateBackendCache('authorized_users');
-        
+        await refreshMe();
+
         if (updatedUser.status === 'approved') {
           setIsLoggedIn(true);
           setLoggedCpf(cleanCpf);
@@ -262,8 +291,16 @@ export const useAuth = () => {
 
       try {
         const cleaned = cleanObject(newUser);
-        await setDoc(doc(db, 'authorized_users', currentUid), cleaned);
+        const upsertRes = await fetch('/api/auth/users/upsert', {
+          method: 'POST',
+          headers: await authHeaders(),
+          body: JSON.stringify({ uid: currentUid, user: cleaned })
+        });
+        if (!upsertRes.ok) {
+          throw new Error("Upsert failed");
+        }
         await invalidateBackendCache('authorized_users');
+        await refreshMe();
         if (newUser.status === 'approved') {
           setIsLoggedIn(true);
           setLoggedCpf(cleanCpf);
@@ -294,10 +331,13 @@ export const useAuth = () => {
 
   const updateUserStatus = async (uid: string, status: 'approved' | 'denied') => {
     try {
-      if (status === 'denied') {
-        await deleteDoc(doc(db, 'authorized_users', uid));
-      } else {
-        await updateDoc(doc(db, 'authorized_users', uid), { status });
+      const res = await fetch('/api/auth/users/status', {
+        method: 'POST',
+        headers: await authHeaders(),
+        body: JSON.stringify({ uid, status })
+      });
+      if (!res.ok) {
+        throw new Error("Status update failed");
       }
       await invalidateBackendCache('authorized_users');
       setAuthorizedUsers(prev => {
@@ -314,7 +354,14 @@ export const useAuth = () => {
 
   const confirmDeleteUser = async (uid: string) => {
     try {
-      await deleteDoc(doc(db, 'authorized_users', uid));
+      const res = await fetch('/api/auth/users/delete', {
+        method: 'POST',
+        headers: await authHeaders(),
+        body: JSON.stringify({ uid })
+      });
+      if (!res.ok) {
+        throw new Error("Delete failed");
+      }
       await invalidateBackendCache('authorized_users');
       setAuthorizedUsers(prev => prev.filter(u => u.uid !== uid));
     } catch (e) {
@@ -322,8 +369,8 @@ export const useAuth = () => {
     }
   };
 
-  const isAdmin = loggedCpf === '05839352144' || 
-                 authorizedUsers.find(u => u.cpf === loggedCpf)?.role === 'admin' || 
+  const isAdmin = loggedCpf === '05839352144' ||
+                 authorizedUsers.find(u => u.cpf === loggedCpf)?.role === 'admin' ||
                  (auth.currentUser?.email === 'vitorisalves1@gmail.com' && auth.currentUser?.emailVerified) ||
                  (loggedName.toUpperCase().includes('VITOR') && loggedCpf.length > 0);
 

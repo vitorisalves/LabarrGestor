@@ -4,13 +4,6 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import {
-  collection,
-  getDocs,
-  query,
-  orderBy
-} from 'firebase/firestore';
-import { db } from '../firebase';
 import { DeliveredProduct } from '../types';
 import { extractErrorMessage, handleFirestoreError, OperationType, cleanObject } from '../utils';
 
@@ -43,32 +36,24 @@ export function useDeliveredProducts(
     setIsLoading(true);
     try {
       let docs: DeliveredProduct[] = [];
-      try {
-        const url = force ? '/api/xml/delivered_products?fresh=true' : '/api/xml/delivered_products';
-        const res = await fetch(url, force ? { headers: { 'Cache-Control': 'no-cache' } } : undefined);
-        if (res.ok) {
-          docs = await res.json() as DeliveredProduct[];
-          // Obter formato DD/MM/AAAA ou ISO e ordenar
-          docs.sort((a, b) => {
-            try {
-              const [d1, m1, y1] = a.purchaseDate.split('/').map(Number);
-              const [d2, m2, y2] = b.purchaseDate.split('/').map(Number);
-              const date1 = new Date(y1, m1 - 1, d1).getTime();
-              const date2 = new Date(y2, m2 - 1, d2).getTime();
-              return date2 - date1;
-            } catch (e) {
-              return b.purchaseDate.localeCompare(a.purchaseDate);
-            }
-          });
-        } else {
-          throw new Error("Backend caching route failed");
-        }
-      } catch (backendErr) {
-        console.warn("Backend delivered_products failed, resorting to client-side Firestore:", backendErr);
-        const q = query(collection(db, 'delivered_products'), orderBy('purchaseDate', 'desc'));
-        const snapshot = await getDocs(q);
-        docs = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as DeliveredProduct));
+      const url = force ? '/api/xml/delivered_products?fresh=true' : '/api/xml/delivered_products';
+      const res = await fetch(url, force ? { headers: { 'Cache-Control': 'no-cache' } } : undefined);
+      if (!res.ok) {
+        throw new Error("Backend caching route failed");
       }
+      docs = await res.json() as DeliveredProduct[];
+      // Obter formato DD/MM/AAAA ou ISO e ordenar (equivalente a orderBy('purchaseDate', 'desc'))
+      docs.sort((a, b) => {
+        try {
+          const [d1, m1, y1] = a.purchaseDate.split('/').map(Number);
+          const [d2, m2, y2] = b.purchaseDate.split('/').map(Number);
+          const date1 = new Date(y1, m1 - 1, d1).getTime();
+          const date2 = new Date(y2, m2 - 1, d2).getTime();
+          return date2 - date1;
+        } catch (e) {
+          return b.purchaseDate.localeCompare(a.purchaseDate);
+        }
+      });
 
       setDeliveredProducts(docs);
       localStorage.setItem('cache_delivered_products', JSON.stringify(docs));
