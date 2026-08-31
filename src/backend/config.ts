@@ -124,8 +124,8 @@ export const AI_CONFIG = {
  * Configuração de Web Push (VAPID)
  */
 export const PUSH_CONFIG = {
-  publicKey: process.env.VAPID_PUBLIC_KEY || 'BLzFX530XvDT4SYRB5rtIyrBEXIwdIBZ_PdBppRdlHPrOx-iwJtKy1uek7Ah6MmS4dvfilxpt109ILtA0X4N_Ek',
-  privateKey: process.env.VAPID_PRIVATE_KEY || 'Xa8catoJrTvxLBpT5nmnS3l2tYh9RWL7-hHYV0M36WE',
+  publicKey: process.env.VAPID_PUBLIC_KEY || 'BFjmGy_6FMAWoyK_Hae1TD5ZeyvuNJaF1Iu0qDK27iNwU53JdhZF_WwD3wf9Pf2Bk-u709lqQn_1-vhMY3oWNbA',
+  privateKey: process.env.VAPID_PRIVATE_KEY || 'qG0iHQ5JUVZseiEgeduL5OFCoEJ7Vxdr5Q1PWhk5sIQ',
   email: 'mailto:vitorisalves1@gmail.com'
 };
 

@@ -34,8 +34,10 @@ export class PushService {
       await webPush.sendNotification(subscription, payload);
       return true;
     } catch (err: any) {
-      // Remove subscrição se ela não for mais válida (404 ou 410)
-      if (err.statusCode === 404 || err.statusCode === 410) {
+      // Remove subscrição se ela não for mais válida:
+      //  404/410 → endpoint expirado; 403 → assinada com chave VAPID antiga
+      //  (invalid JWT) depois de uma rotação de chave — nunca mais vai funcionar.
+      if (err.statusCode === 404 || err.statusCode === 410 || err.statusCode === 403) {
         const docId = Buffer.from(subscription.endpoint).toString('base64').substring(0, 50);
         try {
           await repo.delete(repo.doc('push_subscriptions', docId));

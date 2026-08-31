@@ -23,6 +23,18 @@ export const useNotifications = () => {
     return outputArray;
   };
 
+  // Compara a applicationServerKey de uma inscrição existente com a chave
+  // desejada. Se o par VAPID do servidor mudou, a inscrição antiga passa a
+  // ser recusada pelo FCM com 403 ("invalid JWT") e precisa ser refeita.
+  const sameServerKey = (existing: PushSubscription, desired: Uint8Array): boolean => {
+    const current = existing.options?.applicationServerKey;
+    if (!current) return false;
+    const a = new Uint8Array(current as ArrayBuffer);
+    if (a.length !== desired.length) return false;
+    for (let i = 0; i < a.length; i++) if (a[i] !== desired[i]) return false;
+    return true;
+  };
+
   const subscribeToPush = async () => {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
       console.warn('Push não suportado neste navegador.');
@@ -31,19 +43,29 @@ export const useNotifications = () => {
 
     try {
       const registration = await navigator.serviceWorker.ready;
-      
+
       // Busca a chave pública do servidor
       const response = await fetch('/api/notifications/vapid-key');
       const responseText = await response.text();
       if (!responseText) return;
-      
+
       const { publicKey } = JSON.parse(responseText);
 
       if (!publicKey) return;
 
+      const desiredKey = urlBase64ToUint8Array(publicKey);
+
+      // Se já existe uma inscrição criada com outra chave VAPID, o navegador
+      // recusaria um novo subscribe() com chave diferente — é preciso cancelar
+      // a antiga primeiro.
+      const existing = await registration.pushManager.getSubscription();
+      if (existing && !sameServerKey(existing, desiredKey)) {
+        try { await existing.unsubscribe(); } catch (e) { console.warn('Falha ao cancelar inscrição antiga:', e); }
+      }
+
       const subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(publicKey)
+        applicationServerKey: desiredKey
       });
 
       // Envia a assinatura para o backend
