@@ -521,6 +521,8 @@ export default function App() {
           addNotification('Não foi possível enviar para aprovação. Tente novamente.', 0, 'info');
         }
       }
+    } catch (err: any) {
+      addNotification(`Não foi possível enviar para aprovação (${err?.message || 'erro desconhecido'})`, 0, 'info');
     } finally {
       setIsFinalizing(false);
     }

@@ -45,14 +45,17 @@ export const usePurchaseOrders = (loggedName: string, addAppNotification: (title
           createdBy: loggedName
         })
       });
-      if (!res.ok) return null;
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(`HTTP ${res.status}${body?.message || body?.error ? ': ' + (body.message || body.error) : ''}`);
+      }
       const data = await res.json();
       await fetchPurchaseOrders(true);
       addAppNotification('Nova Requisição de Compra', `"${data.order.name}" foi criada por ${loggedName} e aguarda aprovação.`);
       return data.order as PurchaseOrder;
     } catch (err) {
       console.error('Erro ao criar ordem de compra:', err);
-      return null;
+      throw err;
     }
   }, [loggedName, fetchPurchaseOrders, addAppNotification]);
 
