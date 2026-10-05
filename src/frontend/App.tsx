@@ -517,6 +517,8 @@ export default function App() {
           setIsCartOpen(false);
           setCurrentPage('purchase-orders');
           addNotification('Enviado para aprovação!', 1);
+        } else {
+          addNotification('Não foi possível enviar para aprovação. Tente novamente.', 0, 'info');
         }
       }
     } finally {

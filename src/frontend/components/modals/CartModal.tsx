@@ -87,6 +87,9 @@ export const CartModal: React.FC<CartModalProps> = ({
                         }
                       }}
                     />
+                    {!listName.trim() && (
+                      <p className="text-[10px] font-bold text-amber-600 ml-1 uppercase tracking-widest">Informe o nome da lista para enviar</p>
+                    )}
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-bold text-slate-400 ml-1 uppercase tracking-widest">Taxa de Entrega (Frete)</label>
