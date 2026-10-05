@@ -16,7 +16,8 @@ import {
   Check,
   RotateCcw,
   Pencil,
-  X
+  X,
+  CheckSquare
 } from 'lucide-react';
 import { DeliveredProduct } from '../types';
 import { normalizeText, formatCurrency } from '../utils';
@@ -48,6 +49,9 @@ export const DeliveredProductsView: React.FC<DeliveredProductsViewProps> = ({
   const [editingDeliveryId, setEditingDeliveryId] = React.useState<string | null>(null);
   const [tempDeliveryDate, setTempDeliveryDate] = React.useState('');
   const [currentPage, setCurrentPage] = React.useState(1);
+  const [selectionMode, setSelectionMode] = React.useState(false);
+  const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set());
+  const [confirmBulkDelete, setConfirmBulkDelete] = React.useState(false);
   const ITEMS_PER_PAGE = 20;
 
   React.useEffect(() => {
@@ -161,6 +165,31 @@ export const DeliveredProductsView: React.FC<DeliveredProductsViewProps> = ({
     return filteredProducts.slice(startIndex, startIndex + ITEMS_PER_PAGE);
   }, [filteredProducts, currentPage]);
 
+  const toggleSelected = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const allFilteredSelected = filteredProducts.length > 0 && filteredProducts.every(p => selectedIds.has(p.id));
+
+  const toggleSelectAll = () => {
+    setSelectedIds(allFilteredSelected ? new Set() : new Set(filteredProducts.map(p => p.id)));
+  };
+
+  const exitSelectionMode = () => {
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+  };
+
+  const handleBulkDeleteConfirm = () => {
+    selectedIds.forEach(id => deleteDeliveredProduct(id));
+    setConfirmBulkDelete(false);
+    exitSelectionMode();
+  };
+
   const handleDeleteConfirm = () => {
     if (productToDelete) {
       deleteDeliveredProduct(productToDelete);
@@ -181,8 +210,29 @@ export const DeliveredProductsView: React.FC<DeliveredProductsViewProps> = ({
           <h1 className="text-3xl font-black text-slate-900 tracking-tight mb-1 uppercase">Produtos Entregues</h1>
           <p className="text-slate-500 font-medium text-sm">Acompanhe a chegada dos produtos comprados</p>
         </div>
-        <div className="hidden md:flex items-center gap-3">
-          <div className="px-4 py-2 bg-emerald-50 rounded-xl border border-emerald-100 flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => (selectionMode ? exitSelectionMode() : setSelectionMode(true))}
+            className={`px-4 py-2 rounded-xl border flex items-center gap-2 text-xs font-bold uppercase tracking-wider transition-all active:scale-95 ${
+              selectionMode
+                ? 'bg-indigo-600 border-indigo-600 text-white hover:bg-indigo-700'
+                : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+            }`}
+          >
+            <CheckSquare className="w-4 h-4" />
+            {selectionMode ? 'Cancelar seleção' : 'Selecionar'}
+          </button>
+          {selectionMode && (
+            <button
+              onClick={() => setConfirmBulkDelete(true)}
+              disabled={selectedIds.size === 0}
+              className="px-4 py-2 rounded-xl bg-red-500 text-white flex items-center gap-2 text-xs font-bold uppercase tracking-wider hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-95"
+            >
+              <Trash2 className="w-4 h-4" />
+              Excluir ({selectedIds.size})
+            </button>
+          )}
+          <div className="hidden md:flex px-4 py-2 bg-emerald-50 rounded-xl border border-emerald-100 flex items-center gap-2">
             <Truck className="w-4 h-4 text-emerald-600" />
             <span className="text-xs font-bold text-emerald-700 uppercase tracking-wider">Logística de Entrega</span>
           </div>
@@ -205,6 +255,17 @@ export const DeliveredProductsView: React.FC<DeliveredProductsViewProps> = ({
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50/50 border-b border-slate-100">
+                {selectionMode && (
+                  <th className="pl-6 py-4 w-10">
+                    <input
+                      type="checkbox"
+                      checked={allFilteredSelected}
+                      onChange={toggleSelectAll}
+                      title="Selecionar todos os resultados"
+                      className="w-4 h-4 accent-indigo-600 cursor-pointer"
+                    />
+                  </th>
+                )}
                 <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest w-16">Status</th>
                 <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Produto</th>
                 <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Fornecedor</th>
@@ -218,7 +279,7 @@ export const DeliveredProductsView: React.FC<DeliveredProductsViewProps> = ({
             <tbody className="divide-y divide-slate-50">
               {filteredProducts.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-20 text-center">
+                  <td colSpan={selectionMode ? 9 : 8} className="py-20 text-center">
                     <div className="flex flex-col items-center justify-center">
                       <Package className="w-12 h-12 text-slate-200 mb-4" />
                       <p className="text-slate-400 font-bold uppercase text-xs tracking-widest">Nenhum produto encontrado</p>
@@ -229,8 +290,18 @@ export const DeliveredProductsView: React.FC<DeliveredProductsViewProps> = ({
                 paginatedProducts.map((p) => (
                   <tr 
                     key={p.id} 
-                    className={`group transition-all hover:bg-slate-50/50 ${p.delivered ? 'bg-emerald-50/20' : ''}`}
+                    className={`group transition-all hover:bg-slate-50/50 ${p.delivered ? 'bg-emerald-50/20' : ''} ${selectedIds.has(p.id) ? 'bg-indigo-50/60' : ''}`}
                   >
+                    {selectionMode && (
+                      <td className="pl-6 py-4">
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(p.id)}
+                          onChange={() => toggleSelected(p.id)}
+                          className="w-4 h-4 accent-indigo-600 cursor-pointer"
+                        />
+                      </td>
+                    )}
                     <td className="px-6 py-4">
                       {p.delivered ? (
                         <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600" title="Entregue">
@@ -504,6 +575,13 @@ export const DeliveredProductsView: React.FC<DeliveredProductsViewProps> = ({
         onConfirm={handleDeleteConfirm}
         title="Excluir Registro de Entrega"
         message="Tem certeza que deseja excluir este registro? Esta ação não pode ser desfeita."
+      />
+      <ConfirmationModal
+        isOpen={confirmBulkDelete}
+        onClose={() => setConfirmBulkDelete(false)}
+        onConfirm={handleBulkDeleteConfirm}
+        title="Excluir Registros Selecionados"
+        message={`Tem certeza que deseja excluir ${selectedIds.size} registro(s)? Esta ação não pode ser desfeita.`}
       />
     </motion.div>
   );

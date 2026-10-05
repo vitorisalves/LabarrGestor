@@ -18,13 +18,15 @@ import {
   RefreshCcw,
   FileText,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  CheckSquare
 } from 'lucide-react';
 import { AnimatePresence } from 'framer-motion';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { SavedList } from '../types';
 import { formatCurrency, formatDate } from '../utils';
+import { ConfirmationModal } from './modals/ConfirmationModal';
 
 interface HistoryViewProps {
   savedLists: SavedList[];
@@ -32,6 +34,7 @@ interface HistoryViewProps {
   onRefresh?: () => void;
   editSavedList: (list: SavedList) => void;
   deleteSavedList: (id: string) => void;
+  deleteSavedListNow: (id: string) => void;
   toggleSavedListItemBought: (listId: string, productName: string, supplierName: string) => void;
   setActiveTargetList: (id: string | null, name: string | null) => void;
 }
@@ -86,12 +89,35 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
   onRefresh,
   editSavedList,
   deleteSavedList,
+  deleteSavedListNow,
   toggleSavedListItemBought,
   setActiveTargetList
 }) => {
   const [expandedList, setExpandedList] = React.useState<string | null>(null);
   const [currentPage, setCurrentPage] = React.useState(1);
   const itemsPerPage = 10;
+  const [selectionMode, setSelectionMode] = React.useState(false);
+  const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set());
+  const [confirmBulkDelete, setConfirmBulkDelete] = React.useState(false);
+
+  const toggleSelected = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const exitSelectionMode = () => {
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+  };
+
+  const handleBulkDeleteConfirm = () => {
+    selectedIds.forEach(id => deleteSavedListNow(id));
+    setConfirmBulkDelete(false);
+    exitSelectionMode();
+  };
 
   const sortedLists = React.useMemo(() => {
     return [...savedLists].sort((a, b) => {
@@ -118,6 +144,8 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
     const startIndex = (currentPage - 1) * itemsPerPage;
     return sortedLists.slice(startIndex, startIndex + itemsPerPage);
   }, [sortedLists, currentPage]);
+
+  const allSelected = sortedLists.length > 0 && sortedLists.every(l => selectedIds.has(l.id));
 
   const exportToPDF = (list: SavedList) => {
     const doc = new jsPDF();
@@ -187,6 +215,38 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
           <h1 className="text-4xl font-black text-slate-900 tracking-tight mb-2">Minhas Listas</h1>
           <p className="text-slate-500 font-medium">Histórico de compras e listas salvas</p>
         </div>
+        <div className="flex items-center gap-3">
+        {sortedLists.length > 0 && (
+          <button
+            onClick={() => (selectionMode ? exitSelectionMode() : setSelectionMode(true))}
+            className={`px-4 py-3 rounded-2xl border flex items-center gap-2 text-xs font-bold uppercase tracking-wider transition-all active:scale-95 ${
+              selectionMode
+                ? 'bg-indigo-600 border-indigo-600 text-white hover:bg-indigo-700'
+                : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+            }`}
+          >
+            <CheckSquare className="w-4 h-4" />
+            {selectionMode ? 'Cancelar seleção' : 'Selecionar'}
+          </button>
+        )}
+        {selectionMode && (
+          <>
+            <button
+              onClick={() => setSelectedIds(allSelected ? new Set() : new Set(sortedLists.map(l => l.id)))}
+              className="px-4 py-3 rounded-2xl border border-slate-200 bg-white text-slate-700 text-xs font-bold uppercase tracking-wider hover:bg-slate-50 transition-all active:scale-95"
+            >
+              {allSelected ? 'Limpar' : 'Selecionar todas'}
+            </button>
+            <button
+              onClick={() => setConfirmBulkDelete(true)}
+              disabled={selectedIds.size === 0}
+              className="px-4 py-3 rounded-2xl bg-red-500 text-white flex items-center gap-2 text-xs font-bold uppercase tracking-wider hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-95"
+            >
+              <Trash2 className="w-4 h-4" />
+              Excluir ({selectedIds.size})
+            </button>
+          </>
+        )}
         <button
           onClick={onRefresh}
           disabled={isLoading}
@@ -195,6 +255,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
         >
           <RefreshCcw className={`w-6 h-6 ${isLoading ? 'animate-spin' : ''}`} />
         </button>
+        </div>
       </div>      <div className="grid grid-cols-1 gap-4">
         {sortedLists.length === 0 ? (
           <div className="bg-white rounded-2xl p-20 border border-dashed border-slate-200 flex flex-col items-center justify-center text-slate-400">
@@ -210,7 +271,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
               <motion.div
                 key={list.id}
                 className={`bg-white rounded-2xl border shadow-sm overflow-hidden transition-all ${
-                  isCompleted ? 'border-green-100' : 'border-slate-100'
+                  selectedIds.has(list.id) ? 'border-indigo-400 ring-2 ring-indigo-200' : isCompleted ? 'border-green-100' : 'border-slate-100'
                 }`}
               >
                 <div 
@@ -220,6 +281,15 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
                   }`}
                 >
                   <div className="flex items-center gap-5">
+                    {selectionMode && (
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(list.id)}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={() => toggleSelected(list.id)}
+                        className="w-5 h-5 accent-indigo-600 cursor-pointer shrink-0"
+                      />
+                    )}
                     <div className={`w-12 h-12 md:w-14 md:h-14 rounded-xl flex items-center justify-center transition-colors border ${
                       isCompleted ? 'bg-green-600 border-green-700' : 'bg-slate-900 border-slate-800'
                     }`}>
@@ -429,6 +499,13 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
           </div>
         </div>
       )}
+      <ConfirmationModal
+        isOpen={confirmBulkDelete}
+        onClose={() => setConfirmBulkDelete(false)}
+        onConfirm={handleBulkDeleteConfirm}
+        title="Excluir Listas Selecionadas"
+        message={`Tem certeza que deseja excluir ${selectedIds.size} lista(s)? Esta ação não pode ser desfeita.`}
+      />
     </motion.div>
   );
 };

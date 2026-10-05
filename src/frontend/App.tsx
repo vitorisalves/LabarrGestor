@@ -805,6 +805,7 @@ export default function App() {
               setIsAdding={(v) => { if (v) setIsProductOnlyMode(false); setIsAdding(v); }}
               handleEditSupplier={(s) => { setIsProductOnlyMode(false); onEditSupplier(s, setIsAdding); }}
               setSupplierToDelete={(id) => setDeletion('supplier', id)}
+              deleteSupplierNow={deleteSupplier}
               addToCart={handleAddToCart}
               handleExportExcel={handleExportExcel}
               handleImportExcel={onImportExcel}
@@ -823,6 +824,7 @@ export default function App() {
               onRefresh={refreshLists}
               editSavedList={onEditSavedList}
               deleteSavedList={(id) => setDeletion('list', id)}
+              deleteSavedListNow={deleteSavedList}
               toggleSavedListItemBought={handleToggleSavedListItemBought}
               setActiveTargetList={onSetActiveTargetList}
             />

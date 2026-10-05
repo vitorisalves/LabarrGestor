@@ -22,6 +22,7 @@ import {
   ExternalLink,
   FileText,
   AlertTriangle,
+  CheckSquare,
   CheckCircle
 } from 'lucide-react';
 import { Supplier, Product } from '../types';
@@ -46,6 +47,7 @@ interface SuppliersViewProps {
   setIsAdding: (adding: boolean) => void;
   handleEditSupplier: (supplier: Supplier) => void;
   setSupplierToDelete: (id: string | null) => void;
+  deleteSupplierNow: (id: string) => void;
   addToCart: (product: Product, supplierName: string, quantity: number, setor: string) => void;
   handleExportExcel: () => void;
   handleImportExcel: (e: React.ChangeEvent<HTMLInputElement>) => void;
@@ -70,6 +72,7 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
   setIsAdding,
   handleEditSupplier,
   setSupplierToDelete,
+  deleteSupplierNow,
   addToCart,
   handleExportExcel,
   handleImportExcel,
@@ -120,6 +123,9 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
   const [selectedBySupplier, setSelectedBySupplier] = React.useState<Record<string, Set<number>>>({});
   const [bulkCategoryBySupplier, setBulkCategoryBySupplier] = React.useState<Record<string, string>>({});
   const [bulkSetorBySupplier, setBulkSetorBySupplier] = React.useState<Record<string, string>>({});
+  const [supplierSelectionMode, setSupplierSelectionMode] = React.useState(false);
+  const [selectedSupplierIds, setSelectedSupplierIds] = React.useState<Set<string>>(new Set());
+  const [confirmSuppliersBulkDelete, setConfirmSuppliersBulkDelete] = React.useState(false);
   const [supplierBulkDeleteConfirm, setSupplierBulkDeleteConfirm] = React.useState<{ supplierId: string; count: number } | null>(null);
 
   const toggleProductSelected = (supplierId: string, index: number) => {
@@ -169,6 +175,25 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
     await saveSupplier({ ...supplier, products: updatedProducts });
     setSelectedBySupplier(prev => ({ ...prev, [supplierId]: new Set() }));
     setSupplierBulkDeleteConfirm(null);
+  };
+
+  const toggleSupplierSelected = (id: string) => {
+    setSelectedSupplierIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const exitSupplierSelectionMode = () => {
+    setSupplierSelectionMode(false);
+    setSelectedSupplierIds(new Set());
+  };
+
+  const handleSuppliersBulkDeleteConfirm = () => {
+    selectedSupplierIds.forEach(id => deleteSupplierNow(id));
+    setConfirmSuppliersBulkDelete(false);
+    exitSupplierSelectionMode();
   };
 
   const handleQuantityChange = (key: string, value: string) => {
@@ -230,6 +255,8 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
     })
     .sort((a, b) => a.name.localeCompare(b.name));
 
+  const allSuppliersSelected = filteredSuppliers.length > 0 && filteredSuppliers.every(s => selectedSupplierIds.has(s.id));
+
   return (
     <motion.div 
       initial={{ opacity: 0, y: 10 }}
@@ -273,6 +300,35 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
             <h2 className="text-xl md:text-2xl font-black text-slate-900 uppercase tracking-tight">Lista de Fornecedores</h2>
             <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
               <button
+                onClick={() => (supplierSelectionMode ? exitSupplierSelectionMode() : setSupplierSelectionMode(true))}
+                className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-3 border-2 rounded-xl font-bold transition-all shadow-sm text-xs ${
+                  supplierSelectionMode
+                    ? 'bg-indigo-600 border-indigo-600 text-white hover:bg-indigo-700'
+                    : 'bg-white border-slate-100 text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                <CheckSquare className="w-4 h-4" />
+                {supplierSelectionMode ? 'Cancelar seleção' : 'Selecionar'}
+              </button>
+              {supplierSelectionMode && (
+                <>
+                  <button
+                    onClick={() => setSelectedSupplierIds(allSuppliersSelected ? new Set() : new Set(filteredSuppliers.map(s => s.id)))}
+                    className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-3 bg-white border-2 border-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-50 transition-all shadow-sm text-xs"
+                  >
+                    {allSuppliersSelected ? 'Limpar' : 'Selecionar todos'}
+                  </button>
+                  <button
+                    onClick={() => setConfirmSuppliersBulkDelete(true)}
+                    disabled={selectedSupplierIds.size === 0}
+                    className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-3 bg-red-500 text-white rounded-xl font-bold hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm text-xs"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Excluir ({selectedSupplierIds.size})
+                  </button>
+                </>
+              )}
+              <button
                 onClick={handleSyncSheets}
                 className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-3 bg-indigo-50 border-2 border-indigo-100 text-indigo-600 rounded-xl font-bold hover:bg-indigo-100 transition-all shadow-sm text-xs"
               >
@@ -315,13 +371,22 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
               <motion.div
                 layout
                 key={`${supplier.id || 's'}-${sIdx}`}
-                className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden transition-all hover:border-indigo-100"
+                className={`bg-white rounded-2xl border shadow-sm overflow-hidden transition-all ${selectedSupplierIds.has(supplier.id) ? 'border-indigo-400 ring-2 ring-indigo-200' : 'border-slate-200 hover:border-indigo-100'}`}
               >
                 <div 
                   onClick={() => setExpandedSupplier(expandedSupplier === supplier.id ? null : supplier.id)}
                   className="p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 cursor-pointer hover:bg-slate-50/50 transition-colors"
                 >
                     <div className="flex items-center gap-5">
+                      {supplierSelectionMode && (
+                        <input
+                          type="checkbox"
+                          checked={selectedSupplierIds.has(supplier.id)}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={() => toggleSupplierSelected(supplier.id)}
+                          className="w-5 h-5 accent-indigo-600 cursor-pointer shrink-0"
+                        />
+                      )}
                       <div className="w-12 h-12 md:w-14 md:h-14 bg-slate-900 rounded-xl flex items-center justify-center border border-slate-800 shadow-sm">
                         <Building2 className="w-6 h-6 md:w-7 md:h-7 text-white" />
                       </div>
@@ -621,6 +686,15 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
           setDeletingRowId={setDeletingRowId}
         />
       )}
+
+      <ConfirmationModal
+        isOpen={confirmSuppliersBulkDelete}
+        onClose={() => setConfirmSuppliersBulkDelete(false)}
+        onConfirm={handleSuppliersBulkDeleteConfirm}
+        variant="danger"
+        title="Excluir fornecedores selecionados?"
+        message={`Isso vai remover ${selectedSupplierIds.size} fornecedor(es) e todos os seus produtos permanentemente. Essa ação não pode ser desfeita.`}
+      />
 
       <ConfirmationModal
         isOpen={!!supplierBulkDeleteConfirm}
