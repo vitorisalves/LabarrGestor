@@ -15,6 +15,8 @@ interface PendingListProductsPanelProps {
   setBulkPendingCategory: (v: string) => void;
   bulkPendingPrice: string;
   setBulkPendingPrice: (v: string) => void;
+  bulkPendingSetor: string;
+  setBulkPendingSetor: (v: string) => void;
   deletePendingConfirmModal: any;
   setDeletePendingConfirmModal: (v: any) => void;
   fetchPendingListProducts: (force?: boolean) => Promise<void>;
@@ -27,6 +29,7 @@ interface PendingListProductsPanelProps {
   handleToggleSelectPending: (id: string) => void;
   handleApplyBulkPendingCategory: () => Promise<void>;
   handleApplyBulkPendingPrice: () => Promise<void>;
+  handleApplyBulkPendingSetor: () => Promise<void>;
   handlePromptDeletePending: (id: string) => void;
   handlePromptBulkDeletePending: () => void;
   executeDeletePending: () => Promise<void>;
@@ -44,6 +47,8 @@ export const PendingListProductsPanel: React.FC<PendingListProductsPanelProps> =
   setBulkPendingCategory,
   bulkPendingPrice,
   setBulkPendingPrice,
+  bulkPendingSetor,
+  setBulkPendingSetor,
   deletePendingConfirmModal,
   setDeletePendingConfirmModal,
   handlePendingPriceChange,
@@ -55,6 +60,7 @@ export const PendingListProductsPanel: React.FC<PendingListProductsPanelProps> =
   handleToggleSelectPending,
   handleApplyBulkPendingCategory,
   handleApplyBulkPendingPrice,
+  handleApplyBulkPendingSetor,
   handlePromptDeletePending,
   handlePromptBulkDeletePending,
   executeDeletePending,
@@ -155,6 +161,28 @@ export const PendingListProductsPanel: React.FC<PendingListProductsPanelProps> =
                   </button>
                 </div>
 
+                {/* Alteração em Lote: Setor */}
+                <div className="flex items-center gap-2">
+                  <select
+                    value={bulkPendingSetor}
+                    onChange={(e) => setBulkPendingSetor(e.target.value)}
+                    className="bg-white border border-slate-200 text-slate-700 text-xs font-bold rounded-xl px-3 py-1.5 outline-none focus:border-indigo-500"
+                  >
+                    <option value="">-- Setor em Lote --</option>
+                    {setores.map((s) => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={handleApplyBulkPendingSetor}
+                    disabled={!bulkPendingSetor || selectedPendingIds.length === 0}
+                    className="px-3 py-1.5 bg-indigo-100 text-indigo-700 hover:bg-indigo-200 disabled:opacity-40 text-xs font-black uppercase rounded-xl transition-colors cursor-pointer"
+                  >
+                    Aplicar Setor
+                  </button>
+                </div>
+
                 {/* Alteração em Lote: Valor */}
                 <div className="flex items-center gap-2">
                   <input
@@ -209,7 +237,7 @@ export const PendingListProductsPanel: React.FC<PendingListProductsPanelProps> =
                     <th className="p-3.5 w-36">Total (R$)</th>
                     <th className="p-3.5 w-48">Categoria</th>
                     <th className="p-3.5 w-40">Setor</th>
-                    <th className="p-3.5 w-32">NF</th>
+                    <th className="p-3.5 w-32">Sem NF</th>
                     <th className="p-3.5 w-16 text-center">Ações</th>
                   </tr>
                 </thead>
@@ -281,16 +309,16 @@ export const PendingListProductsPanel: React.FC<PendingListProductsPanelProps> =
                         </td>
                         <td className="p-3.5">
                           <select
-                            value={p.hasNF === true ? 'NF' : 'SEM_NF'}
-                            onChange={(e) => handlePendingNFChange(p.id, e.target.value === 'NF')}
+                            value={p.hasNF === true ? 'SEM_NF' : 'NF'}
+                            onChange={(e) => handlePendingNFChange(p.id, e.target.value === 'SEM_NF')}
                             className={`w-full border font-black rounded-lg px-2.5 py-1 text-[11px] uppercase tracking-wide outline-none ${
                               p.hasNF === true
-                                ? 'bg-emerald-50 border-emerald-200 text-emerald-700 focus:border-emerald-500'
-                                : 'bg-amber-50 border-amber-200 text-amber-700 focus:border-amber-500'
+                                ? 'bg-amber-50 border-amber-200 text-amber-700 focus:border-amber-500'
+                                : 'bg-emerald-50 border-emerald-200 text-emerald-700 focus:border-emerald-500'
                             }`}
                           >
-                            <option value="SEM_NF">Sem NF</option>
                             <option value="NF">NF</option>
+                            <option value="SEM_NF">Sem NF</option>
                           </select>
                         </td>
                         <td className="p-3.5 text-center">

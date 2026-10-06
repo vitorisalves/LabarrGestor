@@ -1186,6 +1186,32 @@ app.delete("/api/xml/invoices/:id", asyncHandler(async (req: Request, res: Respo
   await deleteInvoiceHelper(id, res);
 }));
 
+// Remove as entradas provisórias vindas das listas de compras (source 'shopping_list')
+// dentro do período informado. Notas fiscais reais não são tocadas.
+app.post("/api/xml/list-spendings/reset", asyncHandler(async (req: Request, res: Response) => {
+  const { start, end } = req.body || {};
+  const startMs = new Date(start).getTime();
+  const endMs = new Date(end).getTime();
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || startMs > endMs) {
+    return res.status(400).json({ error: "Período inválido" });
+  }
+
+  let removed = 0;
+  for (const coll of ['invoices', 'xml_spendings']) {
+    const snapshot = await repo.getDocs(coll, coll, true);
+    for (const docSnap of snapshot.docs) {
+      const d: any = typeof docSnap.data === 'function' ? docSnap.data() : docSnap.data;
+      if (d?.source !== 'shopping_list') continue;
+      const ms = new Date(d.date || d.dhEmi || d.createdAt).getTime();
+      if (!Number.isFinite(ms) || ms < startMs || ms > endMs) continue;
+      await repo.delete(repo.doc(coll, docSnap.id), `${coll}/${docSnap.id}`);
+      if (coll === 'invoices') removed++;
+    }
+    repo.invalidateCache(coll);
+  }
+  res.json({ status: "success", removed });
+}));
+
 app.post("/api/xml/products/update-category", asyncHandler(async (req: Request, res: Response) => {
   const { code, name, category } = req.body;
   if (!category) {

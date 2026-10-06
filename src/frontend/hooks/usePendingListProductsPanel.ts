@@ -16,6 +16,7 @@ export const usePendingListProductsPanel = (
   const [selectedPendingIds, setSelectedPendingIds] = useState<string[]>([]);
   const [bulkPendingCategory, setBulkPendingCategory] = useState('');
   const [bulkPendingPrice, setBulkPendingPrice] = useState('');
+  const [bulkPendingSetor, setBulkPendingSetor] = useState('');
   const [deletePendingConfirmModal, setDeletePendingConfirmModal] = useState<{
     open: boolean;
     idsToDelete: string[];
@@ -163,6 +164,26 @@ export const usePendingListProductsPanel = (
     }).catch(console.error);
   };
 
+  const handleApplyBulkPendingSetor = async () => {
+    if (!bulkPendingSetor || selectedPendingIds.length === 0) return;
+    const updatedItems: any[] = [];
+    const nextList = pendingListProducts.map(p => {
+      if (selectedPendingIds.includes(p.id)) {
+        const item = { ...p, setor: bulkPendingSetor };
+        updatedItems.push(item);
+        return item;
+      }
+      return p;
+    });
+    setPendingListProducts(nextList);
+    setBulkPendingSetor('');
+    await fetch('/api/xml/pending-list-products', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items: updatedItems })
+    }).catch(console.error);
+  };
+
   const handlePromptDeletePending = (id: string) => {
     setDeletePendingConfirmModal({
       open: true,
@@ -249,6 +270,8 @@ export const usePendingListProductsPanel = (
     setBulkPendingCategory,
     bulkPendingPrice,
     setBulkPendingPrice,
+    bulkPendingSetor,
+    setBulkPendingSetor,
     deletePendingConfirmModal,
     setDeletePendingConfirmModal,
     fetchPendingListProducts,
@@ -261,6 +284,7 @@ export const usePendingListProductsPanel = (
     handleToggleSelectPending,
     handleApplyBulkPendingCategory,
     handleApplyBulkPendingPrice,
+    handleApplyBulkPendingSetor,
     handlePromptDeletePending,
     handlePromptBulkDeletePending,
     executeDeletePending,

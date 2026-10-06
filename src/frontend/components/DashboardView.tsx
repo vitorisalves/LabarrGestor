@@ -34,6 +34,7 @@ import { PriceAnalysisPanel } from './dashboard/PriceAnalysisPanel';
 import { CategoryEditorPanel } from './dashboard/CategoryEditorPanel';
 import { PendingListProductsPanel } from './dashboard/PendingListProductsPanel';
 import { SectorDashboardView } from './SectorDashboardView';
+import { ResetListSpendingsButton } from './dashboard/ResetListSpendingsButton';
 import { usePendingListProductsPanel } from '../hooks/usePendingListProductsPanel';
 import { useXmlSpendings } from '../hooks/useXmlSpendings';
 
@@ -1399,7 +1400,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
       />
 
       {/* Dashboard de Setores */}
-      <SectorDashboardView setores={setores} invoices={invoices} isLoading={isLoading} />
+      <SectorDashboardView
+        setores={setores}
+        invoices={invoices}
+        isLoading={isLoading}
+        onListSpendingsReset={async () => { await fetchPricingData(true); await fetchSpendings(true); }}
+      />
 
       {/* Header & Filters */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-white p-6 rounded-3xl border border-slate-100 shadow-sm animate-in fade-in slide-in-from-top-4 duration-500">
@@ -1412,6 +1418,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
+          <ResetListSpendingsButton
+            start={new Date(`${startDate}T00:00:00`)}
+            end={new Date(`${endDate}T23:59:59.999`)}
+            periodLabel={`${startDate.split('-').reverse().join('/')} a ${endDate.split('-').reverse().join('/')}`}
+            onDone={async () => { await fetchPricingData(true); await fetchSpendings(true); }}
+          />
           <div className="flex flex-wrap items-center gap-2">
             <select
               value=""

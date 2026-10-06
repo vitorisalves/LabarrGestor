@@ -10,11 +10,13 @@ import { format, startOfMonth, endOfMonth, isWithinInterval, parseISO } from 'da
 import { ptBR } from 'date-fns/locale';
 import { formatCurrency } from '../utils';
 import { useSetorLimits } from '../hooks/useSetorLimits';
+import { ResetListSpendingsButton } from './dashboard/ResetListSpendingsButton';
 
 interface SectorDashboardViewProps {
   setores: string[];
   invoices: any[];
   isLoading?: boolean;
+  onListSpendingsReset?: () => void | Promise<void>;
 }
 
 const parseDateSafe = (dateStr: string): Date | null => {
@@ -29,7 +31,7 @@ const parseDateSafe = (dateStr: string): Date | null => {
   }
 };
 
-export const SectorDashboardView: React.FC<SectorDashboardViewProps> = ({ setores, invoices, isLoading = false }) => {
+export const SectorDashboardView: React.FC<SectorDashboardViewProps> = ({ setores, invoices, isLoading = false, onListSpendingsReset }) => {
   const [selectedMonth, setSelectedMonth] = useState(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -135,6 +137,13 @@ export const SectorDashboardView: React.FC<SectorDashboardViewProps> = ({ setore
           </h2>
           <p className="text-slate-600 text-[10px] font-black uppercase tracking-wider">Gasto mensal por setor comparado ao limite configurado</p>
         </div>
+        <div className="flex flex-wrap items-center gap-3">
+        <ResetListSpendingsButton
+          start={startOfMonth(new Date(Number(selectedMonth.split('-')[0]), Number(selectedMonth.split('-')[1]) - 1, 1))}
+          end={endOfMonth(new Date(Number(selectedMonth.split('-')[0]), Number(selectedMonth.split('-')[1]) - 1, 1))}
+          periodLabel={selectedMonth.split('-').reverse().join('/')}
+          onDone={onListSpendingsReset}
+        />
         <select
           value={selectedMonth}
           onChange={(e) => setSelectedMonth(e.target.value)}
@@ -149,6 +158,7 @@ export const SectorDashboardView: React.FC<SectorDashboardViewProps> = ({ setore
             return <option key={value} value={value}>{label.charAt(0).toUpperCase() + label.slice(1)}</option>;
           })}
         </select>
+        </div>
       </div>
 
       {isLoading ? (
