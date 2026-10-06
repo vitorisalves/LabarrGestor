@@ -9,9 +9,11 @@ interface PurchaseSetorPickerProps {
   setores: string[];
   value: string;
   onChange: (setor: string) => void;
+  // Chamado só quando a pessoa troca o setor no select (não no preenchimento automático).
+  onUserChange?: (setor: string) => void;
 }
 
-export const PurchaseSetorPicker: React.FC<PurchaseSetorPickerProps> = ({ setores, value, onChange }) => {
+export const PurchaseSetorPicker: React.FC<PurchaseSetorPickerProps> = ({ setores, value, onChange, onUserChange }) => {
   React.useEffect(() => {
     if (value) return;
     const fallback = setores[0] || '';
@@ -21,7 +23,7 @@ export const PurchaseSetorPicker: React.FC<PurchaseSetorPickerProps> = ({ setore
   return (
     <select
       value={value}
-      onChange={(e) => onChange(e.target.value)}
+      onChange={(e) => { onChange(e.target.value); onUserChange?.(e.target.value); }}
       className="px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500"
       title="Setor desta compra"
     >

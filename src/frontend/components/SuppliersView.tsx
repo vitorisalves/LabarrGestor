@@ -225,13 +225,13 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
     });
   };
 
-  const onAddToCart = (product: any, supplierName: string, key: string) => {
+  const onAddToCart = (product: any, supplierName: string, key: string, productSetor?: string) => {
     const val = quantities[key] || '1';
     let qty = parseFloat(val.replace(',', '.'));
     if (isNaN(qty) || qty <= 0) {
       qty = 1;
     }
-    const setor = purchaseSetores[key] || setores[0] || '';
+    const setor = purchaseSetores[key] || productSetor || setores[0] || '';
     addToCart(product, supplierName, qty, setor);
     setQuantities(prev => ({ ...prev, [key]: '1' }));
   };
@@ -618,17 +618,21 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
                                   onQuantityBlur={() => handleQuantityBlur(qKey)}
                                   onIncrement={() => adjustQuantity(qKey, 1)}
                                   onDecrement={() => adjustQuantity(qKey, -1)}
-                                  onEnter={() => onAddToCart(product, supplier.name, qKey)}
+                                  onEnter={() => onAddToCart(product, supplier.name, qKey, product.setor)}
                                   idPrefix={qKey}
                                 />
                                 <PurchaseSetorPicker
                                   setores={setores}
-                                  value={purchaseSetores[qKey] || ''}
+                                  value={purchaseSetores[qKey] || product.setor || ''}
                                   onChange={(setor) => setPurchaseSetores(prev => ({ ...prev, [qKey]: setor }))}
+                                  onUserChange={(setor) => saveSupplier({
+                                    ...supplier,
+                                    products: supplier.products.map((p, idx) => idx === originalIndex ? { ...p, setor } : p)
+                                  })}
                                 />
                                 <button
                                   id={`add-${qKey}`}
-                                  onClick={() => onAddToCart(product, supplier.name, qKey)}
+                                  onClick={() => onAddToCart(product, supplier.name, qKey, product.setor)}
                                   className="flex-1 h-11 bg-slate-900 text-white rounded-xl font-bold text-[10px] sm:text-xs hover:bg-indigo-600 transition-all active:scale-95"
                                 >
                                   Adicionar

@@ -302,16 +302,17 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
                     onQuantityBlur={() => handleQuantityBlur(qKey)}
                     onIncrement={() => adjustQuantity(qKey, 1)}
                     onDecrement={() => adjustQuantity(qKey, -1)}
-                    onEnter={() => onAddToCart(row.product, row.supplierName, parseFloat((quantities[qKey] ?? '1').replace(',', '.')) || 1, purchaseSetores[qKey] || setores[0] || '')}
+                    onEnter={() => onAddToCart(row.product, row.supplierName, parseFloat((quantities[qKey] ?? '1').replace(',', '.')) || 1, purchaseSetores[qKey] || row.product.setor || setores[0] || '')}
                     idPrefix={qKey}
                   />
                   <PurchaseSetorPicker
                     setores={setores}
-                    value={purchaseSetores[qKey] || ''}
+                    value={purchaseSetores[qKey] || row.product.setor || ''}
                     onChange={(setor) => setPurchaseSetores(prev => ({ ...prev, [qKey]: setor }))}
+                    onUserChange={(setor) => updateProductSetor(row.supplierId, row.productIndex, setor)}
                   />
                   <button
-                    onClick={() => onAddToCart(row.product, row.supplierName, parseFloat((quantities[qKey] ?? '1').replace(',', '.')) || 1, purchaseSetores[qKey] || setores[0] || '')}
+                    onClick={() => onAddToCart(row.product, row.supplierName, parseFloat((quantities[qKey] ?? '1').replace(',', '.')) || 1, purchaseSetores[qKey] || row.product.setor || setores[0] || '')}
                     className="flex-1 h-11 bg-slate-900 text-white rounded-xl font-bold text-[10px] sm:text-xs hover:bg-indigo-600 transition-all active:scale-95"
                   >
                     Adicionar
