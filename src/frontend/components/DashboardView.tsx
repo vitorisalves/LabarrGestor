@@ -69,6 +69,10 @@ interface DashboardViewProps {
   setores?: string[];
 }
 
+// Entrada da lista de compras ainda provisória (marcada "NF"): aguarda a NF real e
+// por isso não conta como gasto. Entradas "Sem NF" (hasNF === true) contam.
+const isProvisionalListEntry = (item: any) => item?.source === 'shopping_list' && item?.hasNF !== true;
+
 export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, categories: propCategories = [], setores = [] }) => {
   const { isTestMode } = useTestMode();
   const [startDate, setStartDate] = useState<string>(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
@@ -620,11 +624,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
     const processedInvoiceIds = new Set<string>();
 
     invoices.forEach(inv => {
-      // Entradas confirmadas pela lista de compras (source 'shopping_list') são
-      // provisórias, não uma NF de verdade — não entram no Gasto no Período pra
-      // não duplicar quando a NF real do mesmo valor chegar depois. Elas só
-      // alimentam o saldo "Faltando NF" (calculado mais abaixo).
-      if (inv.source === 'shopping_list') return;
+      // Entradas da lista de compras marcadas "NF" (hasNF !== true) são provisórias:
+      // ficam só no saldo "Faltando NF" (mais abaixo) até a NF real chegar, pra não
+      // duplicar. As marcadas "Sem NF" (hasNF === true) nunca terão nota, então
+      // entram direto no gasto.
+      if (isProvisionalListEntry(inv)) return;
       const dateStr = inv.date || inv.dhEmi || inv.createdAt;
       if (!dateStr) return;
       const spendingDate = parseDateSafe(dateStr);
@@ -701,7 +705,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
     if (!selectedChartCategory) {
       xmlSpendings.forEach(spending => {
         if (spending.id && processedInvoiceIds.has(spending.id)) return;
-        if (spending.source === 'shopping_list') return;
+        if (isProvisionalListEntry(spending)) return;
         const dateStr = spending.dhEmi || spending.date || spending.createdAt;
         if (!dateStr) return;
         const spendingDate = parseDateSafe(dateStr);
@@ -724,7 +728,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
     const processedInvoiceIds = new Set<string>();
 
     invoices.forEach(inv => {
-      if (inv.source === 'shopping_list') return;
+      if (isProvisionalListEntry(inv)) return;
       const dateStr = inv.date || inv.dhEmi || inv.createdAt;
       if (!dateStr) return;
       const spendingDate = parseDateSafe(dateStr);
@@ -791,7 +795,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
     // em invoices também entram, agrupadas em "Sem Categoria".
     xmlSpendings.forEach(spending => {
       if (spending.id && processedInvoiceIds.has(spending.id)) return;
-      if (spending.source === 'shopping_list') return;
+      if (isProvisionalListEntry(spending)) return;
       const dateStr = spending.dhEmi || spending.date || spending.createdAt;
       if (!dateStr) return;
       const spendingDate = parseDateSafe(dateStr);

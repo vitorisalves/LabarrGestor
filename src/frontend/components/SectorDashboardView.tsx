@@ -49,9 +49,10 @@ export const SectorDashboardView: React.FC<SectorDashboardViewProps> = ({ setore
     const map = new Map<string, number>();
 
     invoices.forEach((inv: any) => {
-      // Entradas confirmadas pela lista de compras (source 'shopping_list') não são
-      // NF de verdade - ficam de fora daqui, só entram em "Faltando NF" abaixo.
-      if (inv.source === 'shopping_list') return;
+      // Entradas da lista marcadas "NF" (hasNF !== true) são provisórias e ficam só em
+      // "Faltando NF" abaixo; as marcadas "Sem NF" (hasNF === true) nunca terão nota e
+      // contam como gasto.
+      if (inv.source === 'shopping_list' && inv.hasNF !== true) return;
       const dateStr = inv.date || inv.dhEmi || inv.createdAt;
       if (!dateStr) return;
       const spendingDate = parseDateSafe(dateStr);
