@@ -29,6 +29,15 @@ import type { DataRepo, QuerySnapshot, DocRef } from './types.js';
 
 let g_client: SupabaseClient | null = null;
 
+const LIVE_EDIT_COLLECTIONS = new Set([
+  'suppliers',
+  'shopping_lists',
+  'delivered_products',
+  'reminders',
+  'pending_list_products',
+  'purchase_orders',
+]);
+
 export function getClient(): SupabaseClient {
   if (g_client) return g_client;
   const url = process.env.SUPABASE_URL;
@@ -80,10 +89,11 @@ export function makeSupabaseRepo(clientOverride?: SupabaseClient): DataRepo {
     // em memória — uma pode apagar enquanto outra serve dado obsoleto.
     if (isTestModeActive() && IS_VERCEL) forceNoCache = true;
 
-    // Fornecedores guardam o setor/categoria dos produtos e são editados direto na
-    // lista: no Vercel, outra instância serveria a versão em cache (30s) logo após a
-    // gravação e o F5 voltaria o valor antigo. Lê sempre do banco.
-    if (IS_VERCEL && coll === 'suppliers') forceNoCache = true;
+    // Coleções editadas direto na tela (fornecedores, listas, entregues, lembretes,
+    // pendentes, requisições): no Vercel, outra instância serviria a versão em cache
+    // (10-30s) logo após a gravação/exclusão e o F5 traria de volta o valor antigo.
+    // São coleções pequenas, então lê sempre do banco.
+    if (IS_VERCEL && LIVE_EDIT_COLLECTIONS.has(coll)) forceNoCache = true;
 
     if (forceNoCache) {
       const clean = cacheKey.split('/')[0];
