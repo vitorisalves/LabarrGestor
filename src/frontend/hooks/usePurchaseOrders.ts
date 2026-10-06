@@ -118,17 +118,21 @@ export const usePurchaseOrders = (loggedName: string, addAppNotification: (title
     }
   }, []);
 
-  const sendToShoppingList = useCallback(async (id: string) => {
+  // Retorna o id da lista de compras criada (ou null se falhar).
+  const sendToShoppingList = useCallback(async (id: string): Promise<string | null> => {
     setPurchaseOrders(prev => prev.filter(o => o.id !== id));
     try {
-      await fetch('/api/xml/purchase_orders/send', {
+      const res = await fetch('/api/xml/purchase_orders/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id })
       });
+      const data = res.ok ? await res.json().catch(() => null) : null;
       await fetchPurchaseOrders(true);
+      return data?.listId ?? null;
     } catch (err) {
       console.error('Erro ao enviar ordem de compra para lista de compras:', err);
+      return null;
     }
   }, [fetchPurchaseOrders]);
 

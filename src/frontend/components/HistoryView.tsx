@@ -31,6 +31,9 @@ import { ConfirmationModal } from './modals/ConfirmationModal';
 interface HistoryViewProps {
   savedLists: SavedList[];
   isLoading?: boolean;
+  // Lista que deve abrir expandida ao entrar na aba (ex.: recém-enviada da ordem de compra).
+  listToOpenId?: string | null;
+  onListOpened?: () => void;
   onRefresh?: () => void;
   editSavedList: (list: SavedList) => void;
   deleteSavedList: (id: string) => void;
@@ -86,6 +89,8 @@ HistoryItemRow.displayName = 'HistoryItemRow';
 export const HistoryView: React.FC<HistoryViewProps> = ({
   savedLists,
   isLoading,
+  listToOpenId,
+  onListOpened,
   onRefresh,
   editSavedList,
   deleteSavedList,
@@ -139,6 +144,15 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
       setCurrentPage(totalPages);
     }
   }, [totalPages, currentPage]);
+
+  React.useEffect(() => {
+    if (!listToOpenId) return;
+    const idx = sortedLists.findIndex(l => l.id === listToOpenId);
+    if (idx === -1) return;
+    setCurrentPage(Math.floor(idx / itemsPerPage) + 1);
+    setExpandedList(listToOpenId);
+    onListOpened?.();
+  }, [listToOpenId, sortedLists]);
 
   const paginatedLists = React.useMemo(() => {
     const startIndex = (currentPage - 1) * itemsPerPage;

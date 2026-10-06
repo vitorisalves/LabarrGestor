@@ -173,8 +173,9 @@ export default function App() {
   } = usePurchaseOrders(loggedName, addAppNotification);
 
   const sendToShoppingList = React.useCallback(async (id: string) => {
-    await sendPurchaseOrderToShoppingList(id);
+    const listId = await sendPurchaseOrderToShoppingList(id);
     await refreshLists();
+    return listId;
   }, [sendPurchaseOrderToShoppingList, refreshLists]);
 
   const {
@@ -427,6 +428,7 @@ export default function App() {
   const [isImporting, setIsImporting] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isFinalizing, setIsFinalizing] = useState(false);
+  const [listToOpenId, setListToOpenId] = useState<string | null>(null);
   const [isAdding, setIsAdding] = useState(false);
   const [isProductOnlyMode, setIsProductOnlyMode] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -791,7 +793,13 @@ export default function App() {
               approveOrder={approveOrder}
               rejectOrder={rejectOrder}
               updateObservacao={updateObservacao}
-              sendToShoppingList={sendToShoppingList}
+              sendToShoppingList={async (id) => {
+                const listId = await sendToShoppingList(id);
+                if (listId) {
+                  setListToOpenId(listId);
+                  setCurrentPage('history');
+                }
+              }}
               deleteOrder={deletePurchaseOrder}
             />
           )}
@@ -826,6 +834,8 @@ export default function App() {
               savedLists={savedLists}
               isLoading={isLoadingLists}
               onRefresh={refreshLists}
+              listToOpenId={listToOpenId}
+              onListOpened={() => setListToOpenId(null)}
               editSavedList={onEditSavedList}
               deleteSavedList={(id) => setDeletion('list', id)}
               deleteSavedListNow={deleteSavedList}
