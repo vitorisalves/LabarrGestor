@@ -80,6 +80,11 @@ export function makeSupabaseRepo(clientOverride?: SupabaseClient): DataRepo {
     // em memória — uma pode apagar enquanto outra serve dado obsoleto.
     if (isTestModeActive() && IS_VERCEL) forceNoCache = true;
 
+    // Fornecedores guardam o setor/categoria dos produtos e são editados direto na
+    // lista: no Vercel, outra instância serveria a versão em cache (30s) logo após a
+    // gravação e o F5 voltaria o valor antigo. Lê sempre do banco.
+    if (IS_VERCEL && coll === 'suppliers') forceNoCache = true;
+
     if (forceNoCache) {
       const clean = cacheKey.split('/')[0];
       g_collectionVersions[clean] = g_collectionVersions[clean] ? g_collectionVersions[clean] + 1 : 2;
