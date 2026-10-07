@@ -114,6 +114,8 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
     handleXmlFiles,
     handleSaveImport,
     updateRow,
+    removeImportRow,
+    clearImportRows,
     findExactMatch
   } = useXmlImport(allSuppliers, saveSupplier, addNotification);
 
@@ -685,6 +687,8 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
           availableCategories={availableCategories}
           addNotification={addNotification}
           updateRow={updateRow}
+          removeImportRow={removeImportRow}
+          clearImportRows={clearImportRows}
           findExactMatch={findExactMatch}
           deletingRowId={deletingRowId}
           setDeletingRowId={setDeletingRowId}

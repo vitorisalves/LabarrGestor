@@ -3,11 +3,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { Supplier, Product } from '../types';
 import { normalizeText } from '../utils';
 import { ImportRow } from '../components/suppliers/XmlImportTab';
 import { getProductCategories } from '../utils/productCategories';
+import { stagePendingXml, fetchPendingXml, setPendingXmlStatus } from '../utils/pendingXmlImports';
 
 export interface ParsedNFeProduct {
   cProd: string;
@@ -129,6 +130,88 @@ export function useXmlImport(
     return null;
   }, [allSuppliers]);
 
+  const buildRows = useCallback((productsParsed: ParsedNFeProduct[], key: string, fileName: string): ImportRow[] => {
+    return productsParsed.map((parsedP, index) => {
+      const matched = findExactMatch(parsedP.cProd, parsedP.xProd);
+
+      let reconciliationType: 'exact' | 'manual' | 'new' = 'new';
+      let associatedSupplierId = '';
+      let associatedSupplierName = '';
+      let associatedProductCode = '';
+
+      if (matched) {
+        reconciliationType = 'exact';
+        associatedSupplierId = matched.supplier.id || '';
+        associatedSupplierName = matched.supplier.name;
+        associatedProductCode = matched.product.code || matched.product.name || '';
+      }
+
+      return {
+        id: `${key}_${index}_${Date.now()}`,
+        cProd: parsedP.cProd,
+        xProd: parsedP.xProd,
+        qTrib: parsedP.qTrib,
+        vUnCom: parsedP.vUnCom,
+        dhEmi: parsedP.dhEmi,
+        nfeKey: key,
+        fileName,
+        xNome: parsedP.xNome,
+        reconciliationType,
+        associatedSupplierId,
+        associatedSupplierName,
+        associatedProductCode,
+        targetType: 'suppliers' as const,
+        targetCategories: matched ? getProductCategories(matched.product) : ['Ingredientes']
+      };
+    });
+  }, [findExactMatch]);
+
+  // Carrega as notas pendentes salvas no servidor (enviadas antes, ou pelo Dashboard)
+  // que ainda não estão na tela. Roda uma vez, depois que os fornecedores carregaram,
+  // para a conciliação com os produtos já cadastrados funcionar.
+  const loadedPendingRef = useRef(false);
+  useEffect(() => {
+    if (loadedPendingRef.current || allSuppliers.length === 0) return;
+    loadedPendingRef.current = true;
+    fetchPendingXml('products').then(docs => {
+      const rowsByKey = new Map<string, ImportRow[]>();
+      docs.forEach(d => {
+        try {
+          const parsed = parseNFeXml(d.xmlText, d.fileName);
+          if (parsed.length === 0) return;
+          xmlContentsRef.current[d.nfeKey] = d.xmlText;
+          rowsByKey.set(d.nfeKey, buildRows(parsed, d.nfeKey, d.fileName));
+        } catch (err) {
+          console.error(`Nota pendente ${d.fileName} inválida:`, err);
+        }
+      });
+      setImportRows(prev => {
+        const present = new Set(prev.map(r => r.nfeKey));
+        const added: ImportRow[] = [];
+        rowsByKey.forEach((rows, key) => { if (!present.has(key)) added.push(...rows); });
+        return added.length > 0 ? [...prev, ...added] : prev;
+      });
+    });
+  }, [allSuppliers, buildRows]);
+
+  // Remove uma linha; se a nota ficou sem linhas, ela é descartada também no servidor.
+  const removeImportRow = useCallback((id: string) => {
+    const target = importRows.find(r => r.id === id);
+    if (!target) return;
+    const remaining = importRows.filter(r => r.id !== id);
+    setImportRows(remaining);
+    if (!remaining.some(r => r.nfeKey === target.nfeKey)) {
+      setPendingXmlStatus([target.nfeKey], 'products', 'dismissed');
+    }
+  }, [importRows]);
+
+  const clearImportRows = useCallback(() => {
+    const keys = Array.from(new Set(importRows.map(r => r.nfeKey)));
+    setPendingXmlStatus(keys, 'products', 'dismissed');
+    setImportRows([]);
+    setXmlLogs([]);
+  }, [importRows]);
+
   const handleXmlFiles = useCallback(async (files: FileList | File[]) => {
     setIsAnalyzing(true);
     const newRows: ImportRow[] = [];
@@ -159,39 +242,22 @@ export function useXmlImport(
           logs.push(`Aviso: XML ${file.name} (Chave: ${key}) já foi importado anteriormente.`);
         }
 
-        productsParsed.forEach((parsedP, index) => {
-          const matched = findExactMatch(parsedP.cProd, parsedP.xProd);
-          
-          let reconciliationType: 'exact' | 'manual' | 'new' = 'new';
-          let associatedSupplierId = '';
-          let associatedSupplierName = '';
-          let associatedProductCode = '';
-
-          if (matched) {
-            reconciliationType = 'exact';
-            associatedSupplierId = matched.supplier.id || '';
-            associatedSupplierName = matched.supplier.name;
-            associatedProductCode = matched.product.code || matched.product.name || '';
-          }
-
-          newRows.push({
-            id: `${key}_${index}_${Date.now()}`,
-            cProd: parsedP.cProd,
-            xProd: parsedP.xProd,
-            qTrib: parsedP.qTrib,
-            vUnCom: parsedP.vUnCom,
-            dhEmi: parsedP.dhEmi,
-            nfeKey: key,
-            fileName: file.name,
-            xNome: parsedP.xNome,
-            reconciliationType,
-            associatedSupplierId,
-            associatedSupplierName,
-            associatedProductCode,
-            targetType: 'suppliers',
-            targetCategories: matched ? getProductCategories(matched.product) : ['Ingredientes']
-          });
+        // Salva a nota no servidor: fica pendente (aqui e no Dashboard) até ser
+        // confirmada ou descartada, mesmo se a página for recarregada.
+        const staged = await stagePendingXml({
+          side: 'products',
+          nfeKey: key,
+          fileName: file.name,
+          xmlText: text,
+          supplierName: productsParsed[0].xNome,
+          dhEmi: productsParsed[0].dhEmi,
+          productsAlreadyImported: processedKeysList.includes(key)
         });
+        if (staged?.alreadyImported.products && !processedKeysList.includes(key)) {
+          logs.push(`Aviso: XML ${file.name} (Chave: ${key}) já foi importado anteriormente.`);
+        }
+
+        newRows.push(...buildRows(productsParsed, key, file.name));
 
         logs.push(`Sucesso: ${file.name} processado (${productsParsed.length} produtos de det/prod)`);
       } catch (err: any) {
@@ -210,7 +276,7 @@ export function useXmlImport(
     if (addNotification && newRows.length > 0) {
       addNotification(`Processados ${files.length} arquivos XML.`, newRows.length, 'info');
     }
-  }, [addNotification, findExactMatch]);
+  }, [addNotification, buildRows]);
 
   const updateRow = useCallback((id: string, updates: Partial<ImportRow>) => {
     setImportRows(prev => prev.map(r => r.id === id ? { ...r, ...updates } : r));
@@ -405,22 +471,9 @@ export function useXmlImport(
 
       await Promise.all(modifiedSuppliers.map(supplier => saveSupplier(supplier)));
 
-      // Sincroniza todas as notas fiscais XML novas com o banco central de faturas/invoices do Dashboard
-      const syncPromises = Array.from(newlyImportedNfeKeys).map(async (nfeKey) => {
-        const rawXml = xmlContentsRef.current[nfeKey];
-        if (rawXml) {
-          try {
-            await fetch('/api/xml/process', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ xmlData: rawXml })
-            });
-          } catch (apiErr) {
-            console.error(`Erro ao sincronizar nota ${nfeKey} com banco central:`, apiErr);
-          }
-        }
-      });
-      await Promise.all(syncPromises);
+      // Esta importação só atualiza produtos/preços. Os gastos da nota são confirmados
+      // no Dashboard, onde ela fica pendente (sem precisar enviar o arquivo de novo).
+      await setPendingXmlStatus(Array.from(newlyImportedNfeKeys), 'products', 'done');
 
       const storedProcessedKeys = localStorage.getItem('processed_nfe_keys');
       const processedKeysList: string[] = storedProcessedKeys ? JSON.parse(storedProcessedKeys) : [];
@@ -456,6 +509,8 @@ export function useXmlImport(
     handleXmlFiles,
     handleSaveImport,
     updateRow,
+    removeImportRow,
+    clearImportRows,
     findExactMatch
   };
 }

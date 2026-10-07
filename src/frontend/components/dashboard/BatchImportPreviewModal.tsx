@@ -15,6 +15,7 @@ interface BatchImportPreviewModalProps {
   isOpen: boolean;
   batchPreview: any[];
   onClose: () => void;
+  onDiscardInvoice: (invoiceIdx: number) => void;
   onProductCategoryChange: (invoiceIdx: number, productIdx: number, categoryId: string) => void;
   onProductSetorChange: (invoiceIdx: number, productIdx: number, setor: string) => void;
   onToggleProductDeletion: (invoiceIdx: number, productIdx: number) => void;
@@ -39,6 +40,7 @@ export const BatchImportPreviewModal: React.FC<BatchImportPreviewModalProps> = (
   isOpen,
   batchPreview,
   onClose,
+  onDiscardInvoice,
   onProductCategoryChange,
   onProductSetorChange,
   onToggleProductDeletion,
@@ -165,6 +167,30 @@ export const BatchImportPreviewModal: React.FC<BatchImportPreviewModalProps> = (
               <tbody className="divide-y divide-slate-100">
                 {batchPreview.map((inv, iIdx) => (
                   <React.Fragment key={inv.nfeKey || iIdx}>
+                    <tr className="bg-slate-100/70">
+                      <td colSpan={8} className="px-3 py-2">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="text-[11px] font-black text-slate-700 uppercase tracking-tight">
+                            {inv.supplierName} <span className="font-normal text-slate-400 normal-case">· {inv.fileName}</span>
+                          </span>
+                          <div className="flex items-center gap-2">
+                            {inv.alreadyExists && (
+                              <span className="px-2 py-1 bg-amber-100 text-amber-700 text-[10px] font-black uppercase rounded-lg">
+                                Já importada anteriormente — será atualizada, não duplicada
+                              </span>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => onDiscardInvoice(iIdx)}
+                              className="px-2 py-1 bg-red-100 text-red-600 hover:bg-red-200 text-[10px] font-black uppercase rounded-lg transition-colors"
+                              title="Remove esta nota das pendentes do Dashboard"
+                            >
+                              Descartar nota
+                            </button>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
                     {inv.products.map((prod: any, pIdx: number) => {
                       const pId = `${iIdx}-${pIdx}`;
                       const isSelected = selectedProducts.includes(pId);

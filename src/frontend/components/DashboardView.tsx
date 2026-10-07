@@ -35,6 +35,7 @@ import { CategoryEditorPanel } from './dashboard/CategoryEditorPanel';
 import { PendingListProductsPanel } from './dashboard/PendingListProductsPanel';
 import { SectorDashboardView } from './SectorDashboardView';
 import { ResetListSpendingsButton } from './dashboard/ResetListSpendingsButton';
+import { stagePendingXml, fetchPendingXml, setPendingXmlStatus } from '../utils/pendingXmlImports';
 import { usePendingListProductsPanel } from '../hooks/usePendingListProductsPanel';
 import { useXmlSpendings } from '../hooks/useXmlSpendings';
 
@@ -97,6 +98,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
   const [isUploading, setIsUploading] = useState(false);
   const [xmlLogs, setXmlLogs] = useState<{ type: 'success' | 'warning' | 'error', text: string }[]>([]);
   const [batchPreview, setBatchPreview] = useState<any[]>([]);
+  const [pendingXmlCount, setPendingXmlCount] = useState(0);
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
   const [categories, setCategories] = useState<any[]>([]);
   const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
@@ -302,6 +304,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
 
   useEffect(() => {
     fetchPriceIncreases();
+    fetchPendingXml('dashboard').then(docs => setPendingXmlCount(docs.length));
   }, []);
 
   useEffect(() => {
@@ -426,7 +429,21 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
         }
         tempKeys.add(parsed.nfeKey);
 
-        const alreadyExists = xmlSpendings.some(item => item.id === parsed.nfeKey);
+        // Salva a nota no servidor: fica pendente (aqui e nos Produtos) até ser
+        // confirmada ou descartada, mesmo se a página for recarregada.
+        const staged = await stagePendingXml({
+          side: 'dashboard',
+          nfeKey: parsed.nfeKey,
+          fileName: file.name,
+          xmlText: text,
+          supplierName: parsed.supplierName,
+          dhEmi: parsed.dhEmi,
+          vTotTrib: parsed.vTotTrib
+        });
+        const alreadyExists = xmlSpendings.some(item => item.id === parsed.nfeKey) || !!staged?.alreadyImported.dashboard;
+        if (alreadyExists) {
+          logs.push({ type: 'warning', text: `A nota de "${parsed.supplierName}" (${file.name}) já foi importada anteriormente. Se confirmar, ela será atualizada, não duplicada.` });
+        }
 
         previews.push({
           ...parsed,
@@ -445,10 +462,44 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
     }
 
     if (previews.length > 0) {
-      setBatchPreview(previews);
-      setIsPreviewModalOpen(true);
+      await openPendingPreviews(previews);
     }
     setIsUploading(false);
+  };
+
+  // Abre a pré-visualização com todas as notas pendentes do Dashboard (inclusive as
+  // enviadas antes, ou pela aba Importar XML dos Produtos). `fallback` cobre notas que
+  // não puderam ser salvas no servidor.
+  const openPendingPreviews = async (fallback: any[] = []) => {
+    const docs = await fetchPendingXml('dashboard');
+    const loaded: any[] = [];
+    docs.forEach(d => {
+      try {
+        const parsed = parseNFeXml(d.xmlText, d.fileName);
+        loaded.push({ ...parsed, nfeKey: d.nfeKey, xmlText: d.xmlText, fileName: d.fileName, alreadyExists: !!d.alreadyImported?.dashboard });
+      } catch (err) {
+        console.error(`Nota pendente ${d.fileName} inválida:`, err);
+      }
+    });
+    const loadedKeys = new Set(loaded.map(l => l.nfeKey));
+    const list = [...loaded, ...fallback.filter(f => !loadedKeys.has(f.nfeKey))];
+    setPendingXmlCount(list.length);
+    if (list.length > 0) {
+      setSelectedProducts([]);
+      setBatchPreview(list);
+      setIsPreviewModalOpen(true);
+    }
+  };
+
+  const handleDiscardInvoice = async (invoiceIdx: number) => {
+    const inv = batchPreview[invoiceIdx];
+    if (!inv) return;
+    await setPendingXmlStatus([inv.nfeKey], 'dashboard', 'dismissed');
+    const next = batchPreview.filter((_, i) => i !== invoiceIdx);
+    setSelectedProducts([]);
+    setBatchPreview(next);
+    setPendingXmlCount(next.length);
+    if (next.length === 0) setIsPreviewModalOpen(false);
   };
 
 
@@ -588,6 +639,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
       });
 
       setXmlLogs(prev => [...logs, ...prev]);
+
+      // Notas processadas com sucesso deixam de ficar pendentes no Dashboard; as que
+      // deram erro continuam salvas para tentar de novo.
+      const confirmedKeys = batchPreview
+        .filter((_, i) => results[i] && results[i].status !== 'error')
+        .map(p => p.nfeKey);
+      await setPendingXmlStatus(confirmedKeys, 'dashboard', 'done');
+      setPendingXmlCount(batchPreview.length - confirmedKeys.length);
+
       setIsPreviewModalOpen(false);
       setBatchPreview([]);
 
@@ -1380,9 +1440,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
         isOpen={isPreviewModalOpen}
         batchPreview={batchPreview}
         onClose={() => {
+          // Fechar não descarta: as notas continuam pendentes (botão "Notas pendentes").
           setIsPreviewModalOpen(false);
           setBatchPreview([]);
         }}
+        onDiscardInvoice={handleDiscardInvoice}
         onProductCategoryChange={handleProductCategoryChange}
         onProductSetorChange={handleProductSetorChange}
         onToggleProductDeletion={handleToggleProductDeletion}
@@ -1422,6 +1484,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
+          {pendingXmlCount > 0 && (
+            <button
+              onClick={() => openPendingPreviews()}
+              className="flex items-center gap-2 px-4 py-3 bg-amber-50 border border-amber-200 text-amber-700 text-[10px] font-black uppercase tracking-wider rounded-xl hover:bg-amber-100 transition-all active:scale-95"
+              title="Notas XML enviadas que ainda não foram confirmadas no Dashboard"
+            >
+              <FileCheck2 className="w-4 h-4" />
+              Notas pendentes ({pendingXmlCount})
+            </button>
+          )}
           <ResetListSpendingsButton
             start={new Date(`${startDate}T00:00:00`)}
             end={new Date(`${endDate}T23:59:59.999`)}

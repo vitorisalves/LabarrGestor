@@ -39,6 +39,8 @@ interface XmlImportTabProps {
   availableCategories: string[];
   addNotification?: (message: string, count: number, type?: 'cart' | 'info') => void;
   updateRow: (id: string, updates: Partial<ImportRow>) => void;
+  removeImportRow: (id: string) => void;
+  clearImportRows: () => void;
   findExactMatch: (cProd: string, xProd: string) => { supplier: Supplier; product: any } | null;
   deletingRowId: string | null;
   setDeletingRowId: (id: string | null) => void;
@@ -58,6 +60,8 @@ export const XmlImportTab: React.FC<XmlImportTabProps> = ({
   availableCategories,
   addNotification,
   updateRow,
+  removeImportRow,
+  clearImportRows,
   findExactMatch,
   deletingRowId,
   setDeletingRowId
@@ -106,10 +110,7 @@ export const XmlImportTab: React.FC<XmlImportTabProps> = ({
           <div className="flex gap-3">
             <button
               type="button"
-              onClick={() => {
-                setImportRows([]);
-                setXmlLogs([]);
-              }}
+              onClick={clearImportRows}
               className="px-4 py-2 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-xl font-bold transition-all text-xs uppercase tracking-wider"
             >
               Limpar
@@ -474,7 +475,7 @@ export const XmlImportTab: React.FC<XmlImportTabProps> = ({
         onClose={() => setDeletingRowId(null)}
         onConfirm={() => {
           if (deletingRowId) {
-            setImportRows(prev => prev.filter(r => r.id !== deletingRowId));
+            removeImportRow(deletingRowId);
             setDeletingRowId(null);
           }
         }}

@@ -35,6 +35,7 @@ const LIVE_EDIT_COLLECTIONS = new Set([
   'delivered_products',
   'reminders',
   'pending_list_products',
+  'pending_xml_imports',
   'purchase_orders',
 ]);
 

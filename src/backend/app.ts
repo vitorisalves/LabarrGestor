@@ -1095,6 +1095,7 @@ const TEST_MODE_COLLECTIONS = [
   'shopping_lists',
   'purchase_orders',
   'pending_list_products',
+  'pending_xml_imports',
   'push_subscriptions'
 ];
 
@@ -1210,6 +1211,92 @@ app.post("/api/xml/list-spendings/reset", asyncHandler(async (req: Request, res:
     repo.invalidateCache(coll);
   }
   res.json({ status: "success", removed });
+}));
+
+// --- NOTAS XML PENDENTES (compartilhadas entre Dashboard e Importar XML dos Produtos) ---
+// Cada nota enviada fica salva até ser confirmada ou descartada em cada lado.
+// Doc id = chave da NF-e (saneada). Cada lado tem seu status: pending | done | dismissed.
+type PendingXmlSide = 'dashboard' | 'products';
+const isPendingXmlSide = (v: any): v is PendingXmlSide => v === 'dashboard' || v === 'products';
+const pendingXmlId = (nfeKey: string) => String(nfeKey).replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 200);
+const readDocData = (snap: any): any => (typeof snap.data === 'function' ? snap.data() : snap.data) || {};
+
+app.get("/api/xml/pending-imports", asyncHandler(async (req: Request, res: Response) => {
+  const side = req.query.side;
+  if (!isPendingXmlSide(side)) {
+    return res.status(400).json({ error: "side deve ser 'dashboard' ou 'products'" });
+  }
+  const snapshot = await repo.getDocs('pending_xml_imports', 'pending_xml_imports', true);
+  const data = snapshot.docs
+    .map((doc: any) => ({ id: doc.id, ...readDocData(doc) }))
+    .filter((d: any) => d[`${side}Status`] === 'pending' && d.xmlText)
+    .sort((a: any, b: any) => String(a.createdAt || '').localeCompare(String(b.createdAt || '')));
+  res.json(data);
+}));
+
+app.post("/api/xml/pending-imports", asyncHandler(async (req: Request, res: Response) => {
+  const { side, nfeKey, fileName, xmlText, supplierName, dhEmi, vTotTrib, productsAlreadyImported } = req.body || {};
+  if (!isPendingXmlSide(side) || !nfeKey || typeof xmlText !== 'string' || !xmlText) {
+    return res.status(400).json({ error: "side, nfeKey e xmlText são obrigatórios" });
+  }
+  const id = pendingXmlId(nfeKey);
+  const ref = repo.doc('pending_xml_imports', id);
+  const existingSnap = await repo.getDoc(ref, 'pending_xml_imports/' + id, true);
+  const existsPending = typeof existingSnap.exists === 'function' ? existingSnap.exists() : !!existingSnap.exists;
+  const existing: any = existsPending ? readDocData(existingSnap) : {};
+
+  // Lado Dashboard já feito: confirmado antes por aqui, ou nota já existente nos gastos
+  // (inclui importações feitas antes deste recurso).
+  let dashboardDone = existing.dashboardStatus === 'done';
+  if (!dashboardDone && !String(nfeKey).includes('/')) {
+    const spendingSnap = await repo.getDoc(repo.doc('xml_spendings', String(nfeKey)), 'xml_spendings/' + nfeKey, true);
+    dashboardDone = typeof spendingSnap.exists === 'function' ? spendingSnap.exists() : !!spendingSnap.exists;
+  }
+  const productsDone = existing.productsStatus === 'done' || productsAlreadyImported === true;
+
+  // O lado que enviou o arquivo sempre fica pendente (reimportar é permitido, com aviso).
+  // O outro lado só fica pendente se ainda não foi feito.
+  const doc = {
+    nfeKey: String(nfeKey),
+    fileName: fileName || '',
+    xmlText,
+    supplierName: supplierName || '',
+    dhEmi: dhEmi || '',
+    vTotTrib: Number(vTotTrib) || 0,
+    createdAt: new Date().toISOString(),
+    dashboardStatus: side === 'dashboard' ? 'pending' : (dashboardDone ? 'done' : 'pending'),
+    productsStatus: side === 'products' ? 'pending' : (productsDone ? 'done' : 'pending'),
+    alreadyImported: { dashboard: dashboardDone, products: productsDone }
+  };
+  await repo.set(ref, doc, 'pending_xml_imports/' + id);
+  repo.invalidateCache('pending_xml_imports');
+  res.json({
+    status: "success",
+    id,
+    alreadyImported: doc.alreadyImported,
+    dashboardStatus: doc.dashboardStatus,
+    productsStatus: doc.productsStatus
+  });
+}));
+
+app.post("/api/xml/pending-imports/status", asyncHandler(async (req: Request, res: Response) => {
+  const { ids, side, status } = req.body || {};
+  if (!Array.isArray(ids) || !isPendingXmlSide(side) || (status !== 'done' && status !== 'dismissed')) {
+    return res.status(400).json({ error: "ids[], side e status ('done'|'dismissed') são obrigatórios" });
+  }
+  for (const rawId of ids) {
+    const id = pendingXmlId(rawId);
+    const ref = repo.doc('pending_xml_imports', id);
+    const snap = await repo.getDoc(ref, 'pending_xml_imports/' + id, true);
+    const exists = typeof snap.exists === 'function' ? snap.exists() : !!snap.exists;
+    if (!exists) continue;
+    const doc: any = { ...readDocData(snap), [`${side}Status`]: status };
+    // Quando nenhum lado está mais pendente o XML não é mais necessário: guarda só o histórico.
+    if (doc.dashboardStatus !== 'pending' && doc.productsStatus !== 'pending') doc.xmlText = '';
+    await repo.set(ref, doc, 'pending_xml_imports/' + id);
+  }
+  repo.invalidateCache('pending_xml_imports');
+  res.json({ status: "success" });
 }));
 
 app.post("/api/xml/products/update-category", asyncHandler(async (req: Request, res: Response) => {
