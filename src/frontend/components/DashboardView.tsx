@@ -1778,6 +1778,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
               </button>
               <button
                 type="button"
+                autoFocus
                 onClick={confirmDeleteProductItem}
                 className="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-500 rounded-xl transition-colors shadow-lg shadow-rose-950/50 cursor-pointer"
               >

@@ -48,6 +48,7 @@ export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
                 {cancelText}
               </button>
               <button
+                autoFocus
                 onClick={onConfirm}
                 className={`py-3 ${variant === 'danger' ? 'bg-red-500 hover:bg-red-600' : 'bg-indigo-600 hover:bg-indigo-700'} text-white rounded-xl text-sm font-bold shadow-md transition-all`}
               >
