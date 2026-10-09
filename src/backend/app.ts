@@ -629,6 +629,24 @@ app.post("/api/xml/suppliers", asyncHandler(async (req: Request, res: Response) 
   res.json({ status: "success" });
 }));
 
+// Importação de planilha: grava vários fornecedores de uma vez. Tem rota (e permissão) própria
+// para que "importar" possa ser bloqueado sem impedir a edição normal de fornecedores.
+app.post("/api/xml/suppliers/import", asyncHandler(async (req: Request, res: Response) => {
+  const { suppliers } = req.body || {};
+  if (!Array.isArray(suppliers) || suppliers.length === 0) {
+    return res.status(400).json({ error: "Nenhum fornecedor enviado." });
+  }
+  if (suppliers.some((s: any) => !s || !s.id)) {
+    return res.status(400).json({ error: "Fornecedor inválido: id ausente." });
+  }
+  for (const supplier of suppliers) {
+    const { id, ...rest } = supplier;
+    await repo.set(repo.doc('suppliers', id), rest, 'suppliers/' + id);
+  }
+  repo.invalidateCache('suppliers');
+  res.json({ status: "success", count: suppliers.length });
+}));
+
 app.post("/api/xml/suppliers/delete", asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.body;
   if (!id) {
@@ -780,6 +798,18 @@ app.post("/api/auth/users/status", asyncHandler(async (req: Request, res: Respon
   if (!tokUid) return res.status(401).json({ error: "unauthorized" });
   if (!(await callerCan(tokUid, 'users.approve'))) return res.status(403).json({ error: "forbidden", message: "Você não tem permissão para aprovar acessos." });
   if (status !== 'approved' && status !== 'denied') return res.status(400).json({ error: "status inválido" });
+  invalidateAuthUser(uid);
+  const target = await getAuthUser(uid);
+  if (!target) return res.status(404).json({ error: "Usuário não encontrado" });
+  const caller = await getAuthUser(tokUid);
+  if (isAdminUser(target) && !isAdminUser(caller)) {
+    return res.status(403).json({ error: "forbidden", message: "Somente admin pode alterar um admin." });
+  }
+  // Quem só aprova solicitações mexe apenas em pedidos pendentes; recusar (apagar) alguém já
+  // aprovado é remover acesso e exige a permissão de gerenciar acessos.
+  if (status === 'denied' && target.status === 'approved' && !userCan(caller, 'users.manage')) {
+    return res.status(403).json({ error: "forbidden", message: "Você não tem permissão para remover um acesso já aprovado." });
+  }
   if (status === 'denied') await repo.delete(repo.doc('authorized_users', uid), 'authorized_users/' + uid);
   else await repo.update(repo.doc('authorized_users', uid), { status }, 'authorized_users/' + uid);
   invalidateAuthUser(uid);

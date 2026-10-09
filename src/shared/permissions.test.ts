@@ -20,6 +20,8 @@ test('escrita sem regra exige admin; algumas rotas liberam qualquer aprovado', (
   assert.equal(requiredPermission('/xml/cache/invalidate'), null);
   assert.equal(requiredPermission('/xml/purchase_orders/approve-requisition'), 'orders.approve');
   assert.equal(requiredPermission('/xml/purchase_orders'), 'lists.edit');
+  assert.equal(requiredPermission('/xml/suppliers/import'), 'suppliers.import');
+  assert.equal(requiredPermission('/xml/suppliers'), 'suppliers.edit');
 });
 
 test('aprovado sem permissões só lê; admin faz tudo; pendente não faz nada', () => {

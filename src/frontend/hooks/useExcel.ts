@@ -10,7 +10,7 @@ import { Supplier, Product } from '../types';
 import { generateId, extractErrorMessage } from '../utils';
 import { getProductCategories } from '../utils/productCategories';
 
-export const useExcel = (suppliers: Supplier[], saveSupplier: (s: Supplier) => Promise<void>, addNotification: any) => {
+export const useExcel = (suppliers: Supplier[], saveSuppliersBatch: (batch: Supplier[]) => Promise<boolean>, addNotification: any) => {
   const handleExportExcel = () => {
     const exportData = suppliers.flatMap(supplier => 
       supplier.products.map(product => ({
@@ -128,6 +128,7 @@ export const useExcel = (suppliers: Supplier[], saveSupplier: (s: Supplier) => P
       const importedSuppliers = Object.values(data);
       let addedCount = 0;
       let updatedCount = 0;
+      const toSave: Supplier[] = [];
 
       for (const supplier of importedSuppliers) {
         const normalizedName = supplier.name.trim().toUpperCase();
@@ -162,15 +163,22 @@ export const useExcel = (suppliers: Supplier[], saveSupplier: (s: Supplier) => P
           });
 
           if (changed) {
-            await saveSupplier(updatedSupplier);
+            toSave.push(updatedSupplier);
             updatedCount++;
           }
           continue;
         }
 
         // Se for substituir ou se for um fornecedor totalmente novo
-        await saveSupplier(supplier);
+        toSave.push(supplier);
         addedCount++;
+      }
+
+      // Grava tudo de uma vez pela rota de importação (exige a permissão de importar planilha).
+      const saved = await saveSuppliersBatch(toSave);
+      if (!saved) {
+        addNotification('A importação não foi salva. Verifique se você tem permissão para importar planilhas.', 0);
+        return;
       }
 
       if (addedCount === 0 && updatedCount === 0 && !replace) {

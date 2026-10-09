@@ -34,6 +34,7 @@ import { useXmlImport } from '../hooks/useXmlImport';
 import { ProductsTab } from './products/ProductsTab';
 import { PurchaseSetorPicker } from './products/PurchaseSetorPicker';
 import { ConfirmationModal } from './modals/ConfirmationModal';
+import { usePermissions } from '../context/PermissionsContext';
 
 interface SuppliersViewProps {
   suppliers: Supplier[];
@@ -84,6 +85,8 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
   onOpenNewProduct,
   saveSupplier
 }) => {
+  const { can } = usePermissions();
+  const canImportSheet = can('suppliers.import');
   const [internalTab, setInternalTab] = React.useState<'fornecedores' | 'produtos' | 'importar_xml'>('fornecedores');
   const activeSubTab = externalTab || internalTab;
   const setActiveSubTab = onTabChange || setInternalTab;
@@ -332,7 +335,9 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
               )}
               <button
                 onClick={handleSyncSheets}
-                className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-3 bg-indigo-50 border-2 border-indigo-100 text-indigo-600 rounded-xl font-bold hover:bg-indigo-100 transition-all shadow-sm text-xs"
+                disabled={!canImportSheet}
+                title={canImportSheet ? undefined : 'Você não tem permissão para importar planilhas'}
+                className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-3 bg-indigo-50 border-2 border-indigo-100 text-indigo-600 rounded-xl font-bold hover:bg-indigo-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm text-xs"
               >
                 <RefreshCcw className="w-4 h-4" />
                 Atualizar Planilha
@@ -344,10 +349,13 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
                 <Download className="w-4 h-4" />
                 Exportar
               </button>
-              <label className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-3 bg-white border-2 border-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-50 transition-all shadow-sm cursor-pointer text-xs">
+              <label
+                title={canImportSheet ? undefined : 'Você não tem permissão para importar planilhas'}
+                className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-3 bg-white border-2 border-slate-100 text-slate-600 rounded-xl font-bold transition-all shadow-sm text-xs ${canImportSheet ? 'hover:bg-slate-50 cursor-pointer' : 'opacity-40 cursor-not-allowed'}`}
+              >
                 <Upload className="w-4 h-4" />
                 Importar
-                <input type="file" accept=".xlsx, .xls" className="hidden" onChange={handleImportExcel} />
+                <input type="file" accept=".xlsx, .xls" className="hidden" disabled={!canImportSheet} onChange={handleImportExcel} />
               </label>
               <button
                 onClick={() => setIsAdding(true)}

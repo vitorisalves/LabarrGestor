@@ -91,6 +91,7 @@ export default function App() {
     isLoading: isSuppliersLoading,
     refreshData: refreshSuppliers,
     saveSupplier,
+    saveSuppliersBatch,
     deleteSupplier,
     deleteAllSuppliers,
     addCategory,
@@ -174,6 +175,7 @@ export default function App() {
     approveOrder,
     rejectOrder,
     updateObservacao,
+    fetchPurchaseOrders,
     sendToShoppingList: sendPurchaseOrderToShoppingList,
     deleteOrder: deletePurchaseOrder
   } = usePurchaseOrders(loggedName, addAppNotification);
@@ -192,7 +194,8 @@ export default function App() {
     updatePurchaseDate,
     updateForecastDate,
     updateDeliveryDate,
-    updateDeliveredQuantity
+    updateDeliveredQuantity,
+    refreshDeliveredProducts
   } = useDeliveredProducts(isAuthReady, isApproved, addAppNotification);
 
   // Monitoramento automático das datas de previsão de compra
@@ -389,13 +392,23 @@ export default function App() {
 
   // O servidor recusou uma gravação (sem permissão ou sessão expirada): avisa em vez de falhar em silêncio.
   useEffect(() => {
+    let lastDeniedRefresh = 0;
     const onDenied = (e: Event) => {
       const message = (e as CustomEvent).detail?.message || 'Você não tem permissão para realizar esta ação.';
       addNotification(message, 0, 'info');
+      // As telas mostram a alteração antes de o servidor confirmar; recarrega para voltar ao que está
+      // salvo. Uma ação pode gerar várias recusas seguidas, então recarrega só uma vez por vez.
+      if (Date.now() - lastDeniedRefresh < 3000) return;
+      lastDeniedRefresh = Date.now();
+      refreshSuppliers();
+      refreshLists();
+      refreshReminders();
+      refreshDeliveredProducts();
+      fetchPurchaseOrders(true);
     };
     window.addEventListener(PERMISSION_DENIED_EVENT, onDenied);
     return () => window.removeEventListener(PERMISSION_DENIED_EVENT, onDenied);
-  }, [addNotification]);
+  }, [addNotification, refreshSuppliers, refreshLists, refreshReminders, refreshDeliveredProducts, fetchPurchaseOrders]);
 
   useEffect(() => {
     if (isQuotaExceeded) {
@@ -435,7 +448,7 @@ export default function App() {
     handleImportExcel,
     handleSyncSheets,
     performImport
-  } = useExcel(suppliers, saveSupplier, addNotification);
+  } = useExcel(suppliers, saveSuppliersBatch, addNotification);
 
   // --- LOCAL UI STATE ---
   const [loginCpf, setLoginCpf] = useState('');

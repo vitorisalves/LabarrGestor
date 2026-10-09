@@ -182,6 +182,42 @@ export const useSuppliers = (isAuthReady: boolean, isApproved: boolean) => {
     }
   };
 
+  // Salva vários fornecedores de uma vez (importação de planilha), pela rota de importação.
+  const saveSuppliersBatch = async (batch: Supplier[]): Promise<boolean> => {
+    if (batch.length === 0) return true;
+    const sanitized = batch.map(s => ({ ...s, id: s.id || generateId() }));
+
+    // Optimistic update
+    setSuppliers(prev => {
+      const next = [...prev];
+      sanitized.forEach(sup => {
+        const index = next.findIndex(s => s.id === sup.id);
+        if (index !== -1) next[index] = sup; else next.push(sup);
+      });
+      localStorage.setItem('cache_suppliers', safeStringify(next));
+      return next;
+    });
+
+    try {
+      const res = await fetch('/api/xml/suppliers/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ suppliers: sanitized.map(s => cleanObject(s)) })
+      });
+      if (!res.ok) {
+        console.warn(`Importação não foi salva (HTTP ${res.status}).`);
+        await loadData(true);
+        return false;
+      }
+      await invalidateBackendCache('suppliers');
+      return true;
+    } catch (err: any) {
+      console.warn("Importação de fornecedores falhou:", err.message);
+      await loadData(true);
+      return false;
+    }
+  };
+
   const deleteSupplier = async (id: string) => {
     // Optimistic update
     setSuppliers(prev => {
@@ -317,6 +353,7 @@ export const useSuppliers = (isAuthReady: boolean, isApproved: boolean) => {
     isLoading,
     refreshData,
     saveSupplier,
+    saveSuppliersBatch,
     deleteSupplier,
     deleteAllSuppliers,
     addCategory,

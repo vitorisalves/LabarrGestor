@@ -27,6 +27,7 @@ export const PERMISSIONS: PermissionDef[] = [
 
   // Compras
   { id: 'suppliers.edit', label: 'Editar fornecedores e produtos', group: 'Compras' },
+  { id: 'suppliers.import', label: 'Importar planilha de fornecedores (exportar é livre)', group: 'Compras' },
   { id: 'lists.edit', label: 'Criar e editar listas de compras e requisições', group: 'Compras' },
   { id: 'orders.approve', label: 'Aprovar ou recusar requisições e compras', group: 'Compras' },
   { id: 'delivered.edit', label: 'Atualizar produtos entregues', group: 'Compras' },
@@ -53,6 +54,7 @@ export type RouteRule = string | null | 'admin';
 // Escrita sem regra correspondente exige admin (negar por padrão).
 const ROUTE_RULES: Array<[prefix: string, rule: RouteRule]> = [
   ['/xml/suppliers/delete-all', 'admin'],
+  ['/xml/suppliers/import', 'suppliers.import'],
   ['/xml/suppliers', 'suppliers.edit'],
   ['/xml/products/delete-item', 'dashboard.manage'],
   ['/xml/products/', 'suppliers.edit'],
