@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { auth, signInAnonymously, onAuthStateChanged } from '../firebase';
+import { auth, signInAnonymously, signOut, onAuthStateChanged } from '../firebase';
 import { AuthorizedUser } from '../types';
 import { extractErrorMessage, safeStringify, handleFirestoreError, OperationType, cleanObject } from '../utils';
 import { userCan, isReadOnlyUser, PermissionSubject } from '../../shared/permissions';
@@ -47,7 +47,7 @@ export const useAuth = () => {
     const currentUid = auth.currentUser?.uid;
     if (!currentUid) return;
 
-    const cacheDuration = 15 * 60 * 1000; // 15 minutes cache
+    const cacheDuration = 20 * 1000; // lista curta: novas solicitações de acesso precisam aparecer logo
     const lastFetch = localStorage.getItem('authorized_users_last_fetch');
     const cachedUsers = localStorage.getItem('cache_authorizedUsers');
     const now = Date.now();
@@ -58,7 +58,7 @@ export const useAuth = () => {
     }
 
     try {
-      const res = await fetch('/api/auth/users');
+      const res = await fetch(force ? '/api/auth/users?fresh=true' : '/api/auth/users');
       if (!res.ok) {
         throw new Error("Backend authorized_users route failed");
       }
@@ -211,7 +211,18 @@ export const useAuth = () => {
     }
   }, [isAuthReady, isApproved, isLoggedIn]);
 
-  const handleLogin = async (loginCpf: string, loginName: string) => {
+  // Cada pessoa precisa de uma sessão (uid) própria: o cadastro é gravado por uid, então duas
+  // contas no mesmo navegador sobrescreveriam uma à outra.
+  const resetAnonymousSession = async () => {
+    try {
+      await signOut(auth);
+      await signInAnonymously(auth);
+    } catch (err) {
+      console.error('Falha ao renovar a sessão anônima:', extractErrorMessage(err));
+    }
+  };
+
+  const handleLogin = async (loginCpf: string, loginName: string, retried: boolean = false): Promise<boolean> => {
     const adminCpf = '05839352144';
     const cleanCpf = loginCpf.replace(/\D/g, '');
     const currentUid = auth.currentUser?.uid;
@@ -267,6 +278,11 @@ export const useAuth = () => {
           headers: await authHeaders(),
           body: JSON.stringify({ uid: currentUid, user: cleaned })
         });
+        if (upsertRes.status === 409 && !retried) {
+          // A sessão do navegador era de outra pessoa: renova a sessão e tenta de novo.
+          await resetAnonymousSession();
+          return handleLogin(loginCpf, loginName, true);
+        }
         if (!upsertRes.ok) {
           throw new Error("Upsert failed");
         }
@@ -308,6 +324,11 @@ export const useAuth = () => {
           headers: await authHeaders(),
           body: JSON.stringify({ uid: currentUid, user: cleaned })
         });
+        if (upsertRes.status === 409 && !retried) {
+          // A sessão do navegador era de outra pessoa: renova a sessão e tenta de novo.
+          await resetAnonymousSession();
+          return handleLogin(loginCpf, loginName, true);
+        }
         if (!upsertRes.ok) {
           throw new Error("Upsert failed");
         }
@@ -339,6 +360,10 @@ export const useAuth = () => {
     localStorage.removeItem('cache_isLoggedIn');
     localStorage.removeItem('cache_loggedCpf');
     localStorage.removeItem('cache_loggedName');
+    setMyAccess(null);
+    setIsApproved(false);
+    // Sessão nova para a próxima pessoa que entrar neste navegador.
+    resetAnonymousSession();
   };
 
   const updateUserStatus = async (uid: string, status: 'approved' | 'denied') => {

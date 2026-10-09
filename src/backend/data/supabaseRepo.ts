@@ -31,6 +31,7 @@ let g_client: SupabaseClient | null = null;
 
 const LIVE_EDIT_COLLECTIONS = new Set([
   'suppliers',
+  'authorized_users',
   'shopping_lists',
   'delivered_products',
   'reminders',

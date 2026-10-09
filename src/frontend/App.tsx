@@ -67,6 +67,7 @@ export default function App() {
     isAdmin,
     can,
     isReadOnly,
+    loadAuthorizedUsers,
     authError
   } = useAuth();
 
@@ -446,6 +447,13 @@ export default function App() {
   const [isAdding, setIsAdding] = useState(false);
   const [isProductOnlyMode, setIsProductOnlyMode] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
+  // Ao abrir as configurações, busca a lista de acessos atualizada (solicitações novas).
+  useEffect(() => {
+    if (isSettingsOpen && (isAdmin || can('users.approve') || can('users.manage'))) {
+      loadAuthorizedUsers(true);
+    }
+  }, [isSettingsOpen]);
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
     return localStorage.getItem('theme_mode') === 'dark';
   });

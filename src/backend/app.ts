@@ -742,7 +742,12 @@ app.post("/api/auth/users/upsert", asyncHandler(async (req: Request, res: Respon
   const sameCpf = snapshot.docs
     .map((d: any) => ({ id: d.id, data: (typeof d.data === 'function' ? d.data() : d.data) as any }))
     .filter((d: any) => d.id !== uid && cpf && onlyDigits(d.data?.cpf) === cpf);
+  invalidateAuthUser(uid);
   const own: any = (await getAuthUser(uid)) || null;
+  // Este uid (sessão do navegador) já pertence a outra pessoa: não sobrescreve o cadastro dela.
+  if (own && cpf && onlyDigits(own.cpf) && onlyDigits(own.cpf) !== cpf) {
+    return res.status(409).json({ error: 'session_in_use', message: 'Esta sessão do navegador pertence a outra pessoa.' });
+  }
   const previous: any =
     own ||
     sameCpf.find((d: any) => d.data.status === 'approved')?.data ||
