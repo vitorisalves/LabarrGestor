@@ -5,6 +5,7 @@ import { formatCurrency } from '../../utils';
 import { ConfirmationModal } from '../modals/ConfirmationModal';
 import { CategoryMultiSelect } from '../products/CategoryMultiSelect';
 import { getProductCategories } from '../../utils/productCategories';
+import { usePermissions } from '../../context/PermissionsContext';
 
 export interface ImportRow {
   id: string;
@@ -66,6 +67,10 @@ export const XmlImportTab: React.FC<XmlImportTabProps> = ({
   deletingRowId,
   setDeletingRowId
 }) => {
+  const { can } = usePermissions();
+  const canImport = can('invoices.import');
+  const canSave = can('suppliers.edit');
+
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -80,7 +85,7 @@ export const XmlImportTab: React.FC<XmlImportTabProps> = ({
     e.preventDefault();
     e.stopPropagation();
     setDragActive(false);
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+    if (canImport && e.dataTransfer.files && e.dataTransfer.files[0]) {
       handleXmlFiles(Array.from(e.dataTransfer.files));
     }
   };
@@ -118,8 +123,9 @@ export const XmlImportTab: React.FC<XmlImportTabProps> = ({
             <button
               type="button"
               onClick={handleSaveImport}
-              disabled={isAnalyzing}
-              className="px-6 py-2 bg-indigo-600 text-white hover:bg-indigo-700 rounded-xl font-bold transition-all shadow-md text-xs uppercase tracking-wider flex items-center gap-2"
+              disabled={isAnalyzing || !canSave}
+              title={canSave ? undefined : 'Você não tem permissão para alterar fornecedores e produtos'}
+              className="px-6 py-2 bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl font-bold transition-all shadow-md text-xs uppercase tracking-wider flex items-center gap-2"
             >
               {isAnalyzing ? (
                 <>
@@ -142,19 +148,25 @@ export const XmlImportTab: React.FC<XmlImportTabProps> = ({
         onDragLeave={handleDrag}
         onDragOver={handleDrag}
         onDrop={handleDrop}
-        className={`cursor-pointer border-2 border-dashed rounded-3xl p-10 flex flex-col items-center justify-center transition-all ${
-          dragActive ? "border-indigo-600 bg-indigo-50/50" : "border-slate-200 bg-white hover:border-indigo-400"
+        className={`border-2 border-dashed rounded-3xl p-10 flex flex-col items-center justify-center transition-all ${
+          !canImport
+            ? "cursor-not-allowed border-slate-200 bg-slate-100 opacity-70"
+            : dragActive ? "cursor-pointer border-indigo-600 bg-indigo-50/50" : "cursor-pointer border-slate-200 bg-white hover:border-indigo-400"
         }`}
       >
         <input
           type="file"
           accept=".xml"
           multiple
+          disabled={!canImport}
           onChange={(e) => e.target.files && handleXmlFiles(Array.from(e.target.files))}
           className="hidden"
           id="xml-file-picker"
         />
-        <label htmlFor="xml-file-picker" className="cursor-pointer flex flex-col items-center justify-center">
+        {!canImport && (
+          <p className="text-sm font-bold text-slate-500 mb-4">Você não tem permissão para importar notas fiscais.</p>
+        )}
+        <label htmlFor="xml-file-picker" className={`${canImport ? 'cursor-pointer' : 'pointer-events-none'} flex flex-col items-center justify-center`}>
           <Upload className="w-12 h-12 text-indigo-500 mb-4 animate-bounce" />
           <p className="text-sm font-bold text-slate-700">Arrastar & Soltar ou Clique para Selecionar arquivos XML</p>
           <p className="text-xs text-slate-400 mt-1">Selecione uma ou mais Notas Fiscais no padrão SEFAZ</p>

@@ -36,6 +36,7 @@ import { PendingListProductsPanel } from './dashboard/PendingListProductsPanel';
 import { SectorDashboardView } from './SectorDashboardView';
 import { ResetListSpendingsButton } from './dashboard/ResetListSpendingsButton';
 import { stagePendingXml, fetchPendingXml, setPendingXmlStatus } from '../utils/pendingXmlImports';
+import { usePermissions } from '../context/PermissionsContext';
 import { usePendingListProductsPanel } from '../hooks/usePendingListProductsPanel';
 import { useXmlSpendings } from '../hooks/useXmlSpendings';
 
@@ -99,6 +100,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
   const [xmlLogs, setXmlLogs] = useState<{ type: 'success' | 'warning' | 'error', text: string }[]>([]);
   const [batchPreview, setBatchPreview] = useState<any[]>([]);
   const [pendingXmlCount, setPendingXmlCount] = useState(0);
+  const { can } = usePermissions();
+  const canImportXml = can('invoices.import');
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
   const [categories, setCategories] = useState<any[]>([]);
   const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
@@ -1484,7 +1487,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          {pendingXmlCount > 0 && (
+          {pendingXmlCount > 0 && canImportXml && (
             <button
               onClick={() => openPendingPreviews()}
               className="flex items-center gap-2 px-4 py-3 bg-amber-50 border border-amber-200 text-amber-700 text-[10px] font-black uppercase tracking-wider rounded-xl hover:bg-amber-100 transition-all active:scale-95"
@@ -1570,21 +1573,33 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
             </button>
           </div>
 
-          <input
-            type="file"
-            accept=".xml"
-            multiple
-            onChange={(e) => e.target.files && processXmlFiles(Array.from(e.target.files))}
-            className="hidden"
-            id="dashboard-xml-file-picker"
-          />
-          <label 
-            htmlFor="dashboard-xml-file-picker" 
-            className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black uppercase rounded-2xl transition-all shadow-sm cursor-pointer whitespace-nowrap font-bold"
-          >
-            <Upload className="w-4 h-4" />
-            Importar XML
-          </label>
+          {canImportXml ? (
+            <>
+              <input
+                type="file"
+                accept=".xml"
+                multiple
+                onChange={(e) => e.target.files && processXmlFiles(Array.from(e.target.files))}
+                className="hidden"
+                id="dashboard-xml-file-picker"
+              />
+              <label
+                htmlFor="dashboard-xml-file-picker"
+                className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black uppercase rounded-2xl transition-all shadow-sm cursor-pointer whitespace-nowrap font-bold"
+              >
+                <Upload className="w-4 h-4" />
+                Importar XML
+              </label>
+            </>
+          ) : (
+            <span
+              className="flex items-center gap-2 px-4 py-2.5 bg-slate-200 text-slate-400 text-xs font-black uppercase rounded-2xl whitespace-nowrap cursor-not-allowed"
+              title="Você não tem permissão para importar notas fiscais"
+            >
+              <Upload className="w-4 h-4" />
+              Importar XML
+            </span>
+          )}
         </div>
       </div>
 

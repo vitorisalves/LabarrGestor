@@ -47,6 +47,7 @@ const DREVendasView = React.lazy(() => import('./components/DREVendasView').then
 import { Product, Supplier } from './types';
 import { extractErrorMessage } from './utils';
 import { PERMISSION_DENIED_EVENT } from './utils/apiAuthFetch';
+import { PermissionsProvider } from './context/PermissionsContext';
 
 export default function App() {
   // --- CUSTOM HOOKS ---
@@ -751,6 +752,7 @@ export default function App() {
   }
 
   return (
+    <PermissionsProvider value={{ can, isAdmin }}>
     <AppLayout
       currentPage={currentPage}
       setCurrentPage={setCurrentPage}
@@ -1015,5 +1017,6 @@ export default function App() {
         updateUserPermissions={updateUserPermissions}
       />
     </AppLayout>
+    </PermissionsProvider>
   );
 }

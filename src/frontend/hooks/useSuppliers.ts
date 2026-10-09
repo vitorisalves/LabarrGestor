@@ -163,11 +163,17 @@ export const useSuppliers = (isAuthReady: boolean, isApproved: boolean) => {
 
     try {
       const cleaned = cleanObject(sanitizedSupplier);
-      await fetch('/api/xml/suppliers', {
+      const res = await fetch('/api/xml/suppliers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(cleaned)
       });
+      if (!res.ok) {
+        // O servidor recusou (ex.: sem permissão): desfaz a alteração otimista na tela.
+        console.warn(`Fornecedor não foi salvo (HTTP ${res.status}).`);
+        await loadData(true);
+        return;
+      }
       await invalidateBackendCache('suppliers');
     } catch (err: any) {
       handleFirestoreError(err, OperationType.WRITE, `suppliers/${sanitizedSupplier.id}`);
