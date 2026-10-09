@@ -1,7 +1,8 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Settings, Package, Building2, Trash2, UserPlus, User, Check, Moon, Sun } from 'lucide-react';
+import { X, Settings, Package, Building2, Trash2, UserPlus, User, Check, Moon, Sun, ShieldCheck, ChevronDown, ChevronUp } from 'lucide-react';
 import { AuthorizedUser } from '../../types';
+import { PERMISSIONS } from '../../../shared/permissions';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -22,6 +23,8 @@ interface SettingsModalProps {
   isDarkMode?: boolean;
   setIsDarkMode?: (dark: boolean) => void;
   isAdmin?: boolean;
+  can?: (permission: string) => boolean;
+  updateUserPermissions?: (uid: string, permissions: string[]) => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -42,8 +45,32 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   setUserToDelete,
   isDarkMode = false,
   setIsDarkMode,
-  isAdmin = true
+  isAdmin = true,
+  can,
+  updateUserPermissions
 }) => {
+  const [expandedUid, setExpandedUid] = React.useState<string | null>(null);
+
+  const allowed = (permission: string) => isAdmin || !!can?.(permission);
+  const canConfig = allowed('config.manage');
+  const canApprove = allowed('users.approve');
+  const canManageUsers = allowed('users.manage');
+
+  const permissionGroups = React.useMemo(() => {
+    const groups = new Map<string, typeof PERMISSIONS>();
+    PERMISSIONS.forEach(p => groups.set(p.group, [...(groups.get(p.group) || []), p]));
+    return Array.from(groups.entries());
+  }, []);
+
+  const togglePermission = (user: AuthorizedUser, permissionId: string) => {
+    if (!user.uid || !updateUserPermissions) return;
+    const current = user.permissions || [];
+    const next = current.includes(permissionId)
+      ? current.filter(id => id !== permissionId)
+      : [...current, permissionId];
+    updateUserPermissions(user.uid, next);
+  };
+
   return (
     <AnimatePresence>
       {isOpen && (
@@ -75,8 +102,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
 
             <div className="flex-1 overflow-y-auto p-6 space-y-10">
-              {isAdmin && (
+              {(canConfig || canApprove || canManageUsers) && (
                 <>
+                  {canConfig && (<>
                   {/* Categorias */}
                   <section className="space-y-4">
                     <h3 className="text-sm font-black text-slate-800 flex items-center gap-3 uppercase tracking-wider">
@@ -163,7 +191,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </div>
                   </section>
 
+                  </>)}
+
                   {/* Usuários */}
+                  {canApprove && (
                   <section className="space-y-4">
                     <h3 className="text-sm font-black text-slate-800 flex items-center gap-3 uppercase tracking-wider">
                       <UserPlus className="w-4 h-4 text-indigo-600" />
@@ -206,7 +237,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </div>
                   </section>
 
+                  )}
+
                   {/* Usuários Já Autorizados */}
+                  {(canApprove || canManageUsers) && (
                   <section className="space-y-4">
                     <h3 className="text-sm font-black text-slate-800 flex items-center gap-3 uppercase tracking-wider">
                       <User className="w-4 h-4 text-emerald-600" />
@@ -219,7 +253,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         </div>
                       ) : (
                         authorizedUsers.filter(u => u.status === 'approved').map(user => (
-                          <div key={user.uid} className="flex items-center justify-between p-3 bg-slate-50/50 border border-slate-100 rounded-xl group/user">
+                          <React.Fragment key={user.uid}>
+                          <div className="flex items-center justify-between p-3 bg-slate-50/50 border border-slate-100 rounded-xl group/user">
                             <div className="flex items-center gap-3">
                               <div className="w-8 h-8 bg-white border border-slate-100 rounded-lg flex items-center justify-center shadow-sm">
                                 <span className="text-[10px] font-black text-slate-400">
@@ -231,17 +266,79 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                 <p className="text-[13px] text-black font-bold">CPF: {user.cpf}</p>
                               </div>
                             </div>
-                            <button
-                              onClick={() => user.uid && setUserToDelete(user.uid)}
-                              className="p-1.5 text-black hover:text-red-500 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover/user:opacity-100"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                            <div className="flex items-center gap-1">
+                              {user.role === 'admin' ? (
+                                <span className="px-2 py-1 bg-indigo-50 text-indigo-700 text-[10px] font-black uppercase rounded-lg">Admin</span>
+                              ) : (user.permissions?.length || 0) === 0 ? (
+                                <span className="px-2 py-1 bg-slate-100 text-slate-500 text-[10px] font-black uppercase rounded-lg">Só leitura</span>
+                              ) : (
+                                <span className="px-2 py-1 bg-emerald-50 text-emerald-700 text-[10px] font-black uppercase rounded-lg">{user.permissions!.length} permissões</span>
+                              )}
+                              {canManageUsers && (
+                                <button
+                                  onClick={() => setExpandedUid(expandedUid === user.uid ? null : user.uid || null)}
+                                  className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                                  title="Permissões"
+                                >
+                                  <ShieldCheck className="w-4 h-4" />
+                                </button>
+                              )}
+                              {canManageUsers && (
+                                <button
+                                  onClick={() => user.uid && setUserToDelete(user.uid)}
+                                  className="p-1.5 text-black hover:text-red-500 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover/user:opacity-100"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
                           </div>
+                          {canManageUsers && expandedUid === user.uid && (
+                            <div className="col-span-full p-4 bg-white border border-indigo-100 rounded-xl space-y-4">
+                              <div className="flex items-center justify-between">
+                                <p className="text-xs font-black text-slate-700 uppercase tracking-wider">
+                                  Permissões de {user.name || 'Sem nome'}
+                                </p>
+                                <button onClick={() => setExpandedUid(null)} className="p-1 text-slate-400 hover:text-slate-700">
+                                  <ChevronUp className="w-4 h-4" />
+                                </button>
+                              </div>
+                              {user.role === 'admin' ? (
+                                <p className="text-xs text-slate-500 font-medium">Administrador: tem acesso a tudo.</p>
+                              ) : (
+                                <>
+                                  <p className="text-xs text-slate-500 font-medium">
+                                    Sem nenhuma permissão marcada, a pessoa só consegue ver as páginas.
+                                  </p>
+                                  {permissionGroups.map(([group, perms]) => (
+                                    <div key={group} className="space-y-2">
+                                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{group}</p>
+                                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                        {perms.map(p => (
+                                          <label key={p.id} className={`flex items-start gap-2 p-2 rounded-lg border ${allowed(p.id) ? 'border-slate-100 hover:bg-slate-50 cursor-pointer' : 'border-slate-100 opacity-50 cursor-not-allowed'}`}>
+                                            <input
+                                              type="checkbox"
+                                              checked={(user.permissions || []).includes(p.id)}
+                                              disabled={!allowed(p.id)}
+                                              onChange={() => togglePermission(user, p.id)}
+                                              className="mt-0.5 w-4 h-4 accent-indigo-600"
+                                            />
+                                            <span className="text-xs font-bold text-slate-700 leading-snug">{p.label}</span>
+                                          </label>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </>
+                              )}
+                            </div>
+                          )}
+                          </React.Fragment>
                         ))
                       )}
                     </div>
                   </section>
+                  )}
                 </>
               )}
             </div>

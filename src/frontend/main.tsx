@@ -5,6 +5,9 @@ import './index.css';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
 import { TestModeProvider } from './context/TestModeContext';
+import { installApiAuthFetch } from './utils/apiAuthFetch';
+
+installApiAuthFetch();
 
 // Industry-standard guard to intercept and swallow circular structure JSON stringification crashes
 // that are triggered by third-party browser extensions (like Google Translate or React DevTools)

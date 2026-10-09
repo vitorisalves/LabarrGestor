@@ -10,6 +10,7 @@ import { ExcelService } from "./services/excelService.js";
 import { XMLService } from "./services/xmlService.js";
 import { startBackgroundReminderWorker } from "./reminderWorker.js";
 import { requestContext } from "./context.js";
+import { PERMISSION_IDS, requiredPermission, userCan, isAdminUser } from "../shared/permissions.js";
 
 const app = express();
 
@@ -76,6 +77,36 @@ const asyncHandler = (fn: Function) => (req: Request, res: Response, next: NextF
     next(err);
   });
 };
+
+// --- PERMISSÕES ---
+// Leitura (GET) é liberada. Qualquer rota que grava dados exige uma pessoa aprovada com a
+// permissão da rota (ver src/shared/permissions.ts); quem está só aprovado enxerga, não altera.
+// As rotas /api/auth/* fazem a própria checagem. DISABLE_PERMISSION_ENFORCEMENT=1 desliga o
+// guarda (usado nos testes automatizados).
+app.use('/api', asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+  if (process.env.DISABLE_PERMISSION_ENFORCEMENT === '1') return next();
+  if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') return next();
+  if (req.path.startsWith('/auth/')) return next();
+
+  const rule = requiredPermission(req.path);
+  const uid = await verifyUid(req.headers.authorization);
+  if (!uid) {
+    return res.status(401).json({ error: 'unauthorized', message: 'Sessão expirada. Faça login novamente.' });
+  }
+  const user = await getAuthUser(uid);
+  const allowed = !!user && (
+    isAdminUser(user) ||
+    (user.status === 'approved' && (rule === null || (rule !== 'admin' && userCan(user, rule))))
+  );
+  if (!allowed) {
+    return res.status(403).json({
+      error: 'forbidden',
+      message: 'Você não tem permissão para realizar esta ação.',
+      permission: rule
+    });
+  }
+  next();
+}));
 
 const handleCacheAndEtag = (collectionName: string) => {
   return (req: Request, res: Response, next: NextFunction) => {
@@ -640,9 +671,21 @@ app.get("/api/xml/authorized_users", handleCacheAndEtag("authorized_users"), asy
 }));
 
 // authorized_users writes are token-verified (identitytoolkit REST) — no Admin SDK needed
+const verifiedTokens = new Map<string, { uid: string; exp: number }>();
 async function verifyUid(idToken: string | undefined): Promise<string | null> {
   if (!idToken) return null;
   const token = idToken.startsWith('Bearer ') ? idToken.slice(7) : idToken;
+  // Cache curto: evita uma ida à API do Firebase a cada gravação.
+  const hit = verifiedTokens.get(token);
+  if (hit && hit.exp > Date.now()) return hit.uid;
+  const uid = await verifyUidRemote(token);
+  if (uid) {
+    if (verifiedTokens.size > 500) verifiedTokens.clear();
+    verifiedTokens.set(token, { uid, exp: Date.now() + 5 * 60 * 1000 });
+  }
+  return uid;
+}
+async function verifyUidRemote(token: string): Promise<string | null> {
   try {
     const { apiKey } = await getFirebaseConfig();
     const r = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${apiKey}`, {
@@ -653,10 +696,25 @@ async function verifyUid(idToken: string | undefined): Promise<string | null> {
     return j.users?.[0]?.localId ?? null;
   } catch { return null; }
 }
-async function callerIsAdmin(uid: string): Promise<boolean> {
+// Cadastro (role/status/permissões) de quem está chamando, com cache curto.
+const authUserCache = new Map<string, { user: any | null; exp: number }>();
+async function getAuthUser(uid: string): Promise<any | null> {
+  const hit = authUserCache.get(uid);
+  if (hit && hit.exp > Date.now()) return hit.user;
   const d = await repo.getDoc(repo.doc('authorized_users', uid), 'authorized_users/' + uid, true);
-  return d.exists() && (d.data() as any).role === 'admin';
+  const user = d.exists() ? (typeof d.data === 'function' ? d.data() : d.data) : null;
+  authUserCache.set(uid, { user, exp: Date.now() + 15 * 1000 });
+  return user;
 }
+function invalidateAuthUser(uid?: string) {
+  if (uid) authUserCache.delete(uid); else authUserCache.clear();
+}
+async function callerCan(uid: string, permission: string): Promise<boolean> {
+  return userCan(await getAuthUser(uid), permission);
+}
+
+const ADMIN_CPF = '05839352144';
+const onlyDigits = (v: any) => String(v ?? '').replace(/\D/g, '');
 
 app.get("/api/auth/users", asyncHandler(async (req: Request, res: Response) => {
   const snap = await repo.getDocs('authorized_users', 'authorized_users', req.query.fresh === 'true');
@@ -675,7 +733,37 @@ app.post("/api/auth/users/upsert", asyncHandler(async (req: Request, res: Respon
   if (!uid || !user) return res.status(400).json({ error: "uid e user são obrigatórios" });
   const tokUid = await verifyUid(req.headers.authorization);
   if (!tokUid || tokUid !== uid) return res.status(401).json({ error: "unauthorized" });
-  await repo.set(repo.doc('authorized_users', uid), user, 'authorized_users/' + uid);
+
+  // Quem se cadastra/entra NÃO decide o próprio acesso: status, papel e permissões vêm do
+  // servidor. Se a mesma pessoa (CPF) já tinha cadastro com outro uid (sessão nova do
+  // navegador), herda o acesso dele e o cadastro antigo é removido.
+  const cpf = onlyDigits(user.cpf);
+  const snapshot = await repo.getDocs('authorized_users', 'authorized_users', true);
+  const sameCpf = snapshot.docs
+    .map((d: any) => ({ id: d.id, data: (typeof d.data === 'function' ? d.data() : d.data) as any }))
+    .filter((d: any) => d.id !== uid && cpf && onlyDigits(d.data?.cpf) === cpf);
+  const own: any = (await getAuthUser(uid)) || null;
+  const previous: any =
+    own ||
+    sameCpf.find((d: any) => d.data.status === 'approved')?.data ||
+    sameCpf[0]?.data ||
+    null;
+
+  const isAdminCpf = cpf === ADMIN_CPF;
+  const safe: any = {
+    ...user,
+    cpf: cpf || user.cpf,
+    role: isAdminCpf ? 'admin' : (previous?.role === 'admin' ? 'admin' : 'user'),
+    status: isAdminCpf ? 'approved' : (previous?.status || 'pending'),
+    permissions: Array.isArray(previous?.permissions) ? previous.permissions : [],
+  };
+  if (previous?.requestDate) safe.requestDate = previous.requestDate;
+
+  await repo.set(repo.doc('authorized_users', uid), safe, 'authorized_users/' + uid);
+  for (const old of sameCpf) {
+    await repo.delete(repo.doc('authorized_users', old.id), 'authorized_users/' + old.id);
+  }
+  invalidateAuthUser();
   repo.invalidateCache('authorized_users');
   res.json({ status: "success" });
 }));
@@ -684,9 +772,12 @@ app.post("/api/auth/users/status", asyncHandler(async (req: Request, res: Respon
   const { uid, status } = req.body;
   if (!uid || !status) return res.status(400).json({ error: "uid e status são obrigatórios" });
   const tokUid = await verifyUid(req.headers.authorization);
-  if (!tokUid || !(await callerIsAdmin(tokUid))) return res.status(401).json({ error: "unauthorized" });
+  if (!tokUid) return res.status(401).json({ error: "unauthorized" });
+  if (!(await callerCan(tokUid, 'users.approve'))) return res.status(403).json({ error: "forbidden", message: "Você não tem permissão para aprovar acessos." });
+  if (status !== 'approved' && status !== 'denied') return res.status(400).json({ error: "status inválido" });
   if (status === 'denied') await repo.delete(repo.doc('authorized_users', uid), 'authorized_users/' + uid);
   else await repo.update(repo.doc('authorized_users', uid), { status }, 'authorized_users/' + uid);
+  invalidateAuthUser(uid);
   repo.invalidateCache('authorized_users');
   res.json({ status: "success" });
 }));
@@ -695,10 +786,45 @@ app.post("/api/auth/users/delete", asyncHandler(async (req: Request, res: Respon
   const { uid } = req.body;
   if (!uid) return res.status(400).json({ error: "uid ausente." });
   const tokUid = await verifyUid(req.headers.authorization);
-  if (!tokUid || !(await callerIsAdmin(tokUid))) return res.status(401).json({ error: "unauthorized" });
+  if (!tokUid) return res.status(401).json({ error: "unauthorized" });
+  // Remover o próprio cadastro antigo (troca de sessão) sempre vale; remover outra pessoa exige permissão.
+  if (tokUid !== uid && !(await callerCan(tokUid, 'users.manage'))) {
+    return res.status(403).json({ error: "forbidden", message: "Você não tem permissão para remover acessos." });
+  }
+  const target = await getAuthUser(uid);
+  if (tokUid !== uid && isAdminUser(target) && !isAdminUser(await getAuthUser(tokUid))) {
+    return res.status(403).json({ error: "forbidden", message: "Somente admin pode remover um admin." });
+  }
   await repo.delete(repo.doc('authorized_users', uid), 'authorized_users/' + uid);
+  invalidateAuthUser(uid);
   repo.invalidateCache('authorized_users');
   res.json({ status: "success" });
+}));
+
+// Define as permissões de uma pessoa. Quem não é admin só pode conceder permissões que ele
+// mesmo tem e não pode alterar um admin.
+app.post("/api/auth/users/permissions", asyncHandler(async (req: Request, res: Response) => {
+  const { uid, permissions } = req.body || {};
+  if (!uid || !Array.isArray(permissions)) return res.status(400).json({ error: "uid e permissions[] são obrigatórios" });
+  const tokUid = await verifyUid(req.headers.authorization);
+  if (!tokUid) return res.status(401).json({ error: "unauthorized" });
+  const caller = await getAuthUser(tokUid);
+  if (!userCan(caller, 'users.manage')) {
+    return res.status(403).json({ error: "forbidden", message: "Você não tem permissão para gerenciar permissões." });
+  }
+  const target = await getAuthUser(uid);
+  if (!target) return res.status(404).json({ error: "Usuário não encontrado" });
+  if (isAdminUser(target) && !isAdminUser(caller)) {
+    return res.status(403).json({ error: "forbidden", message: "Somente admin pode alterar um admin." });
+  }
+  const wanted: string[] = Array.from(new Set(permissions.map(String))).filter(id => PERMISSION_IDS.has(id));
+  // Não-admin só mexe no que ele mesmo tem: o resto do que a pessoa já possuía fica como está.
+  const kept = isAdminUser(caller) ? [] : (Array.isArray(target.permissions) ? target.permissions : []).filter((id: string) => !userCan(caller, id));
+  const granted = isAdminUser(caller) ? wanted : Array.from(new Set([...kept, ...wanted.filter(id => userCan(caller, id))]));
+  await repo.update(repo.doc('authorized_users', uid), { permissions: granted }, 'authorized_users/' + uid);
+  invalidateAuthUser(uid);
+  repo.invalidateCache('authorized_users');
+  res.json({ status: "success", permissions: granted });
 }));
 
 app.get("/api/xml/spendings", handleCacheAndEtag("xml_spendings"), asyncHandler(async (req: Request, res: Response) => {

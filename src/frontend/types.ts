@@ -99,6 +99,8 @@ export interface AuthorizedUser {
   requestDate?: string;
   lastLogin?: string;
   role?: 'admin' | 'user';
+  // Permissões liberadas para esta pessoa (ver src/shared/permissions.ts). Vazio = só leitura.
+  permissions?: string[];
 }
 
 // --- DRE & SALES TYPES ---

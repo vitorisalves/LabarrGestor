@@ -7,6 +7,7 @@ import { useState, useEffect } from 'react';
 import { auth, signInAnonymously, onAuthStateChanged } from '../firebase';
 import { AuthorizedUser } from '../types';
 import { extractErrorMessage, safeStringify, handleFirestoreError, OperationType, cleanObject } from '../utils';
+import { userCan, isReadOnlyUser, PermissionSubject } from '../../shared/permissions';
 
 export const useAuth = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(() => localStorage.getItem('cache_isLoggedIn') === 'true');
@@ -14,6 +15,8 @@ export const useAuth = () => {
   const [loggedCpf, setLoggedCpf] = useState(() => localStorage.getItem('cache_loggedCpf') || '');
   const [loggedName, setLoggedName] = useState(() => localStorage.getItem('cache_loggedName') || '');
   const [isAuthReady, setIsAuthReady] = useState(false);
+  // Papel/status/permissões da pessoa logada, como o servidor tem registrado.
+  const [myAccess, setMyAccess] = useState<PermissionSubject | null>(null);
   const [authorizedUsers, setAuthorizedUsers] = useState<AuthorizedUser[]>(() => {
     const cached = localStorage.getItem('cache_authorizedUsers');
     return cached ? JSON.parse(cached) : [];
@@ -105,9 +108,17 @@ export const useAuth = () => {
         const userIsApproved = userData.status === 'approved' || userIsAdmin;
 
         setIsApproved(userIsApproved);
+        setMyAccess({
+          role: userIsAdmin ? 'admin' : (userData.role || 'user'),
+          status: userIsApproved ? 'approved' : userData.status,
+          permissions: Array.isArray(userData.permissions) ? userData.permissions : []
+        });
 
-        // Fetch list if admin (LOAD FROM CACHE / ON DEMAND)
-        if (userIsAdmin) {
+        // Fetch list if admin or if allowed to approve/manage access (LOAD FROM CACHE / ON DEMAND)
+        const canManageUsers = userIsAdmin ||
+          (userData.permissions || []).includes('users.approve') ||
+          (userData.permissions || []).includes('users.manage');
+        if (canManageUsers) {
           loadAuthorizedUsers(false);
         } else {
           setAuthorizedUsers([userData]);
@@ -123,6 +134,7 @@ export const useAuth = () => {
         }
       } else {
         setIsApproved(!!isHardcodedAdmin);
+        setMyAccess(isHardcodedAdmin ? { role: 'admin', status: 'approved', permissions: [] } : null);
       }
     } catch (error) {
       handleFirestoreError(error, OperationType.GET, currentUid);
@@ -352,6 +364,30 @@ export const useAuth = () => {
     }
   };
 
+  const updateUserPermissions = async (uid: string, permissions: string[]) => {
+    const previous = authorizedUsers;
+    // Atualiza na tela já; volta atrás se o servidor recusar.
+    setAuthorizedUsers(prev => prev.map(u => u.uid === uid ? { ...u, permissions } : u));
+    try {
+      const res = await fetch('/api/auth/users/permissions', {
+        method: 'POST',
+        headers: await authHeaders(),
+        body: JSON.stringify({ uid, permissions })
+      });
+      if (!res.ok) {
+        throw new Error('Permissions update failed');
+      }
+      const data = await res.json();
+      if (Array.isArray(data.permissions)) {
+        setAuthorizedUsers(prev => prev.map(u => u.uid === uid ? { ...u, permissions: data.permissions } : u));
+      }
+      await invalidateBackendCache('authorized_users');
+    } catch (e) {
+      setAuthorizedUsers(previous);
+      handleFirestoreError(e, OperationType.WRITE, `authorized_users/${uid}`);
+    }
+  };
+
   const confirmDeleteUser = async (uid: string) => {
     try {
       const res = await fetch('/api/auth/users/delete', {
@@ -374,6 +410,9 @@ export const useAuth = () => {
                  (auth.currentUser?.email === 'vitorisalves1@gmail.com' && auth.currentUser?.emailVerified) ||
                  (loggedName.toUpperCase().includes('VITOR') && loggedCpf.length > 0);
 
+  const can = (permission: string) => isAdmin || userCan(myAccess, permission);
+  const isReadOnly = isApproved && !isAdmin && isReadOnlyUser(myAccess);
+
   return {
     isLoggedIn,
     isApproved,
@@ -386,8 +425,11 @@ export const useAuth = () => {
     handleLogout,
     authorizedUsers,
     updateUserStatus,
+    updateUserPermissions,
     removeUserRequest: confirmDeleteUser,
     isAdmin,
+    can,
+    isReadOnly,
     isAuthReady,
     loadAuthorizedUsers: (force: boolean = false) => loadAuthorizedUsers(force)
   };

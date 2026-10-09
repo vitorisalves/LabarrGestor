@@ -46,6 +46,7 @@ const DREVendasView = React.lazy(() => import('./components/DREVendasView').then
 // Types
 import { Product, Supplier } from './types';
 import { extractErrorMessage } from './utils';
+import { PERMISSION_DENIED_EVENT } from './utils/apiAuthFetch';
 
 export default function App() {
   // --- CUSTOM HOOKS ---
@@ -61,8 +62,11 @@ export default function App() {
     handleLogin,
     handleLogout,
     updateUserStatus,
+    updateUserPermissions,
     removeUserRequest,
     isAdmin,
+    can,
+    isReadOnly,
     authError
   } = useAuth();
 
@@ -380,6 +384,16 @@ export default function App() {
       console.error("Reconnection failed:", extractErrorMessage(e));
     }
   }, [refreshSuppliers, refreshLists, refreshReminders, addNotification]);
+
+  // O servidor recusou uma gravação (sem permissão ou sessão expirada): avisa em vez de falhar em silêncio.
+  useEffect(() => {
+    const onDenied = (e: Event) => {
+      const message = (e as CustomEvent).detail?.message || 'Você não tem permissão para realizar esta ação.';
+      addNotification(message, 0, 'info');
+    };
+    window.addEventListener(PERMISSION_DENIED_EVENT, onDenied);
+    return () => window.removeEventListener(PERMISSION_DENIED_EVENT, onDenied);
+  }, [addNotification]);
 
   useEffect(() => {
     if (isQuotaExceeded) {
@@ -733,6 +747,7 @@ export default function App() {
       currentPage={currentPage}
       setCurrentPage={setCurrentPage}
       isAdmin={isAdmin}
+      isReadOnly={isReadOnly}
       setIsSettingsOpen={setIsSettingsOpen}
       handleLogout={handleLogout}
       loggedName={loggedName}
@@ -988,6 +1003,8 @@ export default function App() {
         isDarkMode={isDarkMode}
         setIsDarkMode={setIsDarkMode}
         isAdmin={isAdmin}
+        can={can}
+        updateUserPermissions={updateUserPermissions}
       />
     </AppLayout>
   );

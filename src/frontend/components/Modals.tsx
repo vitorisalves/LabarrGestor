@@ -75,6 +75,8 @@ interface ModalsProps {
   isDarkMode?: boolean;
   setIsDarkMode?: (dark: boolean) => void;
   isAdmin?: boolean;
+  can?: (permission: string) => boolean;
+  updateUserPermissions?: (uid: string, permissions: string[]) => void;
 
   supplierToDelete: string | null;
   setSupplierToDelete: (id: string | null) => void;
@@ -179,6 +181,8 @@ export const Modals: React.FC<ModalsProps> = (props) => {
         isDarkMode={props.isDarkMode}
         setIsDarkMode={props.setIsDarkMode}
         isAdmin={props.isAdmin}
+        can={props.can}
+        updateUserPermissions={props.updateUserPermissions}
       />
 
       <ConfirmationModal 

@@ -3,13 +3,14 @@ import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTestMode } from '../context/TestModeContext';
-import { Beaker } from 'lucide-react';
+import { Beaker, Eye } from 'lucide-react';
 
 interface AppLayoutProps {
   children: React.ReactNode;
   currentPage: any;
   setCurrentPage: (page: any) => void;
   isAdmin: boolean;
+  isReadOnly?: boolean;
   setIsSettingsOpen: (open: boolean) => void;
   handleLogout: () => void;
   loggedName: string;
@@ -35,6 +36,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   currentPage,
   setCurrentPage,
   isAdmin,
+  isReadOnly = false,
   setIsSettingsOpen,
   handleLogout,
   loggedName,
@@ -71,6 +73,12 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
           </motion.div>
         )}
       </AnimatePresence>
+      {isReadOnly && (
+        <div className="w-full bg-slate-800 text-slate-100 px-4 py-2 text-xs font-bold flex items-center justify-center gap-2 z-50">
+          <Eye className="w-4 h-4" />
+          <span>Modo somente leitura - você pode ver as páginas, mas não alterar dados. Peça uma permissão a um administrador.</span>
+        </div>
+      )}
       <div className="flex-1 flex">
       <Sidebar 
         currentPage={currentPage} 
