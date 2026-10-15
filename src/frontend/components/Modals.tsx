@@ -56,6 +56,9 @@ interface ModalsProps {
   updateProductPrice: (name: string, supplier: string, newPrice: number) => void;
   removeFromCart: (name: string, supplier: string) => void;
   finalizeList: () => void;
+  estimationEnabled?: boolean;
+  previewEstimates?: Record<string, import('../../shared/priceEstimation').PriceEstimate>;
+  setCartManualPrice?: (name: string, supplier: string, manual: import('../utils/priceEstimationApi').ManualPriceInput | null) => void;
   isFinalizing?: boolean;
   isEditingList?: boolean;
   clearCart: () => void;
@@ -157,6 +160,9 @@ export const Modals: React.FC<ModalsProps> = (props) => {
         updateProductPrice={props.updateProductPrice}
         removeFromCart={props.removeFromCart}
         finalizeList={props.finalizeList}
+        estimationEnabled={props.estimationEnabled}
+        previewEstimates={props.previewEstimates}
+        setCartManualPrice={props.setCartManualPrice}
         isFinalizing={!!props.isFinalizing}
         isEditingList={!!props.isEditingList}
         clearCart={props.clearCart}

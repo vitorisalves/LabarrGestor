@@ -3,6 +3,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, ShoppingCart, Minus, Plus, Trash2, Check } from 'lucide-react';
 import { CartItem } from '../../types';
 import { formatCurrency } from '../../utils';
+import type { PriceEstimate } from '../../../shared/priceEstimation';
+import { estimateKey, ManualPriceInput } from '../../utils/priceEstimationApi';
+import { CartItemEstimate } from '../prices/CartItemEstimate';
 
 interface CartModalProps {
   isOpen: boolean;
@@ -20,6 +23,9 @@ interface CartModalProps {
   isFinalizing: boolean;
   clearCart: () => void;
   isEditingList?: boolean;
+  estimationEnabled?: boolean;
+  previewEstimates?: Record<string, PriceEstimate>;
+  setCartManualPrice?: (name: string, supplier: string, manual: ManualPriceInput | null) => void;
 }
 
 export const CartModal: React.FC<CartModalProps> = ({
@@ -37,8 +43,20 @@ export const CartModal: React.FC<CartModalProps> = ({
   finalizeList,
   isFinalizing,
   clearCart,
-  isEditingList = false
+  isEditingList = false,
+  estimationEnabled = false,
+  previewEstimates = {},
+  setCartManualPrice
 }) => {
+  const estimateOf = (item: { name: string; supplierName: string }) =>
+    estimationEnabled ? previewEstimates[estimateKey(item)] : undefined;
+  const priceOf = (item: { name: string; supplierName: string; price: number }) =>
+    estimateOf(item)?.estimatedPrice ?? item.price;
+  const protectedTotal = cart.reduce((acc, item) => acc + (estimateOf(item)?.protectedPrice ?? item.price) * item.quantity, 0);
+  const weakItems = cart.filter(item => {
+    const c = estimateOf(item)?.confidence;
+    return c === 'baixa' || c === 'sem_referencia';
+  }).length;
   return (
     <AnimatePresence>
       {isOpen && (
@@ -114,7 +132,7 @@ export const CartModal: React.FC<CartModalProps> = ({
               ) : (
                 <div className="space-y-3">
                   {cart.map((item, i) => (
-                    <div key={i} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 bg-white rounded-xl border border-slate-100 hover:border-indigo-100 transition-all">
+                    <div key={i} className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-3 p-4 bg-white rounded-xl border border-slate-100 hover:border-indigo-100 transition-all">
                       <div className="flex-1 min-w-0">
                         <p className="font-bold text-slate-700 tracking-tight leading-tight">{item.name}</p>
                         <div className="flex flex-wrap items-center gap-2 mt-1 leading-tight">
@@ -182,17 +200,26 @@ export const CartModal: React.FC<CartModalProps> = ({
                           </button>
                         </div>
                         <div className="text-right min-w-[80px]">
-                          <input
-                            type="number"
-                            className="w-20 text-right font-black text-slate-800 text-sm tabular-nums bg-transparent border-b border-transparent hover:border-slate-300 focus:border-indigo-500 outline-none"
-                            value={item.price}
-                            onChange={(e) => updateProductPrice(item.name, item.supplierName, Number(e.target.value))}
-                          />
+                          {estimateOf(item) ? (
+                            <span className="text-sm font-black text-slate-800 tabular-nums">{formatCurrency(priceOf(item))}</span>
+                          ) : (
+                            <input
+                              type="number"
+                              className="w-20 text-right font-black text-slate-800 text-sm tabular-nums bg-transparent border-b border-transparent hover:border-slate-300 focus:border-indigo-500 outline-none"
+                              value={item.price}
+                              onChange={(e) => updateProductPrice(item.name, item.supplierName, Number(e.target.value))}
+                            />
+                          )}
                         </div>
                         <button onClick={() => removeFromCart(item.name, item.supplierName)} className="p-2 text-black hover:text-red-500 transition-all">
                           <Trash2 className="w-5 h-5" />
                         </button>
                       </div>
+                      <CartItemEstimate
+                        item={item}
+                        estimate={estimateOf(item)}
+                        onManualPrice={(manual) => setCartManualPrice?.(item.name, item.supplierName, manual)}
+                      />
                     </div>
                   ))}
                 </div>
@@ -205,7 +232,7 @@ export const CartModal: React.FC<CartModalProps> = ({
                   <div className="flex justify-between gap-4">
                     <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-none">Subtotal</p>
                     <p className="text-sm font-black text-slate-600 tracking-tighter tabular-nums leading-none">
-                        {formatCurrency(cart.reduce((acc, item) => acc + (item.price * item.quantity), 0))}
+                        {formatCurrency(cart.reduce((acc, item) => acc + (priceOf(item) * item.quantity), 0))}
                     </p>
                   </div>
                   <div className="flex justify-between gap-4">
@@ -217,9 +244,20 @@ export const CartModal: React.FC<CartModalProps> = ({
                   <div className="flex justify-between gap-4 pt-1 border-t border-slate-200">
                     <p className="text-[9px] font-bold text-slate-900 uppercase tracking-widest leading-none">Total</p>
                     <p className="text-xl font-black text-slate-900 tracking-tighter tabular-nums leading-none">
-                        {formatCurrency(cart.reduce((acc, item) => acc + (item.price * item.quantity), 0) + shippingFee)}
+                        {formatCurrency(cart.reduce((acc, item) => acc + (priceOf(item) * item.quantity), 0) + shippingFee)}
                     </p>
                   </div>
+                  {estimationEnabled && (
+                    <div className="space-y-1 pt-1 border-t border-dashed border-slate-200">
+                      <div className="flex justify-between gap-4">
+                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-none">Limite sugerido (com margem)</p>
+                        <p className="text-sm font-black text-slate-600 tracking-tighter tabular-nums leading-none">{formatCurrency(protectedTotal + shippingFee)}</p>
+                      </div>
+                      {weakItems > 0 && (
+                        <p className="text-[10px] font-bold text-amber-600">{weakItems} item(ns) com confiança baixa ou sem referência</p>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-2 w-full sm:flex-1 sm:justify-end sm:max-w-[280px]">

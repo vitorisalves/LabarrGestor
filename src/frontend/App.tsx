@@ -13,6 +13,7 @@ import { useAuth } from './hooks/useAuth';
 import { useNotifications } from './hooks/useNotifications';
 import { useSuppliers } from './hooks/useSuppliers';
 import { useCart } from './hooks/useCart';
+import { usePriceEstimation } from './hooks/usePriceEstimation';
 import { usePurchaseOrders } from './hooks/usePurchaseOrders';
 import { useDeliveredProducts } from './hooks/useDeliveredProducts';
 import { useReminders } from './hooks/useReminders';
@@ -164,7 +165,8 @@ export default function App() {
     toggleSavedListItemBought,
     deleteSavedList,
     addItemToList,
-    updateProductPriceInLists
+    updateProductPriceInLists,
+    setCartManualPrice
   } = useCart(isAuthReady, isApproved, loggedName, addAppNotification);
 
   const {
@@ -482,6 +484,7 @@ export default function App() {
     }
   }, [isDarkMode]);
   const [isCartOpen, setIsCartOpen] = useState(false);
+  const priceEstimation = usePriceEstimation(cart, isCartOpen);
   const [listName, setListName] = useState('');
   const [shippingFee, setShippingFee] = useState<number>(0);
   const [editingListId, setEditingListId] = useState<string | null>(null);
@@ -937,6 +940,9 @@ export default function App() {
       </AnimatePresence>
 
       <Modals
+        estimationEnabled={priceEstimation.enabled}
+        previewEstimates={priceEstimation.estimates}
+        setCartManualPrice={setCartManualPrice}
         isAdding={isAdding}
         setIsAdding={setIsAdding}
         isProductOnlyMode={isProductOnlyMode}
