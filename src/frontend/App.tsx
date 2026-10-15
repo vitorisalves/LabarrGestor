@@ -484,10 +484,11 @@ export default function App() {
     }
   }, [isDarkMode]);
   const [isCartOpen, setIsCartOpen] = useState(false);
-  const priceEstimation = usePriceEstimation(cart, isCartOpen);
   const [listName, setListName] = useState('');
   const [shippingFee, setShippingFee] = useState<number>(0);
   const [editingListId, setEditingListId] = useState<string | null>(null);
+  // Editando lista já enviada: a estimativa fica desligada (o total exibido deve ser o que é salvo).
+  const priceEstimation = usePriceEstimation(cart, isCartOpen && !editingListId);
   const { deletions, setDeletion } = useDeletions();
   const [searchTerm, setSearchTerm] = useState('');
   const [newCategoryName, setNewCategoryName] = useState('');
@@ -940,7 +941,7 @@ export default function App() {
       </AnimatePresence>
 
       <Modals
-        estimationEnabled={priceEstimation.enabled}
+        estimationEnabled={priceEstimation.enabled && !editingListId}
         previewEstimates={priceEstimation.estimates}
         setCartManualPrice={setCartManualPrice}
         isAdding={isAdding}
