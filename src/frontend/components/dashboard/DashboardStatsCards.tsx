@@ -15,7 +15,6 @@ interface DashboardStatsCardsProps {
   selectedCategoryName?: string;
   xmlSpendings?: any[];
   totalExpenseMissingNF?: number;
-  activeInvoicesMissingNFCount?: number;
 }
 
 export const DashboardStatsCards: React.FC<DashboardStatsCardsProps> = ({
@@ -26,7 +25,6 @@ export const DashboardStatsCards: React.FC<DashboardStatsCardsProps> = ({
   selectedCategoryName = '',
   xmlSpendings = [],
   totalExpenseMissingNF = 0,
-  activeInvoicesMissingNFCount = 0
 }) => {
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -72,14 +70,6 @@ export const DashboardStatsCards: React.FC<DashboardStatsCardsProps> = ({
             </h3>
             <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest mt-0.5">Emitidas</p>
           </div>
-          {activeInvoicesMissingNFCount > 0 && (
-            <div>
-              <h3 className="text-xl font-black text-amber-600 tracking-tighter">
-                {isLoading ? "..." : `${activeInvoicesMissingNFCount} notas`}
-              </h3>
-              <p className="text-[9px] text-amber-600/80 font-black uppercase tracking-widest mt-0.5">Faltando</p>
-            </div>
-          )}
         </div>
         <p className="text-xs text-slate-500 font-bold mt-2">Total geral enviado: {xmlSpendings.length}</p>
       </div>

@@ -13,6 +13,7 @@ import { useAuth } from './hooks/useAuth';
 import { useNotifications } from './hooks/useNotifications';
 import { useSuppliers } from './hooks/useSuppliers';
 import { useCart } from './hooks/useCart';
+import { usePriceEstimation } from './hooks/usePriceEstimation';
 import { usePurchaseOrders } from './hooks/usePurchaseOrders';
 import { useDeliveredProducts } from './hooks/useDeliveredProducts';
 import { useReminders } from './hooks/useReminders';
@@ -91,7 +92,7 @@ export default function App() {
     isLoading: isSuppliersLoading,
     refreshData: refreshSuppliers,
     saveSupplier,
-    saveSuppliersBatch,
+    importSuppliersAddOnly,
     deleteSupplier,
     deleteAllSuppliers,
     addCategory,
@@ -164,7 +165,8 @@ export default function App() {
     toggleSavedListItemBought,
     deleteSavedList,
     addItemToList,
-    updateProductPriceInLists
+    updateProductPriceInLists,
+    setCartManualPrice
   } = useCart(isAuthReady, isApproved, loggedName, addAppNotification);
 
   const {
@@ -297,7 +299,7 @@ export default function App() {
           productName,
           supplierName,
           quantity: item.quantity || 1,
-          price: item.price || 0,
+          price: (item.estimate && item.estimate.lastPrice > 0 ? item.estimate.lastPrice : item.price) || 0, // último preço pago, não a estimativa
           category: 'Ingredientes',
           setor: (item as any).setor || '',
           hasNF: false,
@@ -448,7 +450,7 @@ export default function App() {
     handleImportExcel,
     handleSyncSheets,
     performImport
-  } = useExcel(suppliers, saveSuppliersBatch, addNotification);
+  } = useExcel(suppliers, importSuppliersAddOnly, addNotification);
 
   // --- LOCAL UI STATE ---
   const [loginCpf, setLoginCpf] = useState('');
@@ -485,6 +487,8 @@ export default function App() {
   const [listName, setListName] = useState('');
   const [shippingFee, setShippingFee] = useState<number>(0);
   const [editingListId, setEditingListId] = useState<string | null>(null);
+  // Editando lista já enviada: a estimativa fica desligada (o total exibido deve ser o que é salvo).
+  const priceEstimation = usePriceEstimation(cart, isCartOpen && !editingListId);
   const { deletions, setDeletion } = useDeletions();
   const [searchTerm, setSearchTerm] = useState('');
   const [newCategoryName, setNewCategoryName] = useState('');
@@ -616,16 +620,16 @@ export default function App() {
     });
   }, [handleImportExcel]);
 
-  const onPerformImport = React.useCallback(async (replace: boolean) => {
+  const onPerformImport = React.useCallback(async () => {
     if (!pendingImportData || isImporting) return;
     setIsImporting(true);
     try {
-      await performImport(pendingImportData, replace, deleteAllSuppliers);
+      await performImport(pendingImportData);
       setPendingImportData(null);
     } finally {
       setIsImporting(false);
     }
-  }, [pendingImportData, isImporting, performImport, deleteAllSuppliers]);
+  }, [pendingImportData, isImporting, performImport]);
 
   const onSyncSheets = React.useCallback(async () => {
     await handleSyncSheets((data) => {
@@ -937,6 +941,9 @@ export default function App() {
       </AnimatePresence>
 
       <Modals
+        estimationEnabled={priceEstimation.enabled && !editingListId}
+        previewEstimates={priceEstimation.estimates}
+        setCartManualPrice={setCartManualPrice}
         isAdding={isAdding}
         setIsAdding={setIsAdding}
         isProductOnlyMode={isProductOnlyMode}

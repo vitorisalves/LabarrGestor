@@ -292,7 +292,7 @@ export const fsOps = {
     }
     return fsOps.getDocs(collOrQuery, cacheKey, forceNoCache);
   },
-  getDocs: async (collOrQuery: any, path: string = 'unknown', forceNoCache: boolean = false) => {
+  getDocs: async (collOrQuery: any, path: string = 'unknown', forceNoCache: boolean = false, strict: boolean = false) => {
     const prefix = getCollectionPrefix();
 
     if (isTestModeActive() && !IS_VERCEL && typeof collOrQuery === 'string') {
@@ -343,6 +343,7 @@ export const fsOps = {
     }
 
     if (checkQuotaExceeded()) {
+      if (strict) throw new Error(`[FirestoreCache] leitura indisponível (cota excedida) em ${cacheKey}`);
       console.warn(`[FirestoreCache] [Bypass Ativo] Servindo cache local/memória para a coleção: ${cacheKey}`);
       if (cached) {
         return {
@@ -414,6 +415,7 @@ export const fsOps = {
       return res;
     } catch (err: any) {
       handleFirestoreError(err, OperationType.LIST, cacheKey);
+      if (strict) throw err;
       if (cached) {
         console.warn(`[FirestoreCache] Erro ao ler ${cacheKey}, retornando cache de memória como fallback.`);
         return {
@@ -466,7 +468,7 @@ export const fsOps = {
     const db: any = await getDb();
     return db.collection ? db.collection(realColl).doc(id) : doc(db, realColl, id);
   },
-  getDoc: async (refPromise: any, path: string = 'unknown', forceNoCache: boolean = false) => {
+  getDoc: async (refPromise: any, path: string = 'unknown', forceNoCache: boolean = false, strict: boolean = false) => {
     const ref = await refPromise;
     if (ref && ref.__local) {
       const docs = loadLocalTestCollection(ref.collection);
@@ -488,6 +490,7 @@ export const fsOps = {
     const cached = g_docCache[cacheKey];
 
     if (checkQuotaExceeded()) {
+      if (strict) throw new Error(`[FirestoreCache] leitura indisponível (cota excedida) em ${cacheKey}`);
       console.warn(`[FirestoreCache] [Bypass Ativo] Servindo cache offline para o documento: ${cacheKey}`);
       if (cached) {
         return {
@@ -537,6 +540,7 @@ export const fsOps = {
       return res;
     } catch (err: any) {
       handleFirestoreError(err, OperationType.GET, cacheKey);
+      if (strict) throw err;
       if (cached) {
         return {
           exists: () => cached.exists,

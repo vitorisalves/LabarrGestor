@@ -11,6 +11,11 @@ import { XMLService } from "./services/xmlService.js";
 import { startBackgroundReminderWorker } from "./reminderWorker.js";
 import { requestContext } from "./context.js";
 import { PERMISSION_IDS, requiredPermission, userCan, isAdminUser } from "../shared/permissions.js";
+import { DEFAULT_PRICE_PARAMS } from "../shared/priceEstimation.js";
+import { normalizeParams, validateParams, diffParams } from "../shared/priceSettings.js";
+import { mergeSuppliersAddOnly } from "../shared/supplierMerge.js";
+import { estimateItems, EstimateInputError, EstimateRequestItem } from "./services/priceEstimationService.js";
+import { buildOrderDoc, applyRequisitionApproval, buildListFromOrder, OrderError } from "./services/orderEstimates.js";
 
 const app = express();
 
@@ -94,6 +99,7 @@ app.use('/api', asyncHandler(async (req: Request, res: Response, next: NextFunct
     return res.status(401).json({ error: 'unauthorized', message: 'Sessão expirada. Faça login novamente.' });
   }
   const user = await getAuthUser(uid);
+  res.locals.authUser = user;
   const allowed = !!user && (
     isAdminUser(user) ||
     (user.status === 'approved' && (rule === null || (rule !== 'admin' && userCan(user, rule))))
@@ -205,6 +211,101 @@ app.post("/api/ai/process-document", asyncHandler(async (req: Request, res: Resp
 
 // --- ROTAS XML ---
 const xmlService = new XMLService();
+
+// --- ESTIMATIVA DE PREÇOS (Fase 1) ---
+// Tudo isto só vale com PRICE_ESTIMATION_ENABLED=1. Desligado, as rotas existentes se comportam como antes.
+const priceEstimationEnabled = () => process.env.PRICE_ESTIMATION_ENABLED === '1';
+
+const actorName = (req: Request, res: Response): string =>
+  String(res.locals.authUser?.name || req.body?.by || 'sistema');
+
+async function loadPriceSettings(opts: { strict?: boolean } = {}) {
+  try {
+    const ref = repo.doc('price_settings', 'default');
+    const snap = await repo.getDoc(ref, 'price_settings/default', true, !!opts.strict);
+    const exists = typeof snap.exists === 'function' ? snap.exists() : !!snap.exists;
+    const data: any = exists ? (typeof snap.data === 'function' ? snap.data() : snap.data) : {};
+    return { params: normalizeParams(data.params), history: Array.isArray(data.history) ? data.history : [] };
+  } catch (e) {
+    if (opts.strict) throw e;
+    console.warn('[PriceSettings] usando valores iniciais:', (e as Error).message);
+    return { params: DEFAULT_PRICE_PARAMS, history: [] as any[] };
+  }
+}
+
+async function loadEstimateContext(by: string) {
+  const rows = (snap: any) => snap.docs.map((d: any) => ({ id: d.id, ...(typeof d.data === 'function' ? d.data() : d.data) }));
+  const [invoicesSnap, suppliersSnap, settings] = await Promise.all([
+    repo.getDocs('invoices', 'invoices', false, true),
+    repo.getDocs('suppliers', 'suppliers', false, true),
+    loadPriceSettings(),
+  ]);
+  return {
+    invoices: rows(invoicesSnap),
+    suppliers: rows(suppliersSnap),
+    params: settings.params,
+    today: new Date().toISOString().slice(0, 10),
+    by,
+  };
+}
+
+// Erros de regra de negócio viram 4xx com mensagem em português; devolve true se tratou.
+function sendKnownError(res: Response, e: unknown): boolean {
+  if (e instanceof OrderError) {
+    res.status(e.status).json({ error: e.code, message: e.message });
+    return true;
+  }
+  if (e instanceof EstimateInputError) {
+    res.status(400).json({ error: e.code, message: e.message });
+    return true;
+  }
+  return false;
+}
+
+app.get("/api/xml/price-settings", asyncHandler(async (req: Request, res: Response) => {
+  const settings = await loadPriceSettings();
+  res.json({ enabled: priceEstimationEnabled(), params: settings.params, history: settings.history });
+}));
+
+app.post("/api/xml/price-settings", asyncHandler(async (req: Request, res: Response) => {
+  if (!priceEstimationEnabled()) return res.status(404).json({ error: 'disabled', message: 'Recurso desativado.' });
+  const rawParams = req.body?.params;
+  if (!rawParams || typeof rawParams !== 'object' || Array.isArray(rawParams)) {
+    return res.status(400).json({ error: 'invalid_params', message: 'Informe os parâmetros.' });
+  }
+  const params = normalizeParams(rawParams);
+  const errors = validateParams(params);
+  if (errors.length > 0) return res.status(400).json({ error: 'invalid_params', message: errors.join(' ') });
+
+  const current = await loadPriceSettings({ strict: true });
+  const at = new Date().toISOString();
+  const by = actorName(req, res);
+  const entries = diffParams(current.params, params).map(c => ({ at, by, ...c }));
+  if (entries.length === 0) return res.json({ status: 'success', changed: 0 });
+
+  const history = [...current.history, ...entries].slice(-200);
+  await repo.set(repo.doc('price_settings', 'default'), { params, history, updatedAt: at }, 'price_settings/default');
+  repo.invalidateCache('price_settings');
+  res.json({ status: 'success', changed: entries.length });
+}));
+
+app.post("/api/xml/price-estimates", asyncHandler(async (req: Request, res: Response) => {
+  if (!priceEstimationEnabled()) return res.status(404).json({ error: 'disabled', message: 'Recurso desativado.' });
+  const items = Array.isArray(req.body?.items) ? req.body.items : [];
+  if (items.length === 0 || items.length > 200) {
+    return res.status(400).json({ error: 'items_required', message: 'Informe de 1 a 200 itens.' });
+  }
+  if (!items.every((it: any) => it && typeof it === 'object' && typeof it.name === 'string' && typeof it.supplierName === 'string')) {
+    return res.status(400).json({ error: 'items_invalid', message: 'Itens inválidos.' });
+  }
+  try {
+    const ctx = await loadEstimateContext(actorName(req, res));
+    res.json({ estimates: estimateItems(items as EstimateRequestItem[], ctx) });
+  } catch (e) {
+    if (sendKnownError(res, e)) return;
+    throw e;
+  }
+}));
 
 app.post("/api/xml/process", asyncHandler(async (req: Request, res: Response) => {
   const { xmlData } = req.body;
@@ -636,15 +737,24 @@ app.post("/api/xml/suppliers/import", asyncHandler(async (req: Request, res: Res
   if (!Array.isArray(suppliers) || suppliers.length === 0) {
     return res.status(400).json({ error: "Nenhum fornecedor enviado." });
   }
-  if (suppliers.some((s: any) => !s || !s.id)) {
-    return res.status(400).json({ error: "Fornecedor inválido: id ausente." });
-  }
-  for (const supplier of suppliers) {
+  const snapshot = await repo.getDocs('suppliers', 'suppliers', true, true);
+  const existing = snapshot.docs.map((d: any) => ({ id: d.id, ...(typeof d.data === 'function' ? d.data() : d.data) }));
+  const result = mergeSuppliersAddOnly(
+    existing as any,
+    suppliers,
+    () => `imp_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`
+  );
+  for (const supplier of result.toSave) {
     const { id, ...rest } = supplier;
-    await repo.set(repo.doc('suppliers', id), rest, 'suppliers/' + id);
+    await repo.set(repo.doc('suppliers', id as string), rest, 'suppliers/' + id);
   }
   repo.invalidateCache('suppliers');
-  res.json({ status: "success", count: suppliers.length });
+  res.json({
+    status: "success",
+    addedSuppliers: result.addedSuppliers,
+    addedProducts: result.addedProducts,
+    skippedProducts: result.skippedProducts,
+  });
 }));
 
 app.post("/api/xml/suppliers/delete", asyncHandler(async (req: Request, res: Response) => {
@@ -1127,6 +1237,30 @@ app.post("/api/xml/purchase_orders", asyncHandler(async (req: Request, res: Resp
     return res.status(400).json({ error: "Itens são obrigatórios" });
   }
   const id = `po_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+
+  if (priceEstimationEnabled()) {
+    if (items.length > 200) {
+      return res.status(400).json({ error: 'items_required', message: 'Informe de 1 a 200 itens.' });
+    }
+    if (!items.every((it: any) => it && typeof it === 'object' && typeof it.name === 'string' && typeof it.supplierName === 'string')) {
+      return res.status(400).json({ error: 'items_invalid', message: 'Itens inválidos.' });
+    }
+    try {
+      const creator = String(res.locals.authUser?.name || createdBy || actorName(req, res));
+      const ctx = await loadEstimateContext(creator);
+      const estimates = estimateItems(items as EstimateRequestItem[], ctx);
+      const order = buildOrderDoc({
+        id, name, items, estimates, shippingFee, createdBy: creator, now: new Date().toISOString(),
+      });
+      await repo.set(repo.doc('purchase_orders', id), order, 'purchase_orders/' + id);
+      repo.invalidateCache('purchase_orders');
+      return res.json({ status: "success", order });
+    } catch (e) {
+      if (sendKnownError(res, e)) return;
+      throw e;
+    }
+  }
+
   const order = {
     id,
     name: name || 'Lista de Compras',
@@ -1143,8 +1277,32 @@ app.post("/api/xml/purchase_orders", asyncHandler(async (req: Request, res: Resp
 }));
 
 app.post("/api/xml/purchase_orders/approve-requisition", asyncHandler(async (req: Request, res: Response) => {
-  const { id, approvedBy, observacao } = req.body;
+  const { id, approvedBy, observacao, approvedLimit, limitReason } = req.body;
   if (!id) return res.status(400).json({ error: "ID é obrigatório" });
+
+  if (priceEstimationEnabled()) {
+    const ref = repo.doc('purchase_orders', id);
+    const snap = await repo.getDoc(ref, 'purchase_orders/' + id, true);
+    const exists = typeof snap.exists === 'function' ? snap.exists() : !!snap.exists;
+    if (!exists) return res.status(404).json({ error: "Ordem de compra não encontrada" });
+    const order: any = typeof snap.data === 'function' ? snap.data() : snap.data;
+    try {
+      const patch = applyRequisitionApproval(order, {
+        approvedBy: String(res.locals.authUser?.name || approvedBy || actorName(req, res)),
+        observacao,
+        approvedLimit,
+        limitReason,
+        now: new Date().toISOString(),
+      });
+      await repo.update(ref, patch, 'purchase_orders/' + id);
+    } catch (e) {
+      if (sendKnownError(res, e)) return;
+      throw e;
+    }
+    repo.invalidateCache('purchase_orders');
+    return res.json({ status: "success" });
+  }
+
   await repo.update(repo.doc('purchase_orders', id), {
     status: 'requisition_approved',
     requisitionApprovedBy: approvedBy || '',
@@ -1203,15 +1361,7 @@ app.post("/api/xml/purchase_orders/send", asyncHandler(async (req: Request, res:
   const order: any = typeof docSnap.data === 'function' ? docSnap.data() : docSnap.data;
 
   const listId = `list_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-  const listData = {
-    name: order.name,
-    date: new Date().toISOString(),
-    items: order.items,
-    total: order.total,
-    shippingFee: order.shippingFee,
-    createdBy: order.createdBy,
-    approvedBy: order.approvedBy || ''
-  };
+  const listData = buildListFromOrder(order, new Date().toISOString());
   await repo.set(repo.doc('shopping_lists', listId), listData, 'shopping_lists/' + listId);
   await repo.delete(repo.doc('purchase_orders', id), 'purchase_orders/' + id);
 
@@ -1257,6 +1407,7 @@ const TEST_MODE_COLLECTIONS = [
   'purchase_orders',
   'pending_list_products',
   'pending_xml_imports',
+  'price_settings',
   'push_subscriptions'
 ];
 

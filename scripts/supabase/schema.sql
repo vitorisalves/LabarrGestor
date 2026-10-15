@@ -8,11 +8,11 @@ create schema if not exists test;
 grant usage on schema test to service_role;
 alter default privileges in schema test grant all privileges on tables to service_role;
 
--- macro aplicada às 17 coleções, nos schemas public e test:
+-- macro aplicada às 18 coleções, nos schemas public e test:
 --   invoices, xml_spendings, price_increases, suppliers, categories, setores,
 --   product_categories, product_setores, authorized_users, delivered_products,
 --   reminders, shopping_lists, purchase_orders, pending_list_products,
---   setor_limits, push_subscriptions, pending_xml_imports
+--   setor_limits, push_subscriptions, pending_xml_imports, price_settings
 
 create table if not exists public.invoices        (id text primary key, data jsonb not null, updated_at timestamptz not null default now());
 create table if not exists public.xml_spendings   (id text primary key, data jsonb not null, updated_at timestamptz not null default now());
@@ -31,6 +31,7 @@ create table if not exists public.pending_list_products (id text primary key, da
 create table if not exists public.setor_limits    (id text primary key, data jsonb not null, updated_at timestamptz not null default now());
 create table if not exists public.push_subscriptions    (id text primary key, data jsonb not null, updated_at timestamptz not null default now());
 create table if not exists public.pending_xml_imports (id text primary key, data jsonb not null, updated_at timestamptz not null default now());
+create table if not exists public.price_settings (id text primary key, data jsonb not null, updated_at timestamptz not null default now());
 
 create table if not exists test.invoices        (id text primary key, data jsonb not null, updated_at timestamptz not null default now());
 create table if not exists test.xml_spendings   (id text primary key, data jsonb not null, updated_at timestamptz not null default now());
@@ -49,6 +50,7 @@ create table if not exists test.pending_list_products (id text primary key, data
 create table if not exists test.setor_limits    (id text primary key, data jsonb not null, updated_at timestamptz not null default now());
 create table if not exists test.push_subscriptions    (id text primary key, data jsonb not null, updated_at timestamptz not null default now());
 create table if not exists test.pending_xml_imports (id text primary key, data jsonb not null, updated_at timestamptz not null default now());
+create table if not exists test.price_settings (id text primary key, data jsonb not null, updated_at timestamptz not null default now());
 
 -- Row Level Security: habilitada SEM políticas em todas as tabelas.
 -- O acesso do backend usa a service_role key, que ignora RLS por completo.
@@ -62,7 +64,7 @@ declare
     'invoices','xml_spendings','price_increases','suppliers','categories','setores',
     'product_categories','product_setores','authorized_users','delivered_products',
     'reminders','shopping_lists','purchase_orders','pending_list_products',
-    'setor_limits','push_subscriptions','pending_xml_imports'
+    'setor_limits','push_subscriptions','pending_xml_imports','price_settings'
   ];
 begin
   foreach s in array array['public','test'] loop

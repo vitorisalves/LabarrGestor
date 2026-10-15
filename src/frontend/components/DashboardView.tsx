@@ -37,6 +37,7 @@ import { SectorDashboardView } from './SectorDashboardView';
 import { ResetListSpendingsButton } from './dashboard/ResetListSpendingsButton';
 import { stagePendingXml, fetchPendingXml, setPendingXmlStatus } from '../utils/pendingXmlImports';
 import { usePermissions } from '../context/PermissionsContext';
+import { missingNFBalances, NFEntry } from '../../shared/missingNF';
 import { usePendingListProductsPanel } from '../hooks/usePendingListProductsPanel';
 import { useXmlSpendings } from '../hooks/useXmlSpendings';
 
@@ -1277,21 +1278,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
     return activeInvoicesCount > 0 ? totalExpense / activeInvoicesCount : 0;
   }, [totalExpense, activeInvoicesCount]);
 
-  // "Faltando NF" é um saldo acumulado, não um pareamento produto a produto: cada
-  // produto confirmado como Sem NF soma nesse saldo, e cada nota fiscal real que
-  // entra (de qualquer produto) abate esse saldo, até idealmente chegar a zero.
-  // Por isso o valor "faltando" de um período é a diferença entre tudo que já foi
-  // confirmado Sem NF e tudo que já entrou como NF real, olhando para trás desde o
-  // início (não só dentro do intervalo selecionado) até o fim do período escolhido —
-  // assim dá pra voltar num mês passado e ver quanto ainda estava faltando na época.
+  // "Faltando NF": saldo de produtos confirmados pela lista como "NF" que ainda esperam a nota
+  // fiscal real. É calculado MÊS A MÊS dentro do período selecionado: as notas reais de um mês
+  // só abatem as entradas da lista do MESMO mês (src/shared/missingNF.ts). Se nenhuma nota entrou
+  // em outubro, nada é descontado de outubro, e a sobra de um mês não vira crédito para outro.
   const isMissingNF = (item: any) => item?.source === 'shopping_list' && item?.hasNF !== true;
 
-  const { totalExpenseMissingNF, activeInvoicesMissingNFCount } = useMemo(() => {
+  const { totalExpenseMissingNF } = useMemo(() => {
+    const start = new Date(startDate + 'T00:00:00');
     const end = new Date(endDate + 'T23:59:59');
-    let semNFValue = 0;
-    let semNFCount = 0;
-    let realNFValue = 0;
-    let realNFCount = 0;
+    const entries: NFEntry[] = [];
 
     // Usa `invoices`, não `xmlSpendings` - a cópia em xml_spendings não carrega a
     // lista de produtos (fica vazia), então o valor bruto (vUnComGross) nunca dava
@@ -1300,7 +1296,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
       const dateStr = spending.dhEmi || spending.date || spending.createdAt;
       if (!dateStr) return;
       const spendingDate = parseDateSafe(dateStr);
-      if (!spendingDate || spendingDate > end) return;
+      if (!spendingDate || spendingDate < start || spendingDate > end) return;
+      const month = format(spendingDate, 'yyyy-MM');
 
       if (isMissingNF(spending)) {
         // Confirmado pela lista de compras, ainda sem NF real: soma na dívida
@@ -1308,30 +1305,24 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
         const val = typeof spending.vTotTrib === 'number' && spending.vTotTrib > 0
           ? spending.vTotTrib
           : (spending.vNF || spending.total || 0);
-        semNFValue += val;
-        semNFCount += 1;
+        entries.push({ month, kind: 'list', value: val });
       } else if (spending.source !== 'shopping_list') {
-        // NF real (importada via XML): abate a dívida. Usamos o valor CHEIO dos
-        // produtos (antes do desconto da nota, não o vTotTrib/total já
-        // descontado), porque a dívida em "Faltando NF" foi criada com o valor
-        // cheio do produto - se a nota vier com desconto, o valor pago é menor
-        // que o produto valia, então abater só o valor pago deixaria sobra
-        // artificial em Faltando NF mesmo com a nota já tendo entrado.
+        // NF real (importada via XML): abate a dívida do mês. Usamos o valor CHEIO dos
+        // produtos (antes do desconto da nota, não o vTotTrib/total já descontado),
+        // porque a dívida foi criada com o valor cheio do produto - se a nota vier
+        // com desconto, abater só o valor pago deixaria sobra artificial.
         const grossVal = (spending.products || []).reduce((acc: number, p: any) =>
           acc + ((p.vUnComGross || p.vUnCom || p.price || 0) * (p.quantity || 1)), 0);
         const netVal = typeof spending.vTotTrib === 'number' && spending.vTotTrib > 0
           ? spending.vTotTrib
           : (spending.vNF || spending.total || 0);
-        realNFValue += grossVal > 0 ? grossVal : netVal;
-        realNFCount += 1;
+        entries.push({ month, kind: 'real', value: grossVal > 0 ? grossVal : netVal });
       }
     });
 
-    return {
-      totalExpenseMissingNF: Math.max(0, semNFValue - realNFValue),
-      activeInvoicesMissingNFCount: Math.max(0, semNFCount - realNFCount)
-    };
-  }, [invoices, endDate]);
+    const balance = missingNFBalances(entries).get('') ?? { value: 0 };
+    return { totalExpenseMissingNF: balance.value };
+  }, [invoices, startDate, endDate]);
 
   // List of invoices inside range
   const invoicesInRange = useMemo(() => {
@@ -1611,7 +1602,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
         selectedCategoryName={selectedCategoryName}
         xmlSpendings={xmlSpendings}
         totalExpenseMissingNF={selectedCategoryName ? 0 : totalExpenseMissingNF}
-        activeInvoicesMissingNFCount={selectedCategoryName ? 0 : activeInvoicesMissingNFCount}
       />
 
       <PendingListProductsPanel

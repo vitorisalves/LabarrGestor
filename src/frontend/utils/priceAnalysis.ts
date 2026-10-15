@@ -4,18 +4,7 @@
  */
 
 import { Supplier } from '../types';
-
-const extractWeightKg = (name: string): number | null => {
-  const kgMatch = name.match(/([0-9]+(?:[.,][0-9]+)?)\s*KG\b/i);
-  if (kgMatch) {
-    return parseFloat(kgMatch[1].replace(',', '.'));
-  }
-  const gMatch = name.match(/([0-9]+(?:[.,][0-9]+)?)\s*G\b/i);
-  if (gMatch) {
-    return parseFloat(gMatch[1].replace(',', '.')) / 1000;
-  }
-  return null;
-};
+import { extractWeightKg } from '../../shared/units';
 
 export interface PriceHistoryEntry {
   date: string;

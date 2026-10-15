@@ -142,3 +142,37 @@ test('normalizeTimestamps converte Timestamp e Date, preserva o resto', () => {
   assert.equal(out.n, 42);
   assert.equal(out.nested.d2, '2022-01-01T00:00:00.000Z');
 });
+
+function failingClient() {
+  const err = { message: 'boom' };
+  const q: any = {
+    select() { return q; }, eq() { return q; }, limit() { return q; }, range() { return q; },
+    maybeSingle() { return Promise.resolve({ data: null, error: err }); },
+    then(resolve: any) { return Promise.resolve(resolve({ data: null, error: err })); },
+  };
+  const api: any = { schema: () => api, from: () => q };
+  return api;
+}
+
+test('getDocs strict lança quando a leitura falha; sem strict devolve vazio', async () => {
+  const repo = makeSupabaseRepo(failingClient());
+  await assert.rejects(() => repo.getDocs('strict_a', 'strict_a', true, true), /leitura falhou/);
+  const snap = await repo.getDocs('strict_b', 'strict_b', true);
+  assert.equal(snap.empty, true);
+  assert.equal(snap.docs.length, 0);
+});
+
+test('getDoc strict lança quando a leitura falha; sem strict devolve exists false', async () => {
+  const repo = makeSupabaseRepo(failingClient());
+  const ref = await repo.doc('strict_c', 'x');
+  await assert.rejects(() => repo.getDoc(ref, 'strict_c/x', true, true), /leitura falhou/);
+  const snap = await repo.getDoc(ref, 'strict_c/x', true);
+  assert.equal(snap.exists(), false);
+});
+
+test('getDoc strict: documento ausente não é erro', async () => {
+  const repo = makeSupabaseRepo(fakeClient({}));
+  const ref = await repo.doc('strict_d', 'x');
+  const snap = await repo.getDoc(ref, 'strict_d/x', true, true);
+  assert.equal(snap.exists(), false);
+});

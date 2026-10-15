@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, Settings, Package, Building2, Trash2, UserPlus, User, Check, Moon, Sun, ShieldCheck, ChevronDown, ChevronUp } from 'lucide-react';
 import { AuthorizedUser } from '../../types';
 import { PERMISSIONS } from '../../../shared/permissions';
+import { PriceSettingsSection } from '../prices/PriceSettingsSection';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -55,6 +56,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const canConfig = allowed('config.manage');
   const canApprove = allowed('users.approve');
   const canManageUsers = allowed('users.manage');
+  const canPriceConfig = allowed('prices.config');
 
   const permissionGroups = React.useMemo(() => {
     const groups = new Map<string, typeof PERMISSIONS>();
@@ -102,7 +104,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
 
             <div className="flex-1 overflow-y-auto p-6 space-y-10">
-              {(canConfig || canApprove || canManageUsers) && (
+              {(canConfig || canApprove || canManageUsers || canPriceConfig) && (
                 <>
                   {canConfig && (<>
                   {/* Categorias */}
@@ -339,6 +341,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </div>
                   </section>
                   )}
+                  {canPriceConfig && <PriceSettingsSection categories={categories} />}
                 </>
               )}
             </div>

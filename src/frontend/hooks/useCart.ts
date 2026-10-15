@@ -131,6 +131,11 @@ export const useCart = (
   };
 
   const clearCart = () => setCart([]);
+  const setCartManualPrice = (name: string, supplierName: string, manual: CartItem['manualPrice']) => {
+    setCart(prev => prev.map(item =>
+      item.name === name && item.supplierName === supplierName ? { ...item, manualPrice: manual ?? undefined } : item
+    ));
+  };
 
   const finalizeList = async (listName: string, editingListId: string | null = null, shippingFee: number = 0) => {
     if (cart.length === 0) return null;
@@ -350,6 +355,7 @@ export const useCart = (
     setCartQuantity,
     removeFromCart,
     clearCart,
+    setCartManualPrice,
     finalizeList,
     toggleSavedListItemBought,
     deleteSavedList,

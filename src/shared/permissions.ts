@@ -39,6 +39,7 @@ export const PERMISSIONS: PermissionDef[] = [
 
   // Sistema
   { id: 'config.manage', label: 'Gerenciar categorias e setores', group: 'Sistema' },
+  { id: 'prices.config', label: 'Configurar margens e parâmetros de preço', group: 'Sistema' },
   { id: 'ai.use', label: 'Usar as ferramentas de IA', group: 'Sistema' },
 ];
 
@@ -73,6 +74,8 @@ const ROUTE_RULES: Array<[prefix: string, rule: RouteRule]> = [
   ['/xml/spendings', 'dashboard.manage'],
   ['/xml/invoices', 'dashboard.manage'],
   ['/xml/setor-limits', 'dashboard.manage'],
+  ['/xml/price-settings', 'prices.config'],
+  ['/xml/price-estimates', null],
   ['/xml/setores', 'config.manage'],
   ['/xml/categories', 'config.manage'],
   ['/ai/', 'ai.use'],

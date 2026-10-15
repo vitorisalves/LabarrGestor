@@ -37,6 +37,7 @@ const LIVE_EDIT_COLLECTIONS = new Set([
   'reminders',
   'pending_list_products',
   'pending_xml_imports',
+  'price_settings',
   'purchase_orders',
 ]);
 
@@ -86,7 +87,7 @@ export function makeSupabaseRepo(clientOverride?: SupabaseClient): DataRepo {
     return path !== 'unknown' && prefix && !path.startsWith(prefix) ? prefix + path : path;
   };
 
-  async function readSnapshot(coll: string, cacheKey: string, forceNoCache: boolean, limitN?: number): Promise<QuerySnapshot> {
+  async function readSnapshot(coll: string, cacheKey: string, forceNoCache: boolean, limitN?: number, strict: boolean = false): Promise<QuerySnapshot> {
     // Modo de Teste no Vercel: cada instância serverless tem seu próprio cache
     // em memória — uma pode apagar enquanto outra serve dado obsoleto.
     if (isTestModeActive() && IS_VERCEL) forceNoCache = true;
@@ -146,6 +147,7 @@ export function makeSupabaseRepo(clientOverride?: SupabaseClient): DataRepo {
 
       if (error) {
         console.error(`[SupabaseRepo] Erro ao ler ${cacheKey}:`, error.message ?? error);
+        if (strict) throw new Error(`[SupabaseRepo] leitura falhou em ${cacheKey}: ${error.message ?? error}`);
         if (cached) return fromCache(cached);
         return { docs: [], empty: true };
       }
@@ -163,6 +165,7 @@ export function makeSupabaseRepo(clientOverride?: SupabaseClient): DataRepo {
       return { docs, empty: docs.length === 0 };
     } catch (err: any) {
       console.error(`[SupabaseRepo] Falha ao ler ${cacheKey}:`, err?.message ?? err);
+      if (strict) throw err;
       if (cached) return fromCache(cached);
       return { docs: [], empty: true };
     }
@@ -173,9 +176,9 @@ export function makeSupabaseRepo(clientOverride?: SupabaseClient): DataRepo {
       return table(coll);
     },
 
-    async getDocs(coll: string, _path: string = 'unknown', forceNoCache: boolean = false): Promise<QuerySnapshot> {
+    async getDocs(coll: string, _path: string = 'unknown', forceNoCache: boolean = false, strict: boolean = false): Promise<QuerySnapshot> {
       const cacheKey = (schemaFor() === 'test' ? 'test_' : '') + coll;
-      return readSnapshot(coll, cacheKey, forceNoCache);
+      return readSnapshot(coll, cacheKey, forceNoCache, undefined, strict);
     },
 
     async getDocsWithLimit(coll: string, limitCount: number, forceNoCache: boolean = false): Promise<QuerySnapshot> {
@@ -183,7 +186,7 @@ export function makeSupabaseRepo(clientOverride?: SupabaseClient): DataRepo {
       return readSnapshot(coll, cacheKey, forceNoCache, limitCount);
     },
 
-    async getDoc(refPromise: DocRef | Promise<DocRef>, path: string = 'unknown', forceNoCache: boolean = false) {
+    async getDoc(refPromise: DocRef | Promise<DocRef>, path: string = 'unknown', forceNoCache: boolean = false, strict: boolean = false) {
       const ref = await refPromise;
       const coll = ref.__coll;
       const id = ref.__id;
@@ -200,6 +203,7 @@ export function makeSupabaseRepo(clientOverride?: SupabaseClient): DataRepo {
       const { data, error } = await table(coll).select('id,data').eq('id', id).maybeSingle();
       if (error) {
         console.error(`[SupabaseRepo] Erro ao ler doc ${cacheKey}:`, error.message ?? error);
+        if (strict) throw new Error(`[SupabaseRepo] leitura falhou em ${cacheKey}: ${error.message ?? error}`);
         if (cached) return { id, data: () => cached.data, exists: () => cached.exists };
         return { id, data: () => ({}), exists: () => false };
       }
