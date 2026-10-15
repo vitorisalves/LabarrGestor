@@ -65,3 +65,18 @@ test('planilha só-adição: fornecedor existente duplicado na planilha', () => 
   assert.equal(r.toSave[0].phone, '111'); // phone from existing, not overwritten
   assert.deepEqual(r.toSave[0].products.map(p => p.name), ['Arroz 5kg', 'Feijão 1kg', 'Sal 1kg']);
 });
+
+test('planilha só-adição: fornecedor novo ignora o id enviado e não sobrescreve existente', () => {
+  const existing = [
+    { id: 'f1', name: 'Atacadão', phone: '111', products: [{ name: 'Arroz 5kg', price: 20 }] },
+  ];
+  const r = mergeSuppliersAddOnly(existing, [
+    { id: 'f1', name: 'Qualquer', products: [{ name: 'Sal', price: 3 }] },
+  ], () => 'novo-id');
+
+  assert.equal(r.addedSuppliers, 1);
+  assert.equal(r.toSave.length, 1);
+  assert.equal(r.toSave[0].id, 'novo-id');
+  assert.equal(r.toSave.some(s => s.id === 'f1'), false); // existente não é regravado
+  assert.equal(existing[0].products.length, 1);
+});

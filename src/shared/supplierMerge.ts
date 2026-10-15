@@ -49,7 +49,7 @@ export function mergeSuppliersAddOnly(existing: MergeSupplier[], incoming: Merge
         addedProducts += fresh.length;
       }
     } else {
-      const created = { ...supplier, id: supplier.id || newId(), products: fresh };
+      const created = { ...supplier, id: newId(), products: fresh };
       byName.set(key, created);
       changed.set(key, created);
       addedSuppliers++;
