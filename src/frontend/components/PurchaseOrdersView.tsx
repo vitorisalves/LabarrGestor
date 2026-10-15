@@ -9,11 +9,13 @@ import { ClipboardList, Check, X, Send, Trash2, User, Calendar, Package } from '
 import { PurchaseOrder } from '../types';
 import { formatCurrency, formatDate } from '../utils';
 import { ConfirmationModal } from './modals/ConfirmationModal';
+import { OrderItemEstimate } from './prices/OrderItemEstimate';
+import { ApprovalLimitFields, LimitDraft, limitChanged, parseLimit } from './prices/ApprovalLimitFields';
 
 interface PurchaseOrdersViewProps {
   purchaseOrders: PurchaseOrder[];
   isLoading: boolean;
-  approveRequisition: (id: string, observacao?: string) => Promise<void>;
+  approveRequisition: (id: string, observacao?: string, approval?: { approvedLimit?: number; limitReason?: string }) => Promise<void>;
   approveOrder: (id: string, observacao?: string) => Promise<void>;
   rejectOrder: (id: string, observacao?: string) => Promise<void>;
   updateObservacao: (id: string, observacao: string) => Promise<void>;
@@ -32,6 +34,17 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
   deleteOrder
 }) => {
   const [observacaoDrafts, setObservacaoDrafts] = React.useState<Record<string, string>>({});
+  const [limitDrafts, setLimitDrafts] = React.useState<Record<string, LimitDraft>>({});
+
+  const approvalFor = (order: PurchaseOrder) => {
+    const draft = limitDrafts[order.id];
+    if (!draft || typeof order.suggestedLimit !== 'number') return undefined;
+    return { approvedLimit: parseLimit(draft.limit), limitReason: draft.reason.trim() };
+  };
+  const approvalBlocked = (order: PurchaseOrder) => {
+    const draft = limitDrafts[order.id];
+    return limitChanged(order, draft) && (draft?.reason.trim().length ?? 0) < 3;
+  };
   const [confirmModal, setConfirmModal] = React.useState<{ open: boolean; action: 'reject' | 'delete' | null; id: string | null }>({ open: false, action: null, id: null });
 
   const created = purchaseOrders.filter(o => o.status === 'pending' || o.status === 'rejected');
@@ -51,16 +64,30 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
   };
 
   const ItemsList: React.FC<{ order: PurchaseOrder }> = ({ order }) => (
-    <div className="bg-slate-50 rounded-xl border border-slate-100 divide-y divide-slate-100 max-h-40 overflow-y-auto">
-      {order.items.map((item, idx) => (
-        <div key={idx} className="flex items-center justify-between gap-2 px-3 py-2 text-xs">
-          <span className="font-bold text-slate-700 truncate">{item.name}</span>
-          <span className="flex items-center gap-3 shrink-0 text-slate-500">
-            <span>{item.quantity}x</span>
-            <span className="font-black text-slate-800">{formatCurrency(item.price * item.quantity)}</span>
-          </span>
+    <div>
+      <div className="bg-slate-50 rounded-xl border border-slate-100 divide-y divide-slate-100 max-h-40 overflow-y-auto">
+        {order.items.map((item, idx) => (
+          <div key={idx}>
+            <div className="flex items-center justify-between gap-2 px-3 py-2 text-xs">
+              <span className="font-bold text-slate-700 truncate">{item.name}</span>
+              <span className="flex items-center gap-3 shrink-0 text-slate-500">
+                <span>{item.quantity}x</span>
+                <span className="font-black text-slate-800">{formatCurrency(item.price * item.quantity)}</span>
+              </span>
+            </div>
+            <OrderItemEstimate estimate={item.estimate} />
+          </div>
+        ))}
+      </div>
+      {typeof order.suggestedLimit === 'number' && (
+        <div className="mt-2 flex flex-wrap justify-between gap-2 text-[10px] font-bold text-slate-500">
+          <span>Estimado {formatCurrency(order.estimatedTotal ?? order.total)}</span>
+          <span>Limite sugerido {formatCurrency(order.suggestedLimit)}</span>
+          {typeof order.approvedLimit === 'number' && (
+            <span className="text-emerald-700">Limite aprovado {formatCurrency(order.approvedLimit)}</span>
+          )}
         </div>
-      ))}
+      )}
     </div>
   );
 
@@ -118,6 +145,13 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
                     </span>
                     <ItemsList order={order} />
                   </div>
+                  {order.status !== 'rejected' && (
+                    <ApprovalLimitFields
+                      order={order}
+                      draft={limitDrafts[order.id]}
+                      onChange={(draft) => setLimitDrafts(prev => ({ ...prev, [order.id]: draft }))}
+                    />
+                  )}
                   <textarea
                     value={getObservacao(order)}
                     onChange={(e) => setObservacaoDrafts(prev => ({ ...prev, [order.id]: e.target.value }))}
@@ -129,8 +163,10 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
                   <div className="flex items-center gap-2">
                     {order.status !== 'rejected' && (
                       <button
-                        onClick={() => approveRequisition(order.id, getObservacao(order))}
-                        className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black uppercase transition-all"
+                        onClick={() => approveRequisition(order.id, getObservacao(order), approvalFor(order))}
+                        disabled={approvalBlocked(order)}
+                        title={approvalBlocked(order) ? 'Informe o motivo para alterar o limite' : undefined}
+                        className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black uppercase transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                       >
                         <Check className="w-3.5 h-3.5" />
                         Aprovar Requisição

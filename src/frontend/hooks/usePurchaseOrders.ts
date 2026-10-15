@@ -59,15 +59,24 @@ export const usePurchaseOrders = (loggedName: string, addAppNotification: (title
     }
   }, [loggedName, fetchPurchaseOrders, addAppNotification]);
 
-  const approveRequisition = useCallback(async (id: string, observacao?: string) => {
+  const approveRequisition = useCallback(async (
+    id: string,
+    observacao?: string,
+    approval?: { approvedLimit?: number; limitReason?: string }
+  ) => {
     const order = purchaseOrders.find(o => o.id === id);
-    setPurchaseOrders(prev => prev.map(o => o.id === id ? { ...o, status: 'requisition_approved', requisitionApprovedBy: loggedName, observacao } : o));
     try {
-      await fetch('/api/xml/purchase_orders/approve-requisition', {
+      const res = await fetch('/api/xml/purchase_orders/approve-requisition', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, approvedBy: loggedName, observacao })
+        body: JSON.stringify({ id, approvedBy: loggedName, observacao, ...approval })
       });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        addAppNotification('Não foi possível aprovar', body?.message || `Erro ${res.status}`);
+        await fetchPurchaseOrders(true);
+        return;
+      }
       await fetchPurchaseOrders(true);
       addAppNotification('Requisição Aprovada', `"${order?.name || 'Requisição'}" foi aprovada por ${loggedName} e aguarda aprovação de compra.`);
     } catch (err) {
