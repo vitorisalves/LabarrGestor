@@ -101,8 +101,10 @@ export function analyzePrices(invoices: any[], suppliers: Supplier[]): PriceAnal
       let itemPrice = Number(prod.vUnCom || prod.price || prod.vUnTrib || 0);
       if (!itemPrice || itemPrice <= 0) {
         const suppInfo = fallbackPrices[normKey];
-        itemPrice = Number(suppInfo?.price || 15);
+        itemPrice = Number(suppInfo?.price || 0);
       }
+      // Sem preço na nota e sem preço no cadastro: não há o que comparar, então fica de fora.
+      if (!itemPrice || itemPrice <= 0) return;
 
       const weightKg = extractWeightKg(name);
       let itemQuantity = Number(prod.quantity || 1);
