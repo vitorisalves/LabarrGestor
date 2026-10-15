@@ -299,7 +299,7 @@ export default function App() {
           productName,
           supplierName,
           quantity: item.quantity || 1,
-          price: item.price || 0,
+          price: (item.estimate && item.estimate.lastPrice > 0 ? item.estimate.lastPrice : item.price) || 0, // último preço pago, não a estimativa
           category: 'Ingredientes',
           setor: (item as any).setor || '',
           hasNF: false,
