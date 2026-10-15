@@ -10,7 +10,7 @@ import { PurchaseOrder } from '../types';
 import { formatCurrency, formatDate } from '../utils';
 import { ConfirmationModal } from './modals/ConfirmationModal';
 import { OrderItemEstimate } from './prices/OrderItemEstimate';
-import { ApprovalLimitFields, LimitDraft, limitChanged, parseLimit } from './prices/ApprovalLimitFields';
+import { ApprovalLimitFields, LimitDraft, limitChanged, limitInvalid, parseLimit } from './prices/ApprovalLimitFields';
 
 interface PurchaseOrdersViewProps {
   purchaseOrders: PurchaseOrder[];
@@ -43,7 +43,7 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
   };
   const approvalBlocked = (order: PurchaseOrder) => {
     const draft = limitDrafts[order.id];
-    return limitChanged(order, draft) && (draft?.reason.trim().length ?? 0) < 3;
+    return limitInvalid(order, draft) || (limitChanged(order, draft) && (draft?.reason.trim().length ?? 0) < 3);
   };
   const [confirmModal, setConfirmModal] = React.useState<{ open: boolean; action: 'reject' | 'delete' | null; id: string | null }>({ open: false, action: null, id: null });
 
@@ -165,7 +165,7 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
                       <button
                         onClick={() => approveRequisition(order.id, getObservacao(order), approvalFor(order))}
                         disabled={approvalBlocked(order)}
-                        title={approvalBlocked(order) ? 'Informe o motivo para alterar o limite' : undefined}
+                        title={limitInvalid(order, limitDrafts[order.id]) ? 'Informe um limite válido' : approvalBlocked(order) ? 'Informe o motivo para alterar o limite' : undefined}
                         className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black uppercase transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                       >
                         <Check className="w-3.5 h-3.5" />

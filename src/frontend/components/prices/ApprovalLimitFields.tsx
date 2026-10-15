@@ -14,6 +14,13 @@ export const limitChanged = (order: PurchaseOrder, draft?: LimitDraft): boolean 
   return Math.abs(parseLimit(draft.limit) - order.suggestedLimit) > 0.005;
 };
 
+export const limitInvalid = (order: PurchaseOrder, draft?: LimitDraft): boolean => {
+  if (!draft || typeof order.suggestedLimit !== 'number') return false;
+  if (draft.limit.trim() === '') return true;
+  const value = parseLimit(draft.limit);
+  return !Number.isFinite(value) || value < 0;
+};
+
 interface ApprovalLimitFieldsProps {
   order: PurchaseOrder;
   draft?: LimitDraft;
@@ -25,6 +32,7 @@ export const ApprovalLimitFields: React.FC<ApprovalLimitFieldsProps> = ({ order,
   const current: LimitDraft = draft ?? { limit: String(order.suggestedLimit).replace('.', ','), reason: '' };
   const weak = order.items.filter(i => i.estimate && (i.estimate.confidence === 'baixa' || i.estimate.confidence === 'sem_referencia')).length;
   const changed = limitChanged(order, current);
+  const invalid = limitInvalid(order, current);
 
   return (
     <div className="space-y-2 p-3 bg-slate-50 rounded-xl border border-slate-100">
@@ -47,6 +55,9 @@ export const ApprovalLimitFields: React.FC<ApprovalLimitFieldsProps> = ({ order,
         onChange={e => onChange({ ...current, limit: e.target.value })}
         className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-black outline-none focus:border-indigo-500"
       />
+      {invalid && (
+        <p className="text-[10px] font-bold text-rose-600">Informe um valor válido (ex.: 250,00).</p>
+      )}
       {changed && (
         <textarea
           value={current.reason}
