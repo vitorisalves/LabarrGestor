@@ -1284,7 +1284,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
   // em outubro, nada é descontado de outubro, e a sobra de um mês não vira crédito para outro.
   const isMissingNF = (item: any) => item?.source === 'shopping_list' && item?.hasNF !== true;
 
-  const { totalExpenseMissingNF, activeInvoicesMissingNFCount } = useMemo(() => {
+  const { totalExpenseMissingNF } = useMemo(() => {
     const start = new Date(startDate + 'T00:00:00');
     const end = new Date(endDate + 'T23:59:59');
     const entries: NFEntry[] = [];
@@ -1320,11 +1320,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
       }
     });
 
-    const balance = missingNFBalances(entries).get('') ?? { value: 0, count: 0 };
-    return {
-      totalExpenseMissingNF: balance.value,
-      activeInvoicesMissingNFCount: balance.count
-    };
+    const balance = missingNFBalances(entries).get('') ?? { value: 0 };
+    return { totalExpenseMissingNF: balance.value };
   }, [invoices, startDate, endDate]);
 
   // List of invoices inside range
@@ -1605,7 +1602,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
         selectedCategoryName={selectedCategoryName}
         xmlSpendings={xmlSpendings}
         totalExpenseMissingNF={selectedCategoryName ? 0 : totalExpenseMissingNF}
-        activeInvoicesMissingNFCount={selectedCategoryName ? 0 : activeInvoicesMissingNFCount}
       />
 
       <PendingListProductsPanel

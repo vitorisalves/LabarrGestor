@@ -22,7 +22,6 @@ export interface NFEntry {
 
 export interface MissingNFBalance {
   value: number;
-  count: number;
 }
 
 const round2 = (n: number): number => Math.round((n + Number.EPSILON) * 100) / 100;
@@ -30,28 +29,26 @@ const round2 = (n: number): number => Math.round((n + Number.EPSILON) * 100) / 1
 /** Saldo por grupo: soma, mês a mês, de max(0, entradas da lista - notas reais). */
 export function missingNFBalances(entries: NFEntry[]): Map<string, MissingNFBalance> {
   // grupo -> mês -> acumulados
-  const buckets = new Map<string, Map<string, { listValue: number; listCount: number; realValue: number; realCount: number }>>();
+  const buckets = new Map<string, Map<string, { listValue: number; realValue: number }>>();
 
   for (const entry of entries) {
     const group = entry.group ?? '';
     let months = buckets.get(group);
     if (!months) { months = new Map(); buckets.set(group, months); }
     let b = months.get(entry.month);
-    if (!b) { b = { listValue: 0, listCount: 0, realValue: 0, realCount: 0 }; months.set(entry.month, b); }
-    if (entry.kind === 'list') { b.listValue += entry.value; b.listCount += 1; }
-    else { b.realValue += entry.value; b.realCount += 1; }
+    if (!b) { b = { listValue: 0, realValue: 0 }; months.set(entry.month, b); }
+    if (entry.kind === 'list') b.listValue += entry.value;
+    else b.realValue += entry.value;
   }
 
   const result = new Map<string, MissingNFBalance>();
   buckets.forEach((months, group) => {
     let value = 0;
-    let count = 0;
     months.forEach(b => {
       value += Math.max(0, b.listValue - b.realValue);
-      count += Math.max(0, b.listCount - b.realCount);
     });
-    // Grupo só com notas reais (sem entradas da lista) não tem saldo.
-    result.set(group, { value: round2(value), count });
+    // Grupo só com notas reais (sem entradas da lista) fica com saldo 0.
+    result.set(group, { value: round2(value) });
   });
   return result;
 }

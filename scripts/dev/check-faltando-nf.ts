@@ -33,7 +33,7 @@ async function main() {
 
   const list = entries.filter(e => e.kind === 'list');
   const real = entries.filter(e => e.kind === 'real');
-  const balance = missingNFBalances(entries).get('') ?? { value: 0, count: 0 };
+  const balance = missingNFBalances(entries).get('') ?? { value: 0 };
   console.log(JSON.stringify({
     periodo: `${from} a ${to}`,
     entradasListaNF: { qtd: list.length, valor: Math.round(list.reduce((a, e) => a + e.value, 0) * 100) / 100 },

@@ -4,12 +4,11 @@ import { missingNFBalances, NFEntry } from './missingNF';
 
 const list = (month: string, value: number, group?: string): NFEntry => ({ month, kind: 'list', value, group });
 const real = (month: string, value: number, group?: string): NFEntry => ({ month, kind: 'real', value, group });
-const total = (entries: NFEntry[]) => missingNFBalances(entries).get('') ?? { value: 0, count: 0 };
+const total = (entries: NFEntry[]) => missingNFBalances(entries).get('') ?? { value: 0 };
 
 test('sem nota no mês, nada é descontado: notas de outros meses não abatem', () => {
   const r = total([list('2026-10', 100), real('2026-09', 5000), real('2026-08', 90000)]);
   assert.equal(r.value, 100);
-  assert.equal(r.count, 1);
 });
 
 test('nota do mesmo mês abate parcialmente', () => {
@@ -30,19 +29,9 @@ test('o saldo de cada mês é somado separadamente', () => {
   assert.equal(r.value, 100 + 0 + 50); // set: 100, out: 0, nov: 50
 });
 
-test('a contagem de notas faltando também é por mês', () => {
-  const r = total([
-    list('2026-10', 10), list('2026-10', 10), list('2026-10', 10),
-    real('2026-10', 5),
-    real('2026-09', 5), real('2026-09', 5),
-  ]);
-  assert.equal(r.count, 2); // 3 entradas - 1 nota em outubro; as 2 notas de setembro não contam
-});
-
 test('sem entradas da lista não há saldo, mesmo com notas reais', () => {
   const r = total([real('2026-10', 999)]);
   assert.equal(r.value, 0);
-  assert.equal(r.count, 0);
 });
 
 test('agrupa por setor (ou qualquer chave) mantendo a regra mensal', () => {
