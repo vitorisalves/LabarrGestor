@@ -3,6 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import type { PriceEstimate } from '../shared/priceEstimation';
+import type { ManualPriceInput } from './utils/priceEstimationApi';
+
 export interface Product {
   code: string;
   name: string;
@@ -40,17 +43,19 @@ export interface CartItem extends Omit<Product, 'categories'> {
   setor: string;
   supplierName: string;
   quantity: number;
+  manualPrice?: ManualPriceInput | null;
 }
 
 export interface SavedList {
   id: string;
   name: string;
   date: string;
-  items: (Omit<Product, 'categories'> & { setor: string; supplierName: string; bought: boolean; quantity: number, deliveryId?: string, invoiceId?: string, boughtAt?: string, previousLastPurchaseDate?: string })[];
+  items: (Omit<Product, 'categories'> & { setor: string; supplierName: string; bought: boolean; quantity: number, deliveryId?: string, invoiceId?: string, boughtAt?: string, previousLastPurchaseDate?: string, estimate?: PriceEstimate })[];
   total: number;
   shippingFee: number;
   createdBy?: string;
   approvedBy?: string;
+  orderRef?: { orderId: string; estimatedTotal?: number; suggestedLimit?: number; approvedLimit?: number | null };
 }
 
 export interface PurchaseOrder {
@@ -69,6 +74,12 @@ export interface PurchaseOrder {
   approvedAt?: string;
   rejectedBy?: string;
   rejectedAt?: string;
+  estimatedTotal?: number;
+  suggestedLimit?: number;
+  approvedLimit?: number;
+  approvedLimitBy?: string;
+  approvedLimitAt?: string;
+  limitHistory?: Array<{ at: string; by: string; from: number; to: number; reason: string }>;
 }
 
 export interface DeliveredProduct {
