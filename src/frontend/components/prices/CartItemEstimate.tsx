@@ -32,7 +32,7 @@ export const CartItemEstimate: React.FC<CartItemEstimateProps> = ({ item, estima
 
   const canInform = ['none', 'cadastro', 'manual', 'quote'].includes(estimate.method);
   const parsed = Number(value.replace(',', '.'));
-  const valid = parsed > 0 && date <= todayIso();
+  const valid = parsed > 0 && date <= todayIso() && (kind !== 'quote' || supplier.trim().length > 0);
 
   return (
     <div className="basis-full space-y-2 pt-2 border-t border-slate-100">

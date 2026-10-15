@@ -132,7 +132,7 @@ export const CartModal: React.FC<CartModalProps> = ({
               ) : (
                 <div className="space-y-3">
                   {cart.map((item, i) => (
-                    <div key={i} className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-3 p-4 bg-white rounded-xl border border-slate-100 hover:border-indigo-100 transition-all">
+                    <div key={`${item.supplierName}||${item.name}`} className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-3 p-4 bg-white rounded-xl border border-slate-100 hover:border-indigo-100 transition-all">
                       <div className="flex-1 min-w-0">
                         <p className="font-bold text-slate-700 tracking-tight leading-tight">{item.name}</p>
                         <div className="flex flex-wrap items-center gap-2 mt-1 leading-tight">
