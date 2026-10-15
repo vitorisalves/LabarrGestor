@@ -26,6 +26,7 @@ export function usePriceEstimation(cart: CartItem[], active: boolean) {
   useEffect(() => {
     if (!enabled || !active || cart.length === 0) {
       setEstimates({});
+      setLoading(false);
       return;
     }
     let alive = true;
