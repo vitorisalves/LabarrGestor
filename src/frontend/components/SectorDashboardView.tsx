@@ -10,6 +10,7 @@ import { format, startOfMonth, endOfMonth, isWithinInterval, parseISO } from 'da
 import { ptBR } from 'date-fns/locale';
 import { formatCurrency } from '../utils';
 import { useSetorLimits } from '../hooks/useSetorLimits';
+import { missingNFBalances, NFEntry } from '../../shared/missingNF';
 import { ResetListSpendingsButton } from './dashboard/ResetListSpendingsButton';
 
 interface SectorDashboardViewProps {
@@ -70,22 +71,21 @@ export const SectorDashboardView: React.FC<SectorDashboardViewProps> = ({ setore
     return map;
   }, [invoices, selectedMonth]);
 
-  // Mesma lógica de saldo do "Faltando NF" do Dashboard XML, só que por setor:
-  // cada produto confirmado Sem NF soma na dívida daquele setor, e cada NF real
-  // (produto com o mesmo setor, valor bruto antes de desconto) abate essa dívida,
-  // olhando para trás desde o início até o fim do mês selecionado.
+  // Mesma lógica de saldo do "Faltando NF" do Dashboard XML, só que por setor e apenas para o
+  // mês selecionado: as entradas da lista (NF) de cada setor só são abatidas pelas notas reais
+  // do MESMO mês e setor (valor bruto, antes de desconto). Sem nota no mês, nada é descontado.
   const missingNFBySetor = useMemo(() => {
     const [y, m] = selectedMonth.split('-').map(Number);
-    const end = endOfMonth(new Date(y, m - 1, 1));
-
-    const semNF = new Map<string, number>();
-    const realNF = new Map<string, number>();
+    const monthDate = new Date(y, m - 1, 1);
+    const start = startOfMonth(monthDate);
+    const end = endOfMonth(monthDate);
+    const entries: NFEntry[] = [];
 
     invoices.forEach((inv: any) => {
       const dateStr = inv.date || inv.dhEmi || inv.createdAt;
       if (!dateStr) return;
       const spendingDate = parseDateSafe(dateStr);
-      if (!spendingDate || spendingDate > end) return;
+      if (!spendingDate || !isWithinInterval(spendingDate, { start, end })) return;
 
       const isMissing = inv.source === 'shopping_list' && inv.hasNF !== true;
 
@@ -95,19 +95,16 @@ export const SectorDashboardView: React.FC<SectorDashboardViewProps> = ({ setore
           const val = p.totalNet !== undefined
             ? p.totalNet
             : (p.vUnCom || p.price || 0) * (p.quantity || 1);
-          semNF.set(p.setor, (semNF.get(p.setor) || 0) + val);
+          entries.push({ month: selectedMonth, kind: 'list', value: val, group: p.setor });
         } else if (inv.source !== 'shopping_list') {
           const grossVal = (p.vUnComGross || p.vUnCom || p.price || 0) * (p.quantity || 1);
-          realNF.set(p.setor, (realNF.get(p.setor) || 0) + grossVal);
+          entries.push({ month: selectedMonth, kind: 'real', value: grossVal, group: p.setor });
         }
       });
     });
 
     const result = new Map<string, number>();
-    const allSetores = new Set([...semNF.keys(), ...realNF.keys()]);
-    allSetores.forEach(s => {
-      result.set(s, Math.max(0, (semNF.get(s) || 0) - (realNF.get(s) || 0)));
-    });
+    missingNFBalances(entries).forEach((balance, setor) => result.set(setor, balance.value));
     return result;
   }, [invoices, selectedMonth]);
 
