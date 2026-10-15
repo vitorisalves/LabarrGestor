@@ -44,6 +44,18 @@ export const PriceSettingsSection: React.FC<{ categories: string[] }> = ({ categ
   if (!enabled) return null;
 
   const handleSave = async () => {
+    const inputErrors: string[] = [];
+    const isNum = (t: string) => { const x = t.trim().replace(',', '.'); return x !== '' && Number.isFinite(Number(x)); };
+    SCALAR_FIELDS.forEach(f => {
+      if (!isNum(draft[f.key] ?? '')) inputErrors.push(`${f.label} deve ser um número.`);
+    });
+    Object.entries(categoryDraft).forEach(([k, v]) => {
+      if (v.trim() !== '' && !isNum(v)) inputErrors.push(`Margem base de "${k}" deve ser um número.`);
+    });
+    if (inputErrors.length > 0) {
+      setMessage({ ok: false, text: inputErrors.join(' ') });
+      return;
+    }
     const baseByCategory: Record<string, number> = {};
     Object.entries(categoryDraft).forEach(([k, v]) => {
       if (v.trim() !== '') baseByCategory[k] = Number(v.replace(',', '.'));
