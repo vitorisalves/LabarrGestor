@@ -222,7 +222,7 @@ const actorName = (req: Request, res: Response): string =>
 async function loadPriceSettings(opts: { strict?: boolean } = {}) {
   try {
     const ref = repo.doc('price_settings', 'default');
-    const snap = await repo.getDoc(ref, 'price_settings/default', true);
+    const snap = await repo.getDoc(ref, 'price_settings/default', true, !!opts.strict);
     const exists = typeof snap.exists === 'function' ? snap.exists() : !!snap.exists;
     const data: any = exists ? (typeof snap.data === 'function' ? snap.data() : snap.data) : {};
     return { params: normalizeParams(data.params), history: Array.isArray(data.history) ? data.history : [] };
@@ -236,8 +236,8 @@ async function loadPriceSettings(opts: { strict?: boolean } = {}) {
 async function loadEstimateContext(by: string) {
   const rows = (snap: any) => snap.docs.map((d: any) => ({ id: d.id, ...(typeof d.data === 'function' ? d.data() : d.data) }));
   const [invoicesSnap, suppliersSnap, settings] = await Promise.all([
-    repo.getDocs('invoices', 'invoices'),
-    repo.getDocs('suppliers', 'suppliers'),
+    repo.getDocs('invoices', 'invoices', false, true),
+    repo.getDocs('suppliers', 'suppliers', false, true),
     loadPriceSettings(),
   ]);
   return {
@@ -269,7 +269,11 @@ app.get("/api/xml/price-settings", asyncHandler(async (req: Request, res: Respon
 
 app.post("/api/xml/price-settings", asyncHandler(async (req: Request, res: Response) => {
   if (!priceEstimationEnabled()) return res.status(404).json({ error: 'disabled', message: 'Recurso desativado.' });
-  const params = normalizeParams(req.body?.params);
+  const rawParams = req.body?.params;
+  if (!rawParams || typeof rawParams !== 'object' || Array.isArray(rawParams)) {
+    return res.status(400).json({ error: 'invalid_params', message: 'Informe os parâmetros.' });
+  }
+  const params = normalizeParams(rawParams);
   const errors = validateParams(params);
   if (errors.length > 0) return res.status(400).json({ error: 'invalid_params', message: errors.join(' ') });
 
@@ -290,6 +294,9 @@ app.post("/api/xml/price-estimates", asyncHandler(async (req: Request, res: Resp
   const items = Array.isArray(req.body?.items) ? req.body.items : [];
   if (items.length === 0 || items.length > 200) {
     return res.status(400).json({ error: 'items_required', message: 'Informe de 1 a 200 itens.' });
+  }
+  if (!items.every((it: any) => it && typeof it === 'object' && typeof it.name === 'string' && typeof it.supplierName === 'string')) {
+    return res.status(400).json({ error: 'items_invalid', message: 'Itens inválidos.' });
   }
   try {
     const ctx = await loadEstimateContext(actorName(req, res));
@@ -730,7 +737,7 @@ app.post("/api/xml/suppliers/import", asyncHandler(async (req: Request, res: Res
   if (!Array.isArray(suppliers) || suppliers.length === 0) {
     return res.status(400).json({ error: "Nenhum fornecedor enviado." });
   }
-  const snapshot = await repo.getDocs('suppliers', 'suppliers', true);
+  const snapshot = await repo.getDocs('suppliers', 'suppliers', true, true);
   const existing = snapshot.docs.map((d: any) => ({ id: d.id, ...(typeof d.data === 'function' ? d.data() : d.data) }));
   const result = mergeSuppliersAddOnly(
     existing as any,
@@ -1232,6 +1239,12 @@ app.post("/api/xml/purchase_orders", asyncHandler(async (req: Request, res: Resp
   const id = `po_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
 
   if (priceEstimationEnabled()) {
+    if (items.length > 200) {
+      return res.status(400).json({ error: 'items_required', message: 'Informe de 1 a 200 itens.' });
+    }
+    if (!items.every((it: any) => it && typeof it === 'object' && typeof it.name === 'string' && typeof it.supplierName === 'string')) {
+      return res.status(400).json({ error: 'items_invalid', message: 'Itens inválidos.' });
+    }
     try {
       const creator = String(res.locals.authUser?.name || createdBy || actorName(req, res));
       const ctx = await loadEstimateContext(creator);

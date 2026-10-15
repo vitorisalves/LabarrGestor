@@ -8,7 +8,7 @@ create schema if not exists test;
 grant usage on schema test to service_role;
 alter default privileges in schema test grant all privileges on tables to service_role;
 
--- macro aplicada às 17 coleções, nos schemas public e test:
+-- macro aplicada às 18 coleções, nos schemas public e test:
 --   invoices, xml_spendings, price_increases, suppliers, categories, setores,
 --   product_categories, product_setores, authorized_users, delivered_products,
 --   reminders, shopping_lists, purchase_orders, pending_list_products,
