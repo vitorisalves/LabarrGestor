@@ -219,7 +219,7 @@ const priceEstimationEnabled = () => process.env.PRICE_ESTIMATION_ENABLED === '1
 const actorName = (req: Request, res: Response): string =>
   String(res.locals.authUser?.name || req.body?.by || 'sistema');
 
-async function loadPriceSettings() {
+async function loadPriceSettings(opts: { strict?: boolean } = {}) {
   try {
     const ref = repo.doc('price_settings', 'default');
     const snap = await repo.getDoc(ref, 'price_settings/default', true);
@@ -227,6 +227,7 @@ async function loadPriceSettings() {
     const data: any = exists ? (typeof snap.data === 'function' ? snap.data() : snap.data) : {};
     return { params: normalizeParams(data.params), history: Array.isArray(data.history) ? data.history : [] };
   } catch (e) {
+    if (opts.strict) throw e;
     console.warn('[PriceSettings] usando valores iniciais:', (e as Error).message);
     return { params: DEFAULT_PRICE_PARAMS, history: [] as any[] };
   }
@@ -272,7 +273,7 @@ app.post("/api/xml/price-settings", asyncHandler(async (req: Request, res: Respo
   const errors = validateParams(params);
   if (errors.length > 0) return res.status(400).json({ error: 'invalid_params', message: errors.join(' ') });
 
-  const current = await loadPriceSettings();
+  const current = await loadPriceSettings({ strict: true });
   const at = new Date().toISOString();
   const by = actorName(req, res);
   const entries = diffParams(current.params, params).map(c => ({ at, by, ...c }));
@@ -1232,10 +1233,11 @@ app.post("/api/xml/purchase_orders", asyncHandler(async (req: Request, res: Resp
 
   if (priceEstimationEnabled()) {
     try {
-      const ctx = await loadEstimateContext(String(createdBy || actorName(req, res)));
+      const creator = String(res.locals.authUser?.name || createdBy || actorName(req, res));
+      const ctx = await loadEstimateContext(creator);
       const estimates = estimateItems(items as EstimateRequestItem[], ctx);
       const order = buildOrderDoc({
-        id, name, items, estimates, shippingFee, createdBy: createdBy || '', now: new Date().toISOString(),
+        id, name, items, estimates, shippingFee, createdBy: creator, now: new Date().toISOString(),
       });
       await repo.set(repo.doc('purchase_orders', id), order, 'purchase_orders/' + id);
       repo.invalidateCache('purchase_orders');
@@ -1273,7 +1275,7 @@ app.post("/api/xml/purchase_orders/approve-requisition", asyncHandler(async (req
     const order: any = typeof snap.data === 'function' ? snap.data() : snap.data;
     try {
       const patch = applyRequisitionApproval(order, {
-        approvedBy: approvedBy || actorName(req, res),
+        approvedBy: String(res.locals.authUser?.name || approvedBy || actorName(req, res)),
         observacao,
         approvedLimit,
         limitReason,
