@@ -70,3 +70,24 @@ test('envio para a lista leva a referência da ordem; requisição antiga não g
   assert.equal(list.items[0].estimate.protectedPrice, 22);
   assert.equal(buildListFromOrder({ id: 'old', items: [], total: 1, shippingFee: 0 }, 'n').orderRef, undefined);
 });
+
+test('reaprovação: requisição já aprovada ou enviada não tem o limite alterado (409)', () => {
+  for (const status of ['requisition_approved', 'approved']) {
+    const order = { ...sampleOrder(), status };
+    assert.throws(
+      () => applyRequisitionApproval(order, { approvedBy: 'João', approvedLimit: 300, limitReason: 'Outro motivo', now: 'n' }),
+      (e: any) => e instanceof OrderError && e.code === 'invalid_status' && e.status === 409,
+    );
+  }
+  const pending = applyRequisitionApproval({ ...sampleOrder(), status: 'pending' }, { approvedBy: 'João', now: 'n' }) as any;
+  assert.equal(pending.approvedLimit, 220);
+  const noStatus: any = { ...sampleOrder() };
+  delete noStatus.status;
+  assert.equal((applyRequisitionApproval(noStatus, { approvedBy: 'João', now: 'n' }) as any).approvedLimit, 220);
+});
+
+test('reaprovação: requisição antiga (sem limite sugerido) mantém o comportamento anterior', () => {
+  const patch: any = applyRequisitionApproval({ id: 'old', status: 'requisition_approved', total: 50 }, { approvedBy: 'João', now: 'n' });
+  assert.equal(patch.status, 'requisition_approved');
+  assert.equal('approvedLimit' in patch, false);
+});

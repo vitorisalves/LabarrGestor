@@ -86,6 +86,12 @@ export function applyRequisitionApproval(order: any, args: ApprovalArgs) {
   const suggested = order?.suggestedLimit;
   if (typeof suggested !== 'number') return base;
 
+  // O limite é definido na PRIMEIRA aprovação: requisição já processada não pode ser reaprovada.
+  const currentStatus = order?.status ?? 'pending';
+  if (currentStatus !== 'pending') {
+    throw new OrderError('invalid_status', 'Esta requisição já foi processada e não pode ter o limite alterado.', 409);
+  }
+
   const hasLimit = args.approvedLimit !== undefined && args.approvedLimit !== null && args.approvedLimit !== '';
   const limit = hasLimit ? Number(args.approvedLimit) : suggested;
   if (!Number.isFinite(limit) || limit < 0) {
