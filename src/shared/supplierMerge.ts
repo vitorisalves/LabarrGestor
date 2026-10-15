@@ -22,7 +22,7 @@ export function mergeSuppliersAddOnly(existing: MergeSupplier[], incoming: Merge
   const byName = new Map<string, MergeSupplier>();
   existing.forEach(s => byName.set(normName(s.name), s));
 
-  const toSave: MergeSupplier[] = [];
+  const changed = new Map<string, MergeSupplier>();
   let addedSuppliers = 0;
   let addedProducts = 0;
   let skippedProducts = 0;
@@ -45,16 +45,16 @@ export function mergeSuppliersAddOnly(existing: MergeSupplier[], incoming: Merge
       if (fresh.length > 0) {
         const merged = { ...current, products: [...current.products, ...fresh] };
         byName.set(key, merged);
-        toSave.push(merged);
+        changed.set(key, merged);
         addedProducts += fresh.length;
       }
     } else {
       const created = { ...supplier, id: supplier.id || newId(), products: fresh };
       byName.set(key, created);
-      toSave.push(created);
+      changed.set(key, created);
       addedSuppliers++;
       addedProducts += fresh.length;
     }
   }
-  return { toSave, addedSuppliers, addedProducts, skippedProducts };
+  return { toSave: Array.from(changed.values()), addedSuppliers, addedProducts, skippedProducts };
 }
