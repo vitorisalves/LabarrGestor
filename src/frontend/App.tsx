@@ -92,7 +92,7 @@ export default function App() {
     isLoading: isSuppliersLoading,
     refreshData: refreshSuppliers,
     saveSupplier,
-    saveSuppliersBatch,
+    importSuppliersAddOnly,
     deleteSupplier,
     deleteAllSuppliers,
     addCategory,
@@ -450,7 +450,7 @@ export default function App() {
     handleImportExcel,
     handleSyncSheets,
     performImport
-  } = useExcel(suppliers, saveSuppliersBatch, addNotification);
+  } = useExcel(suppliers, importSuppliersAddOnly, addNotification);
 
   // --- LOCAL UI STATE ---
   const [loginCpf, setLoginCpf] = useState('');
@@ -619,16 +619,16 @@ export default function App() {
     });
   }, [handleImportExcel]);
 
-  const onPerformImport = React.useCallback(async (replace: boolean) => {
+  const onPerformImport = React.useCallback(async () => {
     if (!pendingImportData || isImporting) return;
     setIsImporting(true);
     try {
-      await performImport(pendingImportData, replace, deleteAllSuppliers);
+      await performImport(pendingImportData);
       setPendingImportData(null);
     } finally {
       setIsImporting(false);
     }
-  }, [pendingImportData, isImporting, performImport, deleteAllSuppliers]);
+  }, [pendingImportData, isImporting, performImport]);
 
   const onSyncSheets = React.useCallback(async () => {
     await handleSyncSheets((data) => {

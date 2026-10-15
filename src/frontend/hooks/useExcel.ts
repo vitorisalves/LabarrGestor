@@ -10,7 +10,7 @@ import { Supplier, Product } from '../types';
 import { generateId, extractErrorMessage } from '../utils';
 import { getProductCategories } from '../utils/productCategories';
 
-export const useExcel = (suppliers: Supplier[], saveSuppliersBatch: (batch: Supplier[]) => Promise<boolean>, addNotification: any) => {
+export const useExcel = (suppliers: Supplier[], importSuppliersAddOnly: (batch: Supplier[]) => Promise<{ ok: boolean; addedSuppliers: number; addedProducts: number; skippedProducts: number }>, addNotification: any) => {
   const handleExportExcel = () => {
     const exportData = suppliers.flatMap(supplier => 
       supplier.products.map(product => ({
@@ -118,77 +118,20 @@ export const useExcel = (suppliers: Supplier[], saveSuppliersBatch: (batch: Supp
     reader.readAsArrayBuffer(file);
   };
 
-  const performImport = async (data: Record<string, Supplier>, replace: boolean, deleteAllSuppliers: () => Promise<void>) => {
+  const performImport = async (data: Record<string, Supplier>) => {
     try {
-      if (replace) {
-        await deleteAllSuppliers();
-      }
-
-      const existingSuppliersMap = new Map(suppliers.map(s => [s.name.trim().toUpperCase(), s]));
-      const importedSuppliers = Object.values(data);
-      let addedCount = 0;
-      let updatedCount = 0;
-      const toSave: Supplier[] = [];
-
-      for (const supplier of importedSuppliers) {
-        const normalizedName = supplier.name.trim().toUpperCase();
-        const existingSupplier = existingSuppliersMap.get(normalizedName);
-
-        // Se não for substituir e o fornecedor já existir, mesclamos os produtos
-        if (!replace && existingSupplier) {
-          const updatedSupplier: Supplier = { ...existingSupplier };
-          const pMap = new Map<string, number>(); 
-          updatedSupplier.products.forEach((p, idx) => pMap.set(p.name.trim().toUpperCase(), idx));
-
-          let changed = false;
-          supplier.products.forEach(newP => {
-            const pKey = newP.name.trim().toUpperCase();
-            if (pMap.has(pKey)) {
-              const existingIdx = pMap.get(pKey)!;
-              const oldP = updatedSupplier.products[existingIdx];
-              
-              // Verifica se houve mudança real nos dados do produto
-              if (oldP.price !== newP.price ||
-                  JSON.stringify(oldP.categories) !== JSON.stringify(newP.categories) ||
-                  oldP.paymentMethod !== newP.paymentMethod ||
-                  oldP.lastPurchaseDate !== newP.lastPurchaseDate) {
-                updatedSupplier.products[existingIdx] = { ...newP };
-                changed = true;
-              }
-            } else {
-              // Produto novo para fornecedor existente
-              updatedSupplier.products.push({ ...newP });
-              changed = true;
-            }
-          });
-
-          if (changed) {
-            toSave.push(updatedSupplier);
-            updatedCount++;
-          }
-          continue;
-        }
-
-        // Se for substituir ou se for um fornecedor totalmente novo
-        toSave.push(supplier);
-        addedCount++;
-      }
-
-      // Grava tudo de uma vez pela rota de importação (exige a permissão de importar planilha).
-      const saved = await saveSuppliersBatch(toSave);
-      if (!saved) {
+      const result = await importSuppliersAddOnly(Object.values(data));
+      if (!result.ok) {
         addNotification('A importação não foi salva. Verifique se você tem permissão para importar planilhas.', 0);
         return;
       }
-
-      if (addedCount === 0 && updatedCount === 0 && !replace) {
-        addNotification('Nenhuma alteração necessária. Tudo está atualizado.', 0);
+      if (result.addedSuppliers === 0 && result.addedProducts === 0) {
+        addNotification(`Nada novo para importar: ${result.skippedProducts} produto(s) já existiam e foram mantidos.`, 0);
       } else {
-        let msg = replace ? 'Lista substituída com sucesso!' : 'Sincronização concluída!';
-        if (!replace) {
-          msg = `Sincronização: ${addedCount} novos e ${updatedCount} atualizados.`;
-        }
-        addNotification(msg, addedCount + updatedCount);
+        addNotification(
+          `Importação: ${result.addedSuppliers} fornecedor(es) e ${result.addedProducts} produto(s) novos; ${result.skippedProducts} já existiam e foram mantidos.`,
+          result.addedProducts
+        );
       }
     } catch (err) {
       console.error('Erro na execução da importação:', extractErrorMessage(err));

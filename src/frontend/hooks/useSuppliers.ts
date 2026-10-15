@@ -182,39 +182,32 @@ export const useSuppliers = (isAuthReady: boolean, isApproved: boolean) => {
     }
   };
 
-  // Salva vários fornecedores de uma vez (importação de planilha), pela rota de importação.
-  const saveSuppliersBatch = async (batch: Supplier[]): Promise<boolean> => {
-    if (batch.length === 0) return true;
-    const sanitized = batch.map(s => ({ ...s, id: s.id || generateId() }));
-
-    // Optimistic update
-    setSuppliers(prev => {
-      const next = [...prev];
-      sanitized.forEach(sup => {
-        const index = next.findIndex(s => s.id === sup.id);
-        if (index !== -1) next[index] = sup; else next.push(sup);
-      });
-      localStorage.setItem('cache_suppliers', safeStringify(next));
-      return next;
-    });
-
+  // Importação de planilha: o servidor só ACRESCENTA fornecedores/produtos novos e devolve as contagens.
+  const importSuppliersAddOnly = async (batch: Supplier[]) => {
+    const failed = { ok: false, addedSuppliers: 0, addedProducts: 0, skippedProducts: 0 };
+    if (batch.length === 0) return { ...failed, ok: true };
     try {
       const res = await fetch('/api/xml/suppliers/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ suppliers: sanitized.map(s => cleanObject(s)) })
+        body: JSON.stringify({ suppliers: batch.map(s => cleanObject(s)) })
       });
       if (!res.ok) {
         console.warn(`Importação não foi salva (HTTP ${res.status}).`);
-        await loadData(true);
-        return false;
+        return failed;
       }
+      const data = await res.json();
       await invalidateBackendCache('suppliers');
-      return true;
+      await loadData(true);
+      return {
+        ok: true,
+        addedSuppliers: Number(data.addedSuppliers) || 0,
+        addedProducts: Number(data.addedProducts) || 0,
+        skippedProducts: Number(data.skippedProducts) || 0,
+      };
     } catch (err: any) {
       console.warn("Importação de fornecedores falhou:", err.message);
-      await loadData(true);
-      return false;
+      return failed;
     }
   };
 
@@ -353,7 +346,7 @@ export const useSuppliers = (isAuthReady: boolean, isApproved: boolean) => {
     isLoading,
     refreshData,
     saveSupplier,
-    saveSuppliersBatch,
+    importSuppliersAddOnly,
     deleteSupplier,
     deleteAllSuppliers,
     addCategory,

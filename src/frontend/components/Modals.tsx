@@ -107,7 +107,7 @@ interface ModalsProps {
 
   pendingImportData: Record<string, Supplier> | null;
   setPendingImportData: (data: Record<string, Supplier> | null) => void;
-  handlePerformImport: (replace: boolean) => void;
+  handlePerformImport: () => void;
   isImporting: boolean;
   isSaving: boolean;
 }
