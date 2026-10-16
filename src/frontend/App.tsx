@@ -45,7 +45,7 @@ const PurchaseForecastView = React.lazy(() => import('./components/PurchaseForec
 const DREVendasView = React.lazy(() => import('./components/DREVendasView').then(m => ({ default: m.DREVendasView })));
 
 // Types
-import { Product, Supplier } from './types';
+import { CartItem, Product, Supplier } from './types';
 import { extractErrorMessage } from './utils';
 import { PERMISSION_DENIED_EVENT } from './utils/apiAuthFetch';
 import { PermissionsProvider } from './context/PermissionsContext';
@@ -487,6 +487,17 @@ export default function App() {
   const [listName, setListName] = useState('');
   const [shippingFee, setShippingFee] = useState<number>(0);
   const [editingListId, setEditingListId] = useState<string | null>(null);
+  // Edição de lista salva: usa itens próprios e NÃO mexe no carrinho de compras.
+  const [editItems, setEditItems] = useState<CartItem[]>([]);
+  const editDraftRef = React.useRef<{ listName: string; shippingFee: number } | null>(null);
+  const exitListEdit = React.useCallback(() => {
+    const draft = editDraftRef.current;
+    editDraftRef.current = null;
+    setEditItems([]);
+    setEditingListId(null);
+    setListName(draft ? draft.listName : '');
+    setShippingFee(draft ? draft.shippingFee : 0);
+  }, []);
   // Editando lista já enviada: a estimativa fica desligada (o total exibido deve ser o que é salvo).
   const priceEstimation = usePriceEstimation(cart, isCartOpen && !editingListId);
   const { deletions, setDeletion } = useDeletions();
@@ -539,11 +550,9 @@ export default function App() {
     try {
       if (editingListId) {
         // Editar uma lista já enviada continua indo direto, sem passar por aprovação de novo
-        const updatedList = await finalizeList(listName, editingListId, shippingFee);
+        const updatedList = await finalizeList(listName, editingListId, shippingFee, editItems);
         if (updatedList) {
-          setListName('');
-          setShippingFee(0);
-          setEditingListId(null);
+          exitListEdit();
           setIsCartOpen(false);
           setCurrentPage('history');
           addNotification('Lista atualizada!', 1);
@@ -568,7 +577,7 @@ export default function App() {
     } finally {
       setIsFinalizing(false);
     }
-  }, [isFinalizing, finalizeList, createPurchaseOrder, listName, shippingFee, editingListId, cart, clearCart, addNotification, addAppNotification]);
+  }, [isFinalizing, finalizeList, createPurchaseOrder, listName, shippingFee, editingListId, editItems, exitListEdit, cart, clearCart, addNotification, addAppNotification]);
 
   const onSetActiveTargetList = React.useCallback((id: string | null, name: string | null) => {
     setActiveTargetListId(id);
@@ -580,12 +589,14 @@ export default function App() {
   }, [addNotification]);
 
   const onEditSavedList = React.useCallback((list: any) => {
-    setCart(list.items);
+    // Guarda o nome/frete que estavam no carrinho para restaurar ao sair da edição.
+    if (!editingListId) editDraftRef.current = { listName, shippingFee };
+    setEditItems(list.items);
     setListName(list.name);
     setShippingFee(list.shippingFee || 0);
     setEditingListId(list.id);
     setIsCartOpen(true);
-  }, [setCart, setListName, setShippingFee, setEditingListId, setIsCartOpen]);
+  }, [editingListId, listName, shippingFee, setEditItems, setListName, setShippingFee, setEditingListId, setIsCartOpen]);
 
   const onAddCategory = React.useCallback(() => {
     if (newCategoryName.trim()) {
@@ -638,8 +649,8 @@ export default function App() {
   }, [handleSyncSheets]);
 
   const handleUpdateProductPrice = React.useCallback(async (name: string, supplierName: string, newPrice: number) => {
-    // 1. Update cart
-    setCart(prev => prev.map(item => item.name === name && item.supplierName === supplierName ? { ...item, price: newPrice } : item));
+    // 1. Update cart (ou os itens da lista em edição)
+    (editingListId ? setEditItems : setCart)(prev => prev.map(item => item.name === name && item.supplierName === supplierName ? { ...item, price: newPrice } : item));
     
     // 2. Update all saved lists
     await updateProductPriceInLists(name, supplierName, newPrice);
@@ -660,7 +671,7 @@ export default function App() {
         }
       }
     }
-  }, [setCart, updateProductPriceInLists, suppliers, saveSupplier, addNotification]);
+  }, [editingListId, setCart, updateProductPriceInLists, suppliers, saveSupplier, addNotification]);
 
   const onEditProductFromShopping = React.useCallback((product: Product, supplierName: string) => {
     const supplier = suppliers.find(s => s.name === supplierName);
@@ -767,6 +778,22 @@ export default function App() {
       />
     );
   }
+
+  // Quando uma lista salva está em edição, o modal trabalha nos itens da edição (não no carrinho).
+  const editQty = (name: string, supplierName: string, delta: number) =>
+    setEditItems(prev => prev
+      .map(i => i.name === name && i.supplierName === supplierName ? { ...i, quantity: Math.max(0, i.quantity + delta) } : i)
+      .filter(i => i.quantity > 0));
+  const editSetQty = (name: string, supplierName: string, quantity: number) =>
+    setEditItems(prev => prev.map(i =>
+      i.name === name && i.supplierName === supplierName ? { ...i, quantity: Math.max(0, isNaN(quantity) ? 0 : quantity) } : i));
+  const editRemove = (name: string, supplierName: string) =>
+    setEditItems(prev => prev.filter(i => !(i.name === name && i.supplierName === supplierName)));
+  // Fechar o modal durante a edição cancela a edição (o carrinho segue como estava).
+  const handleSetIsCartOpen = (open: boolean) => {
+    setIsCartOpen(open);
+    if (!open && editingListId) exitListEdit();
+  };
 
   return (
     <PermissionsProvider value={{ can, isAdmin }}>
@@ -975,20 +1002,20 @@ export default function App() {
         handleAddSupplier={(e) => onAddSupplier(e, setIsAdding)}
         resetForm={resetForm}
         isCartOpen={isCartOpen}
-        setIsCartOpen={setIsCartOpen}
-        cart={cart}
+        setIsCartOpen={handleSetIsCartOpen}
+        cart={editingListId ? editItems : cart}
         listName={listName}
         setListName={setListName}
         shippingFee={shippingFee}
         setShippingFee={setShippingFee}
-        updateCartQuantity={handleUpdateCartQuantity}
-        setCartQuantity={setCartQuantity}
+        updateCartQuantity={editingListId ? editQty : handleUpdateCartQuantity}
+        setCartQuantity={editingListId ? editSetQty : setCartQuantity}
         updateProductPrice={handleUpdateProductPrice}
-        removeFromCart={removeFromCart}
+        removeFromCart={editingListId ? editRemove : removeFromCart}
         finalizeList={onFinalizeList}
         isFinalizing={isFinalizing}
         isEditingList={!!editingListId}
-        clearCart={clearCart}
+        clearCart={editingListId ? () => setEditItems([]) : clearCart}
         isSettingsOpen={isSettingsOpen}
         setIsSettingsOpen={setIsSettingsOpen}
         newCategoryName={newCategoryName}

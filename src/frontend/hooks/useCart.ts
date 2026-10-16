@@ -137,15 +137,17 @@ export const useCart = (
     ));
   };
 
-  const finalizeList = async (listName: string, editingListId: string | null = null, shippingFee: number = 0) => {
-    if (cart.length === 0) return null;
+  // `items`: itens próprios (ex.: edição de uma lista salva). Sem eles usa o carrinho.
+  const finalizeList = async (listName: string, editingListId: string | null = null, shippingFee: number = 0, items?: CartItem[]) => {
+    const source = items ?? cart;
+    if (source.length === 0) return null;
 
-    const itemsTotal = cart.reduce((acc, item) => acc + (item.price * item.quantity), 0);
+    const itemsTotal = source.reduce((acc, item) => acc + (item.price * item.quantity), 0);
     const total = itemsTotal + shippingFee;
     const listData = cleanObject({
       name: listName,
       date: new Date().toISOString(),
-      items: cart.map(item => cleanObject({ ...item, bought: !!(item as any).bought })),
+      items: source.map(item => cleanObject({ ...item, bought: !!(item as any).bought })),
       total,
       shippingFee,
       createdBy: loggedName
@@ -154,7 +156,7 @@ export const useCart = (
     if (editingListId) {
       // Optimistic update
       setSavedLists(prev => prev.map(l => l.id === editingListId ? { id: editingListId, ...l, ...listData } : l));
-      clearCart();
+      if (!items) clearCart(); // com itens próprios, o carrinho de compras não é tocado
       
       try {
         await fetch('/api/xml/shopping_lists', {

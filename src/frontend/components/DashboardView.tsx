@@ -1284,6 +1284,21 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
   // em outubro, nada é descontado de outubro, e a sobra de um mês não vira crédito para outro.
   const isMissingNF = (item: any) => item?.source === 'shopping_list' && item?.hasNF !== true;
 
+  const productInSelectedCategory = (p: any) => {
+    const norm = (str: string) => String(str || '').toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
+    const pVal = p.categoryId || p.category;
+    if (!pVal) return false;
+    const selNorm = norm(selectedChartCategory);
+    const selName = selectedCategoryObj ? norm(selectedCategoryObj.name) : selNorm;
+    const selId = selectedCategoryObj ? norm(selectedCategoryObj.id) : selNorm;
+    const pNorm = norm(pVal);
+    const found = normalizedCategories.find(c => c.id === pVal || c.name === pVal || norm(c.id) === pNorm || norm(c.name) === pNorm);
+    const fName = found ? norm(found.name) : '';
+    const fId = found ? norm(found.id) : '';
+    return pNorm === selNorm || pNorm === selName || pNorm === selId ||
+      (!!fName && (fName === selName || fName === selNorm)) || (!!fId && (fId === selId || fId === selNorm));
+  };
+
   const { totalExpenseMissingNF } = useMemo(() => {
     const start = new Date(startDate + 'T00:00:00');
     const end = new Date(endDate + 'T23:59:59');
@@ -1298,6 +1313,21 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
       const spendingDate = parseDateSafe(dateStr);
       if (!spendingDate || spendingDate < start || spendingDate > end) return;
       const month = format(spendingDate, 'yyyy-MM');
+
+      // Com categoria selecionada, o saldo é calculado só com os produtos dela (como nos setores).
+      if (selectedChartCategory) {
+        const missing = isMissingNF(spending);
+        if (!missing && spending.source === 'shopping_list') return;
+        (spending.products || []).filter((p: any) => !p.deleted && productInSelectedCategory(p)).forEach((p: any) => {
+          if (missing) {
+            const val = p.totalNet !== undefined ? p.totalNet : (p.vUnCom || p.price || 0) * (p.quantity || 1);
+            entries.push({ month, kind: 'list', value: val });
+          } else {
+            entries.push({ month, kind: 'real', value: (p.vUnComGross || p.vUnCom || p.price || 0) * (p.quantity || 1) });
+          }
+        });
+        return;
+      }
 
       if (isMissingNF(spending)) {
         // Confirmado pela lista de compras, ainda sem NF real: soma na dívida
@@ -1322,7 +1352,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
 
     const balance = missingNFBalances(entries).get('') ?? { value: 0 };
     return { totalExpenseMissingNF: balance.value };
-  }, [invoices, startDate, endDate]);
+  }, [invoices, startDate, endDate, selectedChartCategory, selectedCategoryObj, normalizedCategories]);
 
   // List of invoices inside range
   const invoicesInRange = useMemo(() => {
@@ -1601,7 +1631,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
         isLoading={isLoading}
         selectedCategoryName={selectedCategoryName}
         xmlSpendings={xmlSpendings}
-        totalExpenseMissingNF={selectedCategoryName ? 0 : totalExpenseMissingNF}
+        totalExpenseMissingNF={totalExpenseMissingNF}
       />
 
       <PendingListProductsPanel
