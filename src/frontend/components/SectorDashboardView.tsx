@@ -10,7 +10,7 @@ import { format, startOfMonth, endOfMonth, isWithinInterval, parseISO } from 'da
 import { ptBR } from 'date-fns/locale';
 import { formatCurrency } from '../utils';
 import { useSetorLimits } from '../hooks/useSetorLimits';
-import { missingNFBalances, NFEntry } from '../../shared/missingNF';
+import { missingNFRunning, TimedNFEntry } from '../../shared/missingNF';
 import { ResetListSpendingsButton } from './dashboard/ResetListSpendingsButton';
 
 interface SectorDashboardViewProps {
@@ -79,7 +79,7 @@ export const SectorDashboardView: React.FC<SectorDashboardViewProps> = ({ setore
     const monthDate = new Date(y, m - 1, 1);
     const start = startOfMonth(monthDate);
     const end = endOfMonth(monthDate);
-    const entries: NFEntry[] = [];
+    const entries: TimedNFEntry[] = [];
 
     invoices.forEach((inv: any) => {
       const dateStr = inv.date || inv.dhEmi || inv.createdAt;
@@ -95,16 +95,16 @@ export const SectorDashboardView: React.FC<SectorDashboardViewProps> = ({ setore
           const val = p.totalNet !== undefined
             ? p.totalNet
             : (p.vUnCom || p.price || 0) * (p.quantity || 1);
-          entries.push({ month: selectedMonth, kind: 'list', value: val, group: p.setor });
+          entries.push({ month: selectedMonth, time: spendingDate.getTime(), kind: 'list', value: val, group: p.setor });
         } else if (inv.source !== 'shopping_list') {
           const grossVal = (p.vUnComGross || p.vUnCom || p.price || 0) * (p.quantity || 1);
-          entries.push({ month: selectedMonth, kind: 'real', value: grossVal, group: p.setor });
+          entries.push({ month: selectedMonth, time: spendingDate.getTime(), kind: 'real', value: grossVal, group: p.setor });
         }
       });
     });
 
     const result = new Map<string, number>();
-    missingNFBalances(entries).forEach((balance, setor) => result.set(setor, balance.value));
+    missingNFRunning(entries).forEach((balance, setor) => result.set(setor, balance.value));
     return result;
   }, [invoices, selectedMonth]);
 

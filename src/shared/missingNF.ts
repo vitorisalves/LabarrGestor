@@ -52,3 +52,39 @@ export function missingNFBalances(entries: NFEntry[]): Map<string, MissingNFBala
   });
   return result;
 }
+
+export interface TimedNFEntry extends NFEntry {
+  /** Momento da entrada (ms). Define a ordem dentro do mês. */
+  time: number;
+}
+
+/**
+ * Saldo "Faltando NF" em ordem cronológica, mês a mês: cada produto confirmado como NF soma no
+ * saldo do mês em que foi confirmado; cada nota real, a partir do momento em que entra, desconta
+ * do saldo que existe até ali (nunca fica negativo, sem crédito). Uma nota que entrou ANTES de
+ * uma confirmação não cancela essa confirmação.
+ */
+export function missingNFRunning(entries: TimedNFEntry[]): Map<string, MissingNFBalance> {
+  const buckets = new Map<string, Map<string, TimedNFEntry[]>>();
+  for (const e of entries) {
+    const group = e.group ?? '';
+    let months = buckets.get(group);
+    if (!months) { months = new Map(); buckets.set(group, months); }
+    const list = months.get(e.month) ?? [];
+    list.push(e);
+    months.set(e.month, list);
+  }
+  const result = new Map<string, MissingNFBalance>();
+  buckets.forEach((months, group) => {
+    let value = 0;
+    months.forEach(list => {
+      // Na mesma hora, a confirmação conta antes da nota.
+      list.sort((a, b) => a.time - b.time || (a.kind === b.kind ? 0 : a.kind === 'list' ? -1 : 1));
+      let bal = 0;
+      for (const e of list) bal = e.kind === 'list' ? bal + e.value : Math.max(0, bal - e.value);
+      value += bal;
+    });
+    result.set(group, { value: round2(value) });
+  });
+  return result;
+}

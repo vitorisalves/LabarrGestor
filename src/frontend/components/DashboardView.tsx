@@ -24,6 +24,7 @@ import { formatCurrency } from '../utils';
 import { SavedList } from '../types';
 import { useTestMode } from '../context/TestModeContext';
 import { analyzePrices } from '../utils/priceAnalysis';
+import { missingNFRunning, TimedNFEntry } from '../../shared/missingNF';
 import { DashboardStatsCards } from './dashboard/DashboardStatsCards';
 import { SystemLogsPanel } from './dashboard/SystemLogsPanel';
 import { MonthlySpendChart } from './dashboard/MonthlySpendChart';
@@ -37,7 +38,6 @@ import { SectorDashboardView } from './SectorDashboardView';
 import { ResetListSpendingsButton } from './dashboard/ResetListSpendingsButton';
 import { stagePendingXml, fetchPendingXml, setPendingXmlStatus } from '../utils/pendingXmlImports';
 import { usePermissions } from '../context/PermissionsContext';
-import { missingNFBalances, NFEntry } from '../../shared/missingNF';
 import { usePendingListProductsPanel } from '../hooks/usePendingListProductsPanel';
 import { useXmlSpendings } from '../hooks/useXmlSpendings';
 
@@ -1299,59 +1299,34 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
       (!!fName && (fName === selName || fName === selNorm)) || (!!fId && (fId === selId || fId === selNorm));
   };
 
+  // "Faltando NF": produtos confirmados pela lista como "NF" entram no saldo do mês em que foram
+  // confirmados (valor da confirmação); cada nota real importada desconta do saldo daquele mês a
+  // partir da sua data (src/shared/missingNF.ts). Respeita o filtro de categoria.
   const { totalExpenseMissingNF } = useMemo(() => {
     const start = new Date(startDate + 'T00:00:00');
     const end = new Date(endDate + 'T23:59:59');
-    const entries: NFEntry[] = [];
-
-    // Usa `invoices`, não `xmlSpendings` - a cópia em xml_spendings não carrega a
-    // lista de produtos (fica vazia), então o valor bruto (vUnComGross) nunca dava
-    // certo por ali; em invoices os produtos vêm completos.
+    const entries: TimedNFEntry[] = [];
     invoices.forEach(spending => {
       const dateStr = spending.dhEmi || spending.date || spending.createdAt;
       if (!dateStr) return;
       const spendingDate = parseDateSafe(dateStr);
       if (!spendingDate || spendingDate < start || spendingDate > end) return;
       const month = format(spendingDate, 'yyyy-MM');
-
-      // Com categoria selecionada, o saldo é calculado só com os produtos dela (como nos setores).
-      if (selectedChartCategory) {
-        const missing = isMissingNF(spending);
-        if (!missing && spending.source === 'shopping_list') return;
-        (spending.products || []).filter((p: any) => !p.deleted && productInSelectedCategory(p)).forEach((p: any) => {
-          if (missing) {
-            const val = p.totalNet !== undefined ? p.totalNet : (p.vUnCom || p.price || 0) * (p.quantity || 1);
-            entries.push({ month, kind: 'list', value: val });
-          } else {
-            entries.push({ month, kind: 'real', value: (p.vUnComGross || p.vUnCom || p.price || 0) * (p.quantity || 1) });
-          }
+      const time = spendingDate.getTime();
+      const missing = isMissingNF(spending);
+      if (!missing && spending.source === 'shopping_list') return;
+      const prods = (spending.products || []).filter((p: any) => !p.deleted && (!selectedChartCategory || productInSelectedCategory(p)));
+      if (missing) {
+        prods.forEach((p: any) => {
+          const val = p.totalNet !== undefined ? p.totalNet : (p.vUnCom || p.price || 0) * (p.quantity || 1);
+          entries.push({ month, time, kind: 'list', value: val });
         });
-        return;
-      }
-
-      if (isMissingNF(spending)) {
-        // Confirmado pela lista de compras, ainda sem NF real: soma na dívida
-        // pelo valor cheio do produto (não tem desconto de nota aqui).
-        const val = typeof spending.vTotTrib === 'number' && spending.vTotTrib > 0
-          ? spending.vTotTrib
-          : (spending.vNF || spending.total || 0);
-        entries.push({ month, kind: 'list', value: val });
-      } else if (spending.source !== 'shopping_list') {
-        // NF real (importada via XML): abate a dívida do mês. Usamos o valor CHEIO dos
-        // produtos (antes do desconto da nota, não o vTotTrib/total já descontado),
-        // porque a dívida foi criada com o valor cheio do produto - se a nota vier
-        // com desconto, abater só o valor pago deixaria sobra artificial.
-        const grossVal = (spending.products || []).reduce((acc: number, p: any) =>
-          acc + ((p.vUnComGross || p.vUnCom || p.price || 0) * (p.quantity || 1)), 0);
-        const netVal = typeof spending.vTotTrib === 'number' && spending.vTotTrib > 0
-          ? spending.vTotTrib
-          : (spending.vNF || spending.total || 0);
-        entries.push({ month, kind: 'real', value: grossVal > 0 ? grossVal : netVal });
+      } else {
+        const gross = prods.reduce((acc: number, p: any) => acc + ((p.vUnComGross || p.vUnCom || p.price || 0) * (p.quantity || 1)), 0);
+        if (gross > 0) entries.push({ month, time, kind: 'real', value: gross });
       }
     });
-
-    const balance = missingNFBalances(entries).get('') ?? { value: 0 };
-    return { totalExpenseMissingNF: balance.value };
+    return { totalExpenseMissingNF: missingNFRunning(entries).get('')?.value ?? 0 };
   }, [invoices, startDate, endDate, selectedChartCategory, selectedCategoryObj, normalizedCategories]);
 
   // List of invoices inside range

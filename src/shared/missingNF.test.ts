@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { missingNFBalances, NFEntry } from './missingNF';
+import { missingNFBalances, missingNFRunning, NFEntry } from './missingNF';
 
 const list = (month: string, value: number, group?: string): NFEntry => ({ month, kind: 'list', value, group });
 const real = (month: string, value: number, group?: string): NFEntry => ({ month, kind: 'real', value, group });
@@ -46,4 +46,23 @@ test('agrupa por setor (ou qualquer chave) mantendo a regra mensal', () => {
 
 test('arredonda para centavos', () => {
   assert.equal(total([list('2026-10', 0.1), list('2026-10', 0.2)]).value, 0.3);
+});
+
+test('missingNFRunning: nota anterior não cancela confirmação posterior; nota posterior desconta', () => {
+  const r = missingNFRunning([
+    { month: '2026-10', time: 1, kind: 'real', value: 500 },
+    { month: '2026-10', time: 2, kind: 'list', value: 300 },
+    { month: '2026-10', time: 3, kind: 'real', value: 100 },
+    { month: '2026-10', time: 4, kind: 'list', value: 50 },
+  ]);
+  assert.equal(r.get('')!.value, 250);
+});
+
+test('missingNFRunning: sobra da nota não vira crédito e meses são independentes', () => {
+  const r = missingNFRunning([
+    { month: '2026-09', time: 1, kind: 'list', value: 100 },
+    { month: '2026-10', time: 2, kind: 'list', value: 80 },
+    { month: '2026-10', time: 3, kind: 'real', value: 1000 },
+  ]);
+  assert.equal(r.get('')!.value, 100);
 });
