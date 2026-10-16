@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { normName } from './text';
+import { normName } from './text.js';
 
 // A planilha só introduz o que ainda não existe: fornecedor novo entra completo e
 // fornecedor existente só recebe produtos novos. Nada do que já existe é alterado.

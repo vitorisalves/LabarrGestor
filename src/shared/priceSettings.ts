@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { DEFAULT_PRICE_PARAMS, PriceParams } from './priceEstimation';
+import { DEFAULT_PRICE_PARAMS, PriceParams } from './priceEstimation.js';
 
 export interface PriceSettingsChange {
   at: string;

@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { estimatePrice, HistoryPoint, ManualReference, PriceEstimate, PriceParams } from '../../shared/priceEstimation';
-import { extractWeightKg } from '../../shared/units';
-import { normName } from '../../shared/text';
+import { estimatePrice, HistoryPoint, ManualReference, PriceEstimate, PriceParams } from '../../shared/priceEstimation.js';
+import { extractWeightKg } from '../../shared/units.js';
+import { normName } from '../../shared/text.js';
 
 // Camada que traduz os dados do sistema (notas, fornecedores) para a entrada do motor puro.
 // Não acessa banco: quem chama (app.ts) carrega as coleções e passa aqui.

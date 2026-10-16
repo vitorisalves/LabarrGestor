@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { PriceEstimate } from '../../shared/priceEstimation';
+import { PriceEstimate } from '../../shared/priceEstimation.js';
 
 // Regras puras da requisição com estimativa: montagem do documento, aprovação do limite
 // e envio para a lista. app.ts só carrega/grava; as decisões ficam aqui para serem testáveis.
