@@ -24,12 +24,17 @@ test('POST /api/xml/reminders cria e retorna id', async () => {
   await fetch(`${base}/api/xml/reminders/delete`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: body.id }) });
 });
 
-test('POST /api/auth/users/upsert without token → 401', async () => {
-  const res = await fetch(`${base}/api/auth/users/upsert`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ uid: 'x', user: {} }) });
-  assert.equal(res.status, 401);
+test('POST /api/auth/session sem token → 401', async () => {
+  delete process.env.DISABLE_PERMISSION_ENFORCEMENT;
+  try {
+    const res = await fetch(`${base}/api/auth/session`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    assert.equal(res.status, 401);
+  } finally {
+    process.env.DISABLE_PERMISSION_ENFORCEMENT = '1';
+  }
 });
 
-test('guarda de permissões: gravar sem token → 401, ler continua liberado', async () => {
+test('guarda de acesso: sem token, gravar e ler dão 401; só /health e a chave do push são públicos', async () => {
   delete process.env.DISABLE_PERMISSION_ENFORCEMENT;
   try {
     const write = await fetch(`${base}/api/xml/reminders`, {
@@ -37,9 +42,12 @@ test('guarda de permissões: gravar sem token → 401, ler continua liberado', a
       body: JSON.stringify({ productName: 'Teste', date: new Date().toISOString() }),
     });
     assert.equal(write.status, 401);
-    const read = await fetch(`${base}/api/xml/setores`);
-    assert.notEqual(read.status, 401);
-    assert.notEqual(read.status, 403);
+    for (const path of ['/api/xml/setores', '/api/xml/invoices', '/api/auth/users', '/api/auth/users/me', '/api/debug-db', '/api/omie-direct/products', '/api/excel-sync']) {
+      const read = await fetch(`${base}${path}`);
+      assert.equal(read.status, 401, path);
+    }
+    assert.equal((await fetch(`${base}/api/health`)).status, 200);
+    assert.equal((await fetch(`${base}/api/notifications/vapid-key`)).status, 200);
   } finally {
     process.env.DISABLE_PERMISSION_ENFORCEMENT = '1';
   }

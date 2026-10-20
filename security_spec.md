@@ -4,9 +4,9 @@
 1. A user can only perform write operations (create, update, delete) on suppliers, lists, categories, reminders, and delivered products if their user status is 'approved'.
 2. Only administrators can approve or deny user requests, or remove authorized users.
 3. Users can create their own registration request exactly once.
-4. CPFs must be exactly 11 digits.
+4. CPF is optional and informational only; it never grants access.
 5. All IDs must follow the standard ID pattern.
-6. The user identified by the hardcoded admin CPF (05839352144) is automatically an admin.
+6. Access is by verified Google account. The super admin is the account whose e-mail equals the SUPER_ADMIN_EMAIL environment variable (verified Google e-mail); it cannot be demoted, denied or removed by anyone.
 
 ## The Dirty Dozen Payloads (Access Denied Tests)
 

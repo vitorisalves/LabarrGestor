@@ -3,24 +3,28 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useEffect } from 'react';
-import { auth, signInAnonymously, signOut, onAuthStateChanged } from '../firebase';
+import { useState, useEffect, useCallback } from 'react';
+import { auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged } from '../firebase';
 import { AuthorizedUser } from '../types';
-import { extractErrorMessage, safeStringify, handleFirestoreError, OperationType, cleanObject } from '../utils';
+import { extractErrorMessage, safeStringify, handleFirestoreError, OperationType } from '../utils';
 import { userCan, isReadOnlyUser, PermissionSubject } from '../../shared/permissions';
 
+const USERS_CACHE_KEY = 'cache_authorizedUsers';
+const USERS_FETCH_KEY = 'authorized_users_last_fetch';
+
+// Login com conta Google. Quem decide papel, status e permissões é sempre o servidor
+// (/api/auth/session e /api/auth/users/me); o navegador só mostra o que o servidor devolveu.
 export const useAuth = () => {
-  const [isLoggedIn, setIsLoggedIn] = useState(() => localStorage.getItem('cache_isLoggedIn') === 'true');
   const [isApproved, setIsApproved] = useState(false);
-  const [loggedCpf, setLoggedCpf] = useState(() => localStorage.getItem('cache_loggedCpf') || '');
-  const [loggedName, setLoggedName] = useState(() => localStorage.getItem('cache_loggedName') || '');
+  const [loggedName, setLoggedName] = useState('');
+  const [loggedCpf, setLoggedCpf] = useState('');
+  const [signedInEmail, setSignedInEmail] = useState('');
   const [isAuthReady, setIsAuthReady] = useState(false);
+  // Enquanto o servidor ainda não respondeu sobre o acesso, não mostramos "aguardando aprovação".
+  const [isCheckingAccess, setIsCheckingAccess] = useState(false);
   // Papel/status/permissões da pessoa logada, como o servidor tem registrado.
   const [myAccess, setMyAccess] = useState<PermissionSubject | null>(null);
-  const [authorizedUsers, setAuthorizedUsers] = useState<AuthorizedUser[]>(() => {
-    const cached = localStorage.getItem('cache_authorizedUsers');
-    return cached ? JSON.parse(cached) : [];
-  });
+  const [authorizedUsers, setAuthorizedUsers] = useState<AuthorizedUser[]>([]);
   const [loginError, setLoginError] = useState('');
   const [authError, setAuthError] = useState<string | null>(null);
 
@@ -35,7 +39,7 @@ export const useAuth = () => {
     try {
       await fetch('/api/xml/cache/invalidate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await authHeaders(),
         body: JSON.stringify({ collection: collectionName })
       });
     } catch (err) {
@@ -43,13 +47,29 @@ export const useAuth = () => {
     }
   };
 
+  const clearLocalSession = () => {
+    setIsApproved(false);
+    setMyAccess(null);
+    setLoggedName('');
+    setLoggedCpf('');
+    setSignedInEmail('');
+    setAuthorizedUsers([]);
+    try {
+      localStorage.removeItem(USERS_CACHE_KEY);
+      localStorage.removeItem(USERS_FETCH_KEY);
+    } catch { /* storage indisponível */ }
+  };
+
   const loadAuthorizedUsers = async (force: boolean = false) => {
-    const currentUid = auth.currentUser?.uid;
-    if (!currentUid) return;
+    if (!auth.currentUser) return;
 
     const cacheDuration = 20 * 1000; // lista curta: novas solicitações de acesso precisam aparecer logo
-    const lastFetch = localStorage.getItem('authorized_users_last_fetch');
-    const cachedUsers = localStorage.getItem('cache_authorizedUsers');
+    let lastFetch: string | null = null;
+    let cachedUsers: string | null = null;
+    try {
+      lastFetch = localStorage.getItem(USERS_FETCH_KEY);
+      cachedUsers = localStorage.getItem(USERS_CACHE_KEY);
+    } catch { /* storage indisponível */ }
     const now = Date.now();
 
     if (!force && lastFetch && cachedUsers && (now - Number(lastFetch)) < cacheDuration) {
@@ -63,23 +83,11 @@ export const useAuth = () => {
         throw new Error("Backend authorized_users route failed");
       }
       const data = await res.json() as AuthorizedUser[];
-
-      // Deduplicate by CPF (keep latest request)
-      const uniqueMap = new Map<string, AuthorizedUser>();
-      data.forEach(u => {
-        if (!u.cpf) return;
-        const existing = uniqueMap.get(u.cpf);
-        if (!existing || (u.requestDate && existing.requestDate && new Date(u.requestDate) > new Date(existing.requestDate))) {
-          uniqueMap.set(u.cpf, u);
-        } else if (!existing) {
-          uniqueMap.set(u.cpf, u);
-        }
-      });
-      const uniqueData = Array.from(uniqueMap.values());
-
-      setAuthorizedUsers(uniqueData);
-      localStorage.setItem('cache_authorizedUsers', safeStringify(uniqueData));
-      localStorage.setItem('authorized_users_last_fetch', String(now));
+      setAuthorizedUsers(data);
+      try {
+        localStorage.setItem(USERS_CACHE_KEY, safeStringify(data));
+        localStorage.setItem(USERS_FETCH_KEY, String(now));
+      } catch { /* storage indisponível */ }
     } catch (err: any) {
       handleFirestoreError(err, OperationType.GET, 'authorized_users');
       if (cachedUsers) {
@@ -88,282 +96,130 @@ export const useAuth = () => {
     }
   };
 
-  const refreshMe = async () => {
-    const currentUid = auth.currentUser?.uid;
-    if (!currentUid) return;
+  // Registra a sessão no servidor (cria o cadastro como pendente se for a primeira vez).
+  const registerSession = async (): Promise<boolean> => {
+    try {
+      const res = await fetch('/api/auth/session', {
+        method: 'POST',
+        headers: await authHeaders(),
+        body: '{}'
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  };
 
-    const adminEmail = 'vitorisalves1@gmail.com';
-    const isHardcodedAdmin = auth.currentUser?.email === adminEmail && auth.currentUser?.emailVerified;
+  const refreshMe = useCallback(async () => {
+    if (!auth.currentUser) return;
+
+    const readMe = async (): Promise<{ ok: boolean; data: AuthorizedUser | null }> => {
+      const res = await fetch('/api/auth/users/me');
+      if (!res.ok) return { ok: false, data: null };
+      return { ok: true, data: await res.json() as AuthorizedUser | null };
+    };
 
     try {
-      const res = await fetch('/api/auth/users/me?uid=' + currentUid);
-      if (!res.ok) {
-        throw new Error("Failed to fetch current user");
+      let me = await readMe();
+      if (me.ok && me.data === null) {
+        // Primeira vez desta conta: cria o cadastro (pendente) e lê de novo.
+        await registerSession();
+        me = await readMe();
       }
-      const userData = await res.json() as AuthorizedUser | null;
+      if (!me.ok) throw new Error("Failed to fetch current user");
 
-      if (userData !== null) {
-        const adminCpf = '05839352144';
-        const userIsAdmin = userData.role === 'admin' || userData.cpf === adminCpf || !!isHardcodedAdmin;
-        const userIsApproved = userData.status === 'approved' || userIsAdmin;
-
+      const userData = me.data;
+      if (userData) {
+        const userIsAdmin = userData.role === 'admin';
+        const userIsApproved = userData.status === 'approved';
         setIsApproved(userIsApproved);
+        setLoggedName(userData.name || auth.currentUser?.displayName || '');
+        setLoggedCpf(userData.cpf || '');
         setMyAccess({
-          role: userIsAdmin ? 'admin' : (userData.role || 'user'),
-          status: userIsApproved ? 'approved' : userData.status,
+          role: userIsAdmin ? 'admin' : 'user',
+          status: userData.status,
           permissions: Array.isArray(userData.permissions) ? userData.permissions : []
         });
 
-        // Fetch list if admin or if allowed to approve/manage access (LOAD FROM CACHE / ON DEMAND)
-        const canManageUsers = userIsAdmin ||
+        const canManageUsers = userIsApproved && (userIsAdmin ||
           (userData.permissions || []).includes('users.approve') ||
-          (userData.permissions || []).includes('users.manage');
+          (userData.permissions || []).includes('users.manage'));
         if (canManageUsers) {
           loadAuthorizedUsers(false);
         } else {
           setAuthorizedUsers([userData]);
         }
-
-        // AUTO-LOGIN: Only if approved AND we have the intent to be logged in (cache_loggedCpf exists)
-        // This prevents immediate re-login after manual logout
-        if (userIsApproved && !isLoggedIn && localStorage.getItem('cache_loggedCpf') === userData.cpf) {
-          setIsLoggedIn(true);
-          setLoggedCpf(userData.cpf);
-          setLoggedName(userData.name || '');
-          localStorage.setItem('cache_isLoggedIn', 'true');
-        }
       } else {
-        setIsApproved(!!isHardcodedAdmin);
-        setMyAccess(isHardcodedAdmin ? { role: 'admin', status: 'approved', permissions: [] } : null);
+        setIsApproved(false);
+        setMyAccess(null);
       }
     } catch (error) {
-      handleFirestoreError(error, OperationType.GET, currentUid);
-      if (extractErrorMessage(error).toLowerCase().includes('quota') || extractErrorMessage(error).toLowerCase().includes('resource-exhausted')) {
+      handleFirestoreError(error, OperationType.GET, auth.currentUser?.uid || 'me');
+      const msg = extractErrorMessage(error).toLowerCase();
+      if (msg.includes('quota') || msg.includes('resource-exhausted')) {
         setAuthError(extractErrorMessage(error));
       }
+    } finally {
+      setIsCheckingAccess(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     const unsubAuth = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        setIsAuthReady(true);
-      } else {
-        signInAnonymously(auth)
-          .then(() => {
-            setIsAuthReady(true);
-          })
-          .catch(err => {
-            console.error("Auth error during anonymous sign-in:", extractErrorMessage(err));
-            if (err.message.toLowerCase().includes('quota') || err.message.toLowerCase().includes('resource-exhausted')) {
-              setAuthError(err.message);
-            }
-            // Even if anonymous auth fails, set isAuthReady to true to prevent infinite loading spinner
-            setIsAuthReady(true);
-          });
+      // Sessões anônimas do sistema antigo não servem mais: saem e pedem o login Google.
+      if (user && user.isAnonymous) {
+        signOut(auth).catch(() => {});
+        return;
       }
+      if (user) {
+        setSignedInEmail(user.email || '');
+        setIsCheckingAccess(true);
+      } else {
+        clearLocalSession();
+        setIsCheckingAccess(false);
+      }
+      setIsAuthReady(true);
     });
     return () => unsubAuth();
   }, []);
 
+  // Com sessão Google ativa: confere o acesso agora, a cada minuto e ao voltar para a aba.
   useEffect(() => {
-    if (!isAuthReady) return;
+    if (!isAuthReady || !signedInEmail) return;
 
-    const currentUid = auth.currentUser?.uid;
-    if (!currentUid) return;
-
-    // Poll the current user's record instead of a Firestore onSnapshot listener
     refreshMe();
-
     const intervalId = setInterval(refreshMe, 60000);
-
     const onVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        refreshMe();
-      }
+      if (document.visibilityState === 'visible') refreshMe();
     };
     document.addEventListener('visibilitychange', onVisibilityChange);
-
     return () => {
       clearInterval(intervalId);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [isAuthReady, isLoggedIn]);
+  }, [isAuthReady, signedInEmail, refreshMe]);
 
-  useEffect(() => {
-    if (!isAuthReady || isApproved || !isLoggedIn) return;
-
-    // Recovery logic for anonymous session changes
-    const currentUid = auth.currentUser?.uid;
-    const cachedCpf = localStorage.getItem('cache_loggedCpf');
-    const cachedName = localStorage.getItem('cache_loggedName');
-
-    if (currentUid && cachedCpf && cachedName) {
-      // Check if we already have a doc for this UID (this effect runs on isApproved change)
-      // If isApproved is false despite being loggedIn, we might need a doc sync
-      const timer = setTimeout(() => {
-        if (!isApproved) {
-          console.log("Attempting session recovery for:", cachedCpf);
-          handleLogin(cachedCpf, cachedName).catch(err => console.error("Recovery failed:", err));
-        }
-      }, 2000); // Wait a bit to let polling settle
-      return () => clearTimeout(timer);
-    }
-  }, [isAuthReady, isApproved, isLoggedIn]);
-
-  // Cada pessoa precisa de uma sessão (uid) própria: o cadastro é gravado por uid, então duas
-  // contas no mesmo navegador sobrescreveriam uma à outra.
-  const resetAnonymousSession = async () => {
+  const loginWithGoogle = async () => {
+    setLoginError('');
     try {
-      await signOut(auth);
-      await signInAnonymously(auth);
-    } catch (err) {
-      console.error('Falha ao renovar a sessão anônima:', extractErrorMessage(err));
-    }
-  };
-
-  const handleLogin = async (loginCpf: string, loginName: string, retried: boolean = false): Promise<boolean> => {
-    const adminCpf = '05839352144';
-    const cleanCpf = loginCpf.replace(/\D/g, '');
-    const currentUid = auth.currentUser?.uid;
-
-    if (!currentUid) {
-      setLoginError('Erro de autenticação. Tente recarregar a página.');
-      return false;
-    }
-
-    if (cleanCpf.length !== 11) {
-      setLoginError('CPF inválido. Digite os 11 números.');
-      return false;
-    }
-
-    const existingUserByCpf = authorizedUsers.find(u => u.cpf === cleanCpf);
-
-    if (existingUserByCpf) {
-      const updatedUser: AuthorizedUser = {
-        ...existingUserByCpf,
-        uid: currentUid,
-        lastLogin: new Date().toISOString()
-      };
-
-      // Ensure all required fields for rules are present
-      if (!updatedUser.requestDate) updatedUser.requestDate = new Date().toISOString();
-      if (!updatedUser.role) updatedUser.role = 'user';
-      if (!updatedUser.status) updatedUser.status = 'pending';
-
-      if (cleanCpf === adminCpf) {
-        updatedUser.status = 'approved';
-        updatedUser.role = 'admin';
-        if (loginName.trim()) {
-          updatedUser.name = loginName.trim();
-        }
+      await signInWithPopup(auth, googleProvider);
+    } catch (err: any) {
+      const code = String(err?.code || '');
+      if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') return;
+      if (code === 'auth/popup-blocked') {
+        setLoginError('O navegador bloqueou a janela de login. Libere pop-ups para este site e tente de novo.');
+      } else if (code === 'auth/unauthorized-domain') {
+        setLoginError('Este endereço ainda não está autorizado para login. Avise o administrador.');
+      } else {
+        setLoginError('Não foi possível entrar com o Google. Tente novamente.');
       }
-
-      try {
-        // Se o registro existente tinha um UID diferente, removemos o antigo para evitar duplicatas
-        if (existingUserByCpf.uid && existingUserByCpf.uid !== currentUid) {
-          try {
-            await fetch('/api/auth/users/delete', {
-              method: 'POST',
-              headers: await authHeaders(),
-              body: JSON.stringify({ uid: existingUserByCpf.uid })
-            });
-          } catch (delErr) {
-            console.warn("Could not delete duplicate user doc:", delErr);
-          }
-        }
-        const cleaned = cleanObject(updatedUser);
-        const upsertRes = await fetch('/api/auth/users/upsert', {
-          method: 'POST',
-          headers: await authHeaders(),
-          body: JSON.stringify({ uid: currentUid, user: cleaned })
-        });
-        if (upsertRes.status === 409 && !retried) {
-          // A sessão do navegador era de outra pessoa: renova a sessão e tenta de novo.
-          await resetAnonymousSession();
-          return handleLogin(loginCpf, loginName, true);
-        }
-        if (!upsertRes.ok) {
-          throw new Error("Upsert failed");
-        }
-        await invalidateBackendCache('authorized_users');
-        await refreshMe();
-
-        if (updatedUser.status === 'approved') {
-          setIsLoggedIn(true);
-          setLoggedCpf(cleanCpf);
-          setLoggedName(updatedUser.name || '');
-          localStorage.setItem('cache_isLoggedIn', 'true');
-          localStorage.setItem('cache_loggedCpf', cleanCpf);
-          localStorage.setItem('cache_loggedName', updatedUser.name || '');
-          return true;
-        } else {
-          setLoginError('Seu acesso está aguardando aprovação.');
-          return false;
-        }
-      } catch (e) {
-        handleFirestoreError(e, OperationType.WRITE, `authorized_users/${currentUid}`);
-        setLoginError('Erro ao registrar acesso. Tente novamente.');
-        return false;
-      }
-    } else {
-      const newUser: AuthorizedUser = {
-        uid: currentUid,
-        cpf: cleanCpf,
-        name: loginName.trim(),
-        status: cleanCpf === adminCpf ? 'approved' : 'pending',
-        role: cleanCpf === adminCpf ? 'admin' : 'user',
-        requestDate: new Date().toISOString(),
-        lastLogin: new Date().toISOString()
-      };
-
-      try {
-        const cleaned = cleanObject(newUser);
-        const upsertRes = await fetch('/api/auth/users/upsert', {
-          method: 'POST',
-          headers: await authHeaders(),
-          body: JSON.stringify({ uid: currentUid, user: cleaned })
-        });
-        if (upsertRes.status === 409 && !retried) {
-          // A sessão do navegador era de outra pessoa: renova a sessão e tenta de novo.
-          await resetAnonymousSession();
-          return handleLogin(loginCpf, loginName, true);
-        }
-        if (!upsertRes.ok) {
-          throw new Error("Upsert failed");
-        }
-        await invalidateBackendCache('authorized_users');
-        await refreshMe();
-        if (newUser.status === 'approved') {
-          setIsLoggedIn(true);
-          setLoggedCpf(cleanCpf);
-          setLoggedName(newUser.name || '');
-          localStorage.setItem('cache_isLoggedIn', 'true');
-          localStorage.setItem('cache_loggedCpf', cleanCpf);
-          localStorage.setItem('cache_loggedName', newUser.name || '');
-          return true;
-        } else {
-          setLoginError('Sua solicitação de acesso foi enviada e aguarda aprovação.');
-          return false;
-        }
-      } catch (e) {
-        handleFirestoreError(e, OperationType.WRITE, `authorized_users/${currentUid}`);
-        return false;
-      }
+      console.error('Google sign-in error:', extractErrorMessage(err));
     }
   };
 
   const handleLogout = () => {
-    setIsLoggedIn(false);
-    setLoggedCpf('');
-    setLoggedName('');
-    localStorage.removeItem('cache_isLoggedIn');
-    localStorage.removeItem('cache_loggedCpf');
-    localStorage.removeItem('cache_loggedName');
-    setMyAccess(null);
-    setIsApproved(false);
-    // Sessão nova para a próxima pessoa que entrar neste navegador.
-    resetAnonymousSession();
+    clearLocalSession();
+    signOut(auth).catch(() => {});
   };
 
   const updateUserStatus = async (uid: string, status: 'approved' | 'denied') => {
@@ -430,23 +286,24 @@ export const useAuth = () => {
     }
   };
 
-  const isAdmin = loggedCpf === '05839352144' ||
-                 authorizedUsers.find(u => u.cpf === loggedCpf)?.role === 'admin' ||
-                 (auth.currentUser?.email === 'vitorisalves1@gmail.com' && auth.currentUser?.emailVerified) ||
-                 (loggedName.toUpperCase().includes('VITOR') && loggedCpf.length > 0);
-
+  // Tudo vem do que o servidor devolveu: o navegador não decide quem é admin.
+  const isAdmin = myAccess?.role === 'admin' && myAccess?.status === 'approved';
   const can = (permission: string) => isAdmin || userCan(myAccess, permission);
   const isReadOnly = isApproved && !isAdmin && isReadOnlyUser(myAccess);
 
   return {
-    isLoggedIn,
+    // Entrou no app = conta Google aprovada.
+    isLoggedIn: isApproved,
     isApproved,
+    // Conta Google ativa que ainda não foi aprovada (mostra a tela de espera).
+    isPendingApproval: !!signedInEmail && !isApproved && !isCheckingAccess,
+    signedInEmail,
     loggedCpf,
     loggedName,
     loginError,
     authError,
     setLoginError,
-    handleLogin,
+    loginWithGoogle,
     handleLogout,
     authorizedUsers,
     updateUserStatus,

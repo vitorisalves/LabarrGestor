@@ -61,7 +61,9 @@ export default function App() {
     authorizedUsers,
     loginError,
     setLoginError,
-    handleLogin,
+    loginWithGoogle,
+    isPendingApproval,
+    signedInEmail,
     handleLogout,
     updateUserStatus,
     updateUserPermissions,
@@ -453,8 +455,6 @@ export default function App() {
   } = useExcel(suppliers, importSuppliersAddOnly, addNotification);
 
   // --- LOCAL UI STATE ---
-  const [loginCpf, setLoginCpf] = useState('');
-  const [loginName, setLoginName] = useState('');
   const [pendingImportData, setPendingImportData] = useState<Record<string, Supplier> | null>(null);
   const [isImporting, setIsImporting] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -507,19 +507,6 @@ export default function App() {
   const [reminderProductName, setReminderProductName] = useState('');
   const [reminderDate, setReminderDate] = useState('');
 
-  // Auto-fill name based on CPF
-  useEffect(() => {
-    const cleanCpf = loginCpf.replace(/\D/g, '');
-    if (cleanCpf.length === 11) {
-      const user = authorizedUsers.find(u => u.cpf === cleanCpf);
-      if (user?.name) {
-        setLoginName(user.name);
-      }
-    } else if (cleanCpf.length === 0) {
-      setLoginName('');
-    }
-  }, [loginCpf, authorizedUsers]);
-
   const {
     formState,
     setFormState,
@@ -538,11 +525,6 @@ export default function App() {
     onAddSupplier,
     onEditSupplier
   } = useSupplierForm(suppliers, saveSupplier, updateProductPriceInLists, addNotification);
-
-  const onLogin = React.useCallback((e: React.FormEvent) => {
-    e.preventDefault();
-    handleLogin(loginCpf, loginName);
-  }, [handleLogin, loginCpf, loginName]);
 
   const onFinalizeList = React.useCallback(async () => {
     if (isFinalizing) return;
@@ -729,11 +711,6 @@ export default function App() {
     ), [suppliers]
   );
 
-  const authorizedCpfs = React.useMemo(() => 
-    Array.from(new Set(authorizedUsers.map(u => u.cpf))), 
-    [authorizedUsers]
-  );
-
   // Common UI styles
   const smallLabelStyle = "text-[10px] font-black uppercase tracking-[0.2em] leading-none opacity-50";
 
@@ -767,14 +744,12 @@ export default function App() {
 
   if (!isLoggedIn) {
     return (
-      <Login 
-        loginCpf={loginCpf}
-        setLoginCpf={setLoginCpf}
-        loginName={loginName}
-        setLoginName={setLoginName}
+      <Login
         loginError={loginError}
-        handleLogin={onLogin}
-        authorizedCpfs={authorizedCpfs}
+        loginWithGoogle={loginWithGoogle}
+        isPendingApproval={isPendingApproval}
+        signedInEmail={signedInEmail}
+        handleLogout={handleLogout}
       />
     );
   }

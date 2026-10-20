@@ -51,20 +51,11 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return isSignedIn() && (
-        (request.auth.token.get('email', '') == "vitorisalves1@gmail.com" && request.auth.token.get('email_verified', false) == true) ||
-        (hasUserDoc() && (
-          getUserData().get('role', 'user') == 'admin' || 
-          getUserData().get('cpf', '') == '05839352144'
-        ))
-      );
+      return isSignedIn() && hasUserDoc() && getUserData().get('role', 'user') == 'admin';
     }
 
     function isApproved() {
-      return isSignedIn() && (
-        (request.auth.token.get('email', '') == "vitorisalves1@gmail.com" && request.auth.token.get('email_verified', false) == true) ||
-        hasUserDoc()
-      );
+      return isSignedIn() && hasUserDoc();
     }
 
     // ===============================================================
@@ -72,8 +63,7 @@ service cloud.firestore {
     // ===============================================================
     
     function isValidUser(data) {
-      return data.keys().hasAll(['cpf', 'status', 'requestDate', 'role']) &&
-             data.cpf is string && data.cpf.size() == 11 &&
+      return data.keys().hasAll(['status', 'requestDate', 'role']) &&
              data.status in ['pending', 'approved', 'denied'] &&
              data.role in ['admin', 'user'] &&
              data.requestDate is string && data.requestDate.size() < 100;

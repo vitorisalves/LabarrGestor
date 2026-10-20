@@ -83,6 +83,9 @@ const ROUTE_RULES: Array<[prefix: string, rule: RouteRule]> = [
   ['/notifications/subscribe', null],
 ];
 
+// Leituras que só admin pode fazer (diagnóstico). As demais leituras exigem pessoa aprovada.
+export const ADMIN_ONLY_GET = ['/debug-db'];
+
 export const requiredPermission = (path: string): RouteRule => {
   for (const [prefix, rule] of ROUTE_RULES) {
     if (path.startsWith(prefix)) return rule;

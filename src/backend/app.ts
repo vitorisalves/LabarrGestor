@@ -10,7 +10,10 @@ import { ExcelService } from "./services/excelService.js";
 import { XMLService } from "./services/xmlService.js";
 import { startBackgroundReminderWorker } from "./reminderWorker.js";
 import { requestContext } from "./context.js";
-import { PERMISSION_IDS, requiredPermission, userCan, isAdminUser } from "../shared/permissions.js";
+import { PERMISSION_IDS, userCan, isAdminUser } from "../shared/permissions.js";
+import { lookupIdentity, Identity } from "./auth/identity.js";
+import { decideAccess, isSuperAdmin } from "./auth/accessGuard.js";
+import { authorizeUserAction, canViewUsers } from "./auth/users.js";
 import { DEFAULT_PRICE_PARAMS } from "../shared/priceEstimation.js";
 import { normalizeParams, validateParams, diffParams } from "../shared/priceSettings.js";
 import { mergeSuppliersAddOnly } from "../shared/supplierMerge.js";
@@ -83,34 +86,38 @@ const asyncHandler = (fn: Function) => (req: Request, res: Response, next: NextF
   });
 };
 
-// --- PERMISSÕES ---
-// Leitura (GET) é liberada. Qualquer rota que grava dados exige uma pessoa aprovada com a
-// permissão da rota (ver src/shared/permissions.ts); quem está só aprovado enxerga, não altera.
-// As rotas /api/auth/* fazem a própria checagem. DISABLE_PERMISSION_ENFORCEMENT=1 desliga o
-// guarda (usado nos testes automatizados).
-app.use('/api', asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
-  if (process.env.DISABLE_PERMISSION_ENFORCEMENT === '1') return next();
-  if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') return next();
-  if (req.path.startsWith('/auth/')) return next();
+// --- ACESSO ---
+// Toda a API exige uma pessoa aprovada, inclusive as leituras (exceções: /health e a chave
+// pública do push). Quem entra é identificada pelo token do Google; o admin supremo vem da
+// variável SUPER_ADMIN_EMAIL. A decisão em si está em auth/accessGuard.ts.
+// DISABLE_PERMISSION_ENFORCEMENT=1 desliga o guarda só em desenvolvimento/testes locais: é
+// ignorado na Vercel e em produção.
+const enforcementDisabled = () =>
+  process.env.DISABLE_PERMISSION_ENFORCEMENT === '1' && !IS_VERCEL && process.env.NODE_ENV !== 'production';
+if (process.env.DISABLE_PERMISSION_ENFORCEMENT === '1' && !enforcementDisabled()) {
+  console.warn('[Auth] DISABLE_PERMISSION_ENFORCEMENT ignorado: só vale fora de produção/Vercel.');
+}
 
-  const rule = requiredPermission(req.path);
-  const uid = await verifyUid(req.headers.authorization);
-  if (!uid) {
-    return res.status(401).json({ error: 'unauthorized', message: 'Sessão expirada. Faça login novamente.' });
+app.use('/api', asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+  if (enforcementDisabled()) return next();
+
+  const identity = await getIdentity(req.headers.authorization);
+  const stored = identity ? await getAuthUser(identity.uid) : null;
+  const superEmail = process.env.SUPER_ADMIN_EMAIL;
+  const superAdmin = isSuperAdmin(identity, superEmail);
+
+  const decision = decideAccess({ method: req.method, path: req.path, identity, stored, superAdminEmail: superEmail });
+  if (!decision.ok) {
+    return res.status(decision.status).json({ error: decision.error, message: decision.message, permission: decision.permission });
   }
-  const user = await getAuthUser(uid);
-  res.locals.authUser = user;
-  const allowed = !!user && (
-    isAdminUser(user) ||
-    (user.status === 'approved' && (rule === null || (rule !== 'admin' && userCan(user, rule))))
-  );
-  if (!allowed) {
-    return res.status(403).json({
-      error: 'forbidden',
-      message: 'Você não tem permissão para realizar esta ação.',
-      permission: rule
-    });
-  }
+
+  res.locals.identity = identity;
+  res.locals.isSuperAdmin = superAdmin;
+  // Cadastro efetivo de quem chama: o admin supremo é sempre admin aprovado.
+  res.locals.caller = superAdmin ? { ...(stored || {}), role: 'admin', status: 'approved', email: identity!.email } : stored;
+  res.locals.authUser = res.locals.caller
+    ? { ...res.locals.caller, name: res.locals.caller.name || identity?.name || identity?.email }
+    : null;
   next();
 }));
 
@@ -170,8 +177,6 @@ app.get("/api/debug-db", asyncHandler(async (req: Request, res: Response) => {
         VERCEL_ENV: process.env.VERCEL_ENV
       },
       firebaseConfig: {
-        projectId: config.projectId,
-        firestoreDatabaseId: config.firestoreDatabaseId,
         hasApiKey: !!config.apiKey
       },
       queryResult: {
@@ -784,6 +789,9 @@ app.post("/api/xml/suppliers/delete-all", asyncHandler(async (req: Request, res:
 }));
 
 app.get("/api/xml/authorized_users", handleCacheAndEtag("authorized_users"), asyncHandler(async (req: Request, res: Response) => {
+  if (!enforcementDisabled() && !canViewUsers(res.locals.caller)) {
+    return res.status(403).json({ error: "forbidden", message: "Você não tem permissão para ver os cadastros." });
+  }
   try {
     const forceNoCache = req.query.fresh === 'true' || req.headers['cache-control'] === 'no-cache' || req.headers['pragma'] === 'no-cache';
     const snapshot = await repo.getDocs('authorized_users', 'authorized_users', forceNoCache);
@@ -798,31 +806,20 @@ app.get("/api/xml/authorized_users", handleCacheAndEtag("authorized_users"), asy
   }
 }));
 
-// authorized_users writes are token-verified (identitytoolkit REST) — no Admin SDK needed
-const verifiedTokens = new Map<string, { uid: string; exp: number }>();
-async function verifyUid(idToken: string | undefined): Promise<string | null> {
-  if (!idToken) return null;
-  const token = idToken.startsWith('Bearer ') ? idToken.slice(7) : idToken;
-  // Cache curto: evita uma ida à API do Firebase a cada gravação.
+// Identidade pelo token do Google (cache curto: evita uma ida à API do Firebase a cada chamada).
+const verifiedTokens = new Map<string, { identity: Identity; exp: number }>();
+async function getIdentity(header: string | undefined): Promise<Identity | null> {
+  if (!header) return null;
+  const token = header.startsWith('Bearer ') ? header.slice(7) : header;
   const hit = verifiedTokens.get(token);
-  if (hit && hit.exp > Date.now()) return hit.uid;
-  const uid = await verifyUidRemote(token);
-  if (uid) {
+  if (hit && hit.exp > Date.now()) return hit.identity;
+  const { apiKey } = await getFirebaseConfig();
+  const identity = await lookupIdentity(token, { apiKey });
+  if (identity) {
     if (verifiedTokens.size > 500) verifiedTokens.clear();
-    verifiedTokens.set(token, { uid, exp: Date.now() + 5 * 60 * 1000 });
+    verifiedTokens.set(token, { identity, exp: Date.now() + 5 * 60 * 1000 });
   }
-  return uid;
-}
-async function verifyUidRemote(token: string): Promise<string | null> {
-  try {
-    const { apiKey } = await getFirebaseConfig();
-    const r = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${apiKey}`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idToken: token }),
-    });
-    if (!r.ok) return null;
-    const j: any = await r.json();
-    return j.users?.[0]?.localId ?? null;
-  } catch { return null; }
+  return identity;
 }
 // Cadastro (role/status/permissões) de quem está chamando, com cache curto.
 const authUserCache = new Map<string, { user: any | null; exp: number }>();
@@ -837,89 +834,72 @@ async function getAuthUser(uid: string): Promise<any | null> {
 function invalidateAuthUser(uid?: string) {
   if (uid) authUserCache.delete(uid); else authUserCache.clear();
 }
-async function callerCan(uid: string, permission: string): Promise<boolean> {
-  return userCan(await getAuthUser(uid), permission);
-}
 
-const ADMIN_CPF = '05839352144';
 const onlyDigits = (v: any) => String(v ?? '').replace(/\D/g, '');
+const withoutUndefined = (o: Record<string, any>) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined));
+
+// Cadastro do próprio usuário a partir da sessão Google. Quem entra NÃO decide o próprio acesso:
+// status, papel e permissões vêm do servidor. Desconhecido entra como pendente; o admin supremo
+// (SUPER_ADMIN_EMAIL, e-mail Google verificado) entra como admin aprovado. O CPF é só informativo.
+app.post("/api/auth/session", asyncHandler(async (req: Request, res: Response) => {
+  const identity = res.locals.identity as Identity | undefined;
+  if (!identity) return res.status(401).json({ error: "unauthorized", message: "Sessão expirada. Entre com sua conta Google." });
+
+  invalidateAuthUser(identity.uid);
+  const existing: any = await getAuthUser(identity.uid);
+  const superAdmin = isSuperAdmin(identity, process.env.SUPER_ADMIN_EMAIL);
+  const now = new Date().toISOString();
+  const cpf = onlyDigits(req.body?.cpf);
+
+  const record = withoutUndefined({
+    ...(existing || {}),
+    uid: identity.uid,
+    email: identity.email,
+    name: identity.name || existing?.name || identity.email,
+    picture: identity.picture,
+    lastLogin: now,
+    requestDate: existing?.requestDate || now,
+    role: superAdmin ? 'admin' : (existing?.role === 'admin' ? 'admin' : 'user'),
+    status: superAdmin ? 'approved' : (existing?.status || 'pending'),
+    permissions: Array.isArray(existing?.permissions) ? existing.permissions : [],
+    cpf: existing?.cpf || (cpf.length === 11 ? cpf : undefined),
+  });
+
+  await repo.set(repo.doc('authorized_users', identity.uid), record, 'authorized_users/' + identity.uid);
+  invalidateAuthUser(identity.uid);
+  repo.invalidateCache('authorized_users');
+  res.json({ status: "success", user: { id: identity.uid, ...record } });
+}));
 
 app.get("/api/auth/users", asyncHandler(async (req: Request, res: Response) => {
+  if (!enforcementDisabled() && !canViewUsers(res.locals.caller)) {
+    return res.status(403).json({ error: "forbidden", message: "Você não tem permissão para ver os cadastros." });
+  }
   const snap = await repo.getDocs('authorized_users', 'authorized_users', req.query.fresh === 'true');
   res.json(snap.docs.map((d: any) => ({ id: d.id, ...(typeof d.data === 'function' ? d.data() : d.data) })));
 }));
 
+// Cadastro de quem está chamando (pelo token, nunca por um uid informado).
 app.get("/api/auth/users/me", asyncHandler(async (req: Request, res: Response) => {
-  const uid = String(req.query.uid || '');
-  if (!uid) return res.status(400).json({ error: "uid ausente." });
-  const d = await repo.getDoc(repo.doc('authorized_users', uid), 'authorized_users/' + uid, true);
-  res.json(d.exists() ? { id: d.id, ...(d.data() as any) } : null);
-}));
-
-app.post("/api/auth/users/upsert", asyncHandler(async (req: Request, res: Response) => {
-  const { uid, user } = req.body;
-  if (!uid || !user) return res.status(400).json({ error: "uid e user são obrigatórios" });
-  const tokUid = await verifyUid(req.headers.authorization);
-  if (!tokUid || tokUid !== uid) return res.status(401).json({ error: "unauthorized" });
-
-  // Quem se cadastra/entra NÃO decide o próprio acesso: status, papel e permissões vêm do
-  // servidor. Se a mesma pessoa (CPF) já tinha cadastro com outro uid (sessão nova do
-  // navegador), herda o acesso dele e o cadastro antigo é removido.
-  const cpf = onlyDigits(user.cpf);
-  const snapshot = await repo.getDocs('authorized_users', 'authorized_users', true);
-  const sameCpf = snapshot.docs
-    .map((d: any) => ({ id: d.id, data: (typeof d.data === 'function' ? d.data() : d.data) as any }))
-    .filter((d: any) => d.id !== uid && cpf && onlyDigits(d.data?.cpf) === cpf);
-  invalidateAuthUser(uid);
-  const own: any = (await getAuthUser(uid)) || null;
-  // Este uid (sessão do navegador) já pertence a outra pessoa: não sobrescreve o cadastro dela.
-  if (own && cpf && onlyDigits(own.cpf) && onlyDigits(own.cpf) !== cpf) {
-    return res.status(409).json({ error: 'session_in_use', message: 'Esta sessão do navegador pertence a outra pessoa.' });
-  }
-  const previous: any =
-    own ||
-    sameCpf.find((d: any) => d.data.status === 'approved')?.data ||
-    sameCpf[0]?.data ||
-    null;
-
-  const isAdminCpf = cpf === ADMIN_CPF;
-  const safe: any = {
-    ...user,
-    cpf: cpf || user.cpf,
-    role: isAdminCpf ? 'admin' : (previous?.role === 'admin' ? 'admin' : 'user'),
-    status: isAdminCpf ? 'approved' : (previous?.status || 'pending'),
-    permissions: Array.isArray(previous?.permissions) ? previous.permissions : [],
-  };
-  if (previous?.requestDate) safe.requestDate = previous.requestDate;
-
-  await repo.set(repo.doc('authorized_users', uid), safe, 'authorized_users/' + uid);
-  for (const old of sameCpf) {
-    await repo.delete(repo.doc('authorized_users', old.id), 'authorized_users/' + old.id);
-  }
-  invalidateAuthUser();
-  repo.invalidateCache('authorized_users');
-  res.json({ status: "success" });
+  const identity = res.locals.identity as Identity | undefined;
+  if (!identity) return res.status(401).json({ error: "unauthorized", message: "Sessão expirada. Entre com sua conta Google." });
+  const caller = res.locals.caller;
+  res.json(caller ? { id: identity.uid, uid: identity.uid, ...caller } : null);
 }));
 
 app.post("/api/auth/users/status", asyncHandler(async (req: Request, res: Response) => {
   const { uid, status } = req.body;
   if (!uid || !status) return res.status(400).json({ error: "uid e status são obrigatórios" });
-  const tokUid = await verifyUid(req.headers.authorization);
-  if (!tokUid) return res.status(401).json({ error: "unauthorized" });
-  if (!(await callerCan(tokUid, 'users.approve'))) return res.status(403).json({ error: "forbidden", message: "Você não tem permissão para aprovar acessos." });
   if (status !== 'approved' && status !== 'denied') return res.status(400).json({ error: "status inválido" });
+  const identity = res.locals.identity as Identity;
   invalidateAuthUser(uid);
   const target = await getAuthUser(uid);
-  if (!target) return res.status(404).json({ error: "Usuário não encontrado" });
-  const caller = await getAuthUser(tokUid);
-  if (isAdminUser(target) && !isAdminUser(caller)) {
-    return res.status(403).json({ error: "forbidden", message: "Somente admin pode alterar um admin." });
-  }
-  // Quem só aprova solicitações mexe apenas em pedidos pendentes; recusar (apagar) alguém já
-  // aprovado é remover acesso e exige a permissão de gerenciar acessos.
-  if (status === 'denied' && target.status === 'approved' && !userCan(caller, 'users.manage')) {
-    return res.status(403).json({ error: "forbidden", message: "Você não tem permissão para remover um acesso já aprovado." });
-  }
+  const verdict = authorizeUserAction({
+    action: status === 'approved' ? 'approve' : 'deny',
+    callerUid: identity.uid, caller: res.locals.caller, targetUid: uid, target,
+    superAdminEmail: process.env.SUPER_ADMIN_EMAIL,
+  });
+  if (!verdict.ok) return res.status(verdict.status).json({ error: verdict.status === 404 ? "not_found" : "forbidden", message: verdict.message });
   if (status === 'denied') await repo.delete(repo.doc('authorized_users', uid), 'authorized_users/' + uid);
   else await repo.update(repo.doc('authorized_users', uid), { status }, 'authorized_users/' + uid);
   invalidateAuthUser(uid);
@@ -930,16 +910,13 @@ app.post("/api/auth/users/status", asyncHandler(async (req: Request, res: Respon
 app.post("/api/auth/users/delete", asyncHandler(async (req: Request, res: Response) => {
   const { uid } = req.body;
   if (!uid) return res.status(400).json({ error: "uid ausente." });
-  const tokUid = await verifyUid(req.headers.authorization);
-  if (!tokUid) return res.status(401).json({ error: "unauthorized" });
-  // Remover o próprio cadastro antigo (troca de sessão) sempre vale; remover outra pessoa exige permissão.
-  if (tokUid !== uid && !(await callerCan(tokUid, 'users.manage'))) {
-    return res.status(403).json({ error: "forbidden", message: "Você não tem permissão para remover acessos." });
-  }
+  const identity = res.locals.identity as Identity;
   const target = await getAuthUser(uid);
-  if (tokUid !== uid && isAdminUser(target) && !isAdminUser(await getAuthUser(tokUid))) {
-    return res.status(403).json({ error: "forbidden", message: "Somente admin pode remover um admin." });
-  }
+  const verdict = authorizeUserAction({
+    action: 'delete', callerUid: identity.uid, caller: res.locals.caller, targetUid: uid, target,
+    superAdminEmail: process.env.SUPER_ADMIN_EMAIL,
+  });
+  if (!verdict.ok) return res.status(verdict.status).json({ error: "forbidden", message: verdict.message });
   await repo.delete(repo.doc('authorized_users', uid), 'authorized_users/' + uid);
   invalidateAuthUser(uid);
   repo.invalidateCache('authorized_users');
@@ -947,24 +924,22 @@ app.post("/api/auth/users/delete", asyncHandler(async (req: Request, res: Respon
 }));
 
 // Define as permissões de uma pessoa. Quem não é admin só pode conceder permissões que ele
-// mesmo tem e não pode alterar um admin.
+// mesmo tem e não pode alterar um admin. A conta do admin supremo é intocável.
 app.post("/api/auth/users/permissions", asyncHandler(async (req: Request, res: Response) => {
   const { uid, permissions } = req.body || {};
   if (!uid || !Array.isArray(permissions)) return res.status(400).json({ error: "uid e permissions[] são obrigatórios" });
-  const tokUid = await verifyUid(req.headers.authorization);
-  if (!tokUid) return res.status(401).json({ error: "unauthorized" });
-  const caller = await getAuthUser(tokUid);
-  if (!userCan(caller, 'users.manage')) {
-    return res.status(403).json({ error: "forbidden", message: "Você não tem permissão para gerenciar permissões." });
-  }
+  const identity = res.locals.identity as Identity;
+  const caller = res.locals.caller;
+  invalidateAuthUser(uid);
   const target = await getAuthUser(uid);
-  if (!target) return res.status(404).json({ error: "Usuário não encontrado" });
-  if (isAdminUser(target) && !isAdminUser(caller)) {
-    return res.status(403).json({ error: "forbidden", message: "Somente admin pode alterar um admin." });
-  }
+  const verdict = authorizeUserAction({
+    action: 'permissions', callerUid: identity.uid, caller, targetUid: uid, target,
+    superAdminEmail: process.env.SUPER_ADMIN_EMAIL,
+  });
+  if (!verdict.ok) return res.status(verdict.status).json({ error: verdict.status === 404 ? "not_found" : "forbidden", message: verdict.message });
   const wanted: string[] = Array.from(new Set(permissions.map(String))).filter(id => PERMISSION_IDS.has(id));
   // Não-admin só mexe no que ele mesmo tem: o resto do que a pessoa já possuía fica como está.
-  const kept = isAdminUser(caller) ? [] : (Array.isArray(target.permissions) ? target.permissions : []).filter((id: string) => !userCan(caller, id));
+  const kept = isAdminUser(caller) ? [] : (Array.isArray(target!.permissions) ? target!.permissions : []).filter((id: string) => !userCan(caller, id));
   const granted = isAdminUser(caller) ? wanted : Array.from(new Set([...kept, ...wanted.filter(id => userCan(caller, id))]));
   await repo.update(repo.doc('authorized_users', uid), { permissions: granted }, 'authorized_users/' + uid);
   invalidateAuthUser(uid);
@@ -2132,7 +2107,10 @@ app.get("/api/omie-direct/products", asyncHandler(async (req: Request, res: Resp
 }));
 
 app.all("/api/v1/*", asyncHandler(async (req: Request, res: Response) => {
-  const subPath = (req.params as any)[0];
+  const subPath = String((req.params as any)[0] || '');
+  if (subPath.split('/').some(seg => seg === '..' || seg === '.') || subPath.includes('//') || subPath.includes('\\')) {
+    return res.status(400).json({ error: "Caminho inválido" });
+  }
   const queryString = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
   const response = await OmieService.proxyRequest(req.method, subPath, req.body, queryString);
   

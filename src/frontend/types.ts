@@ -104,7 +104,10 @@ export interface Reminder {
 
 export interface AuthorizedUser {
   uid?: string;
-  cpf: string;
+  email?: string;
+  picture?: string;
+  /** Só informativo: nunca dá acesso. */
+  cpf?: string;
   name: string;
   status: 'pending' | 'approved' | 'denied';
   requestDate?: string;

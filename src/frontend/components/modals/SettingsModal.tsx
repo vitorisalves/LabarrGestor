@@ -216,7 +216,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                               </div>
                               <div>
                                 <p className="font-bold text-slate-700 text-sm">{user.name || 'Sem nome'}</p>
-                                <p className="text-[10px] text-slate-400 font-bold">CPF: {user.cpf}</p>
+                                <p className="text-[10px] text-slate-400 font-bold">{user.email || (user.cpf ? `CPF: ${user.cpf}` : "")}</p>
                               </div>
                             </div>
                             <div className="flex items-center gap-1.5">
@@ -265,7 +265,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                               </div>
                               <div>
                                 <p className="font-bold text-slate-700 text-[14px] truncate max-w-[120px]">{user.name || 'Sem nome'}</p>
-                                <p className="text-[13px] text-black font-bold">CPF: {user.cpf}</p>
+                                <p className="text-[13px] text-black font-bold">{user.email || (user.cpf ? `CPF: ${user.cpf}` : "")}</p>
                               </div>
                             </div>
                             <div className="flex items-center gap-1">

@@ -18,9 +18,17 @@ const isSameOriginApi = (url: string) => {
   }
 };
 
-// Faz todo pedido que grava dados (POST/PUT/PATCH/DELETE em /api) levar o token do Firebase,
-// que é como o servidor sabe quem está pedindo e confere as permissões. Também avisa a tela
-// quando o servidor recusa por falta de permissão.
+// Faz todo pedido à API levar o token do Firebase (login Google), que é como o servidor sabe
+// quem está pedindo e confere as permissões. Só /api/health e a chave pública do push dispensam
+// o token. Também avisa a tela quando o servidor recusa por falta de permissão.
+const PUBLIC_API_PATHS = ['/api/health', '/api/notifications/vapid-key'];
+const isPublicApi = (url: string) => {
+  try {
+    return PUBLIC_API_PATHS.includes(new URL(url, window.location.origin).pathname);
+  } catch {
+    return false;
+  }
+};
 export function installApiAuthFetch() {
   if (typeof window === 'undefined' || (window as any).__apiAuthFetchInstalled) return;
   (window as any).__apiAuthFetchInstalled = true;
@@ -32,19 +40,21 @@ export function installApiAuthFetch() {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : (input as Request).url;
     const method = (init?.method || (isRequest ? (input as Request).method : 'GET') || 'GET').toUpperCase();
 
-    if (method === 'GET' || method === 'HEAD' || !isSameOriginApi(url)) {
+    if (!isSameOriginApi(url) || isPublicApi(url)) {
       return originalFetch(input, init);
     }
 
     const headers = new Headers(init?.headers || (isRequest ? (input as Request).headers : undefined));
-    if (!headers.has('Authorization')) {
+    let hadToken = headers.has('Authorization');
+    if (!hadToken) {
       const token = await auth.currentUser?.getIdToken().catch(() => undefined);
-      if (token) headers.set('Authorization', `Bearer ${token}`);
+      if (token) { headers.set('Authorization', `Bearer ${token}`); hadToken = true; }
     }
 
     const res = await originalFetch(input, { ...init, headers });
 
-    if (res.status === 403 || res.status === 401) {
+    // Sem sessão ainda (tela de login), um 401 é esperado e não deve acusar permissão negada.
+    if (hadToken && (res.status === 403 || res.status === 401)) {
       try {
         const body = await res.clone().json();
         if (body?.error === 'forbidden' || body?.error === 'unauthorized') {
