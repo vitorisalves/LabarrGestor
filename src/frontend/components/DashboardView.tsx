@@ -25,6 +25,7 @@ import { SavedList } from '../types';
 import { useTestMode } from '../context/TestModeContext';
 import { analyzePrices } from '../utils/priceAnalysis';
 import { missingNFRunning, TimedNFEntry } from '../../shared/missingNF';
+import { monthValueForRange } from '../../shared/monthRange';
 import { DashboardStatsCards } from './dashboard/DashboardStatsCards';
 import { SystemLogsPanel } from './dashboard/SystemLogsPanel';
 import { MonthlySpendChart } from './dashboard/MonthlySpendChart';
@@ -1503,7 +1504,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
           />
           <div className="flex flex-wrap items-center gap-2">
             <select
-              value=""
+              value={monthValueForRange(startDate, endDate)}
               onChange={(e) => {
                 if (!e.target.value) return;
                 const [y, m] = e.target.value.split('-').map(Number);
