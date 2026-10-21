@@ -87,8 +87,8 @@ Siga esta ordem (é a ordem segura de deploy):
 2. Fazer o deploy e rodar o "Smoke test depois do deploy" (abaixo).
 3. **Só então** publicar o `firestore.rules` no Console do Firebase (as regras negam todo acesso direto). Antes disso não publique: um ambiente da Vercel que ainda use o backend Firestore deixaria de ler e gravar.
 4. Restringir a chave de API Web do Firebase apenas por **Restrições de API**: Google Cloud Console → APIs e serviços → Credenciais → chave "Browser key" → Restrições de API → "Restringir chave" → marcar só Identity Toolkit API e Token Service API (e as APIs do Firebase realmente usadas, como Firebase Installations API ou Cloud Firestore API, se aparecerem).
-   - **Não** use "Restrições de aplicativo → Sites (referenciadores HTTP)": o servidor valida cada login chamando o Identity Toolkit com essa mesma chave, sem Referer, então o Google responderia 403 e toda chamada à API viraria 401 (também quebraria o login por popup e o Preview/localhost). Se você já aplicou uma restrição de referenciador e o login/a API pararam, remova essa restrição.
-   - Restringir por referenciador exigiria uma mudança de código futura (validar o token no servidor sem a chave do navegador, ou enviar um Referer); é item da Fase 4.
+   - O servidor confere o token do login com as chaves públicas do Google, sem usar a chave do navegador. Por isso, **depois que este deploy estiver no ar e o login testado**, você pode restringir a chave também por "Sites (referenciadores HTTP)": adicione o endereço de produção, `https://*.vercel.app/*` (Preview) e `http://localhost:*/*`. **Não aplique antes do deploy**: o servidor antigo chamava o Google com essa chave, sem Referer, e a API inteira daria 401.
+   - Se depois de restringir o login por popup falhar, confira se o domínio usado está na lista de referenciadores.
 5. Conferir que o domínio da Vercel está em *Authorized domains* do Firebase Authentication.
 
 ### Smoke test depois do deploy

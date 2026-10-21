@@ -1,6 +1,6 @@
 import { repo } from "../data/index.js";
 import { getFirebaseConfig } from "../config.js";
-import { lookupIdentity, Identity } from "./identity.js";
+import { verifyIdToken, Identity } from "./identity.js";
 
 // Identidade pelo token do Google (cache curto: evita uma ida à API do Firebase a cada chamada).
 const verifiedTokens = new Map<string, { identity: Identity; exp: number }>();
@@ -9,8 +9,8 @@ export async function getIdentity(header: string | undefined): Promise<Identity 
   const token = header.startsWith('Bearer ') ? header.slice(7) : header;
   const hit = verifiedTokens.get(token);
   if (hit && hit.exp > Date.now()) return hit.identity;
-  const { apiKey } = await getFirebaseConfig();
-  const identity = await lookupIdentity(token, { apiKey });
+  const { projectId } = await getFirebaseConfig();
+  const identity = await verifyIdToken(token, { projectId });
   if (identity) {
     if (verifiedTokens.size > 500) verifiedTokens.clear();
     verifiedTokens.set(token, { identity, exp: Date.now() + 5 * 60 * 1000 });
