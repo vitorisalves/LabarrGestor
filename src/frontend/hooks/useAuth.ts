@@ -297,6 +297,8 @@ export const useAuth = () => {
     isApproved,
     // Conta Google ativa que ainda não foi aprovada (mostra a tela de espera).
     isPendingApproval: !!signedInEmail && !isApproved && !isCheckingAccess,
+    // Sessão do Google restaurada, mas o servidor ainda não respondeu sobre o acesso.
+    isCheckingAccess,
     signedInEmail,
     loggedCpf,
     loggedName,

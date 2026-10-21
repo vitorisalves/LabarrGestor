@@ -63,6 +63,7 @@ export default function App() {
     setLoginError,
     loginWithGoogle,
     isPendingApproval,
+    isCheckingAccess,
     signedInEmail,
     handleLogout,
     updateUserStatus,
@@ -85,7 +86,7 @@ export default function App() {
     markAllAsRead,
     clearNotifications,
     requestPermission
-  } = useNotifications();
+  } = useNotifications(isApproved);
 
   const {
     suppliers,
@@ -730,7 +731,9 @@ export default function App() {
     setShowNativePermissionBanner(false);
   };
 
-  if (!isAuthReady) {
+  // Enquanto a sessão é restaurada e o servidor confirma o acesso, mostra o carregando
+  // (e não a tela de login, que apareceria por um instante a cada abertura do app).
+  if (!isAuthReady || (!!signedInEmail && isCheckingAccess)) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
         <motion.div

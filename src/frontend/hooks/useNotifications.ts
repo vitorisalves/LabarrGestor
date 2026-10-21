@@ -7,7 +7,9 @@ import { useState, useCallback, useEffect } from 'react';
 import { UINotification, AppNotification } from '../types';
 import { extractErrorMessage } from '../utils';
 
-export const useNotifications = () => {
+// `isApproved`: a inscrição no push é enviada à API, que exige login aprovado. Por isso ela só
+// é (re)feita depois que o acesso foi confirmado; antes disso o pedido seria recusado (401).
+export const useNotifications = (isApproved: boolean = false) => {
   const [notifications, setNotifications] = useState<UINotification[]>([]);
   const [appNotifications, setAppNotifications] = useState<AppNotification[]>([]);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
@@ -203,12 +205,13 @@ export const useNotifications = () => {
   // Tenta re-inscrever automaticamente se a permissão já estiver concedida
   // Isso garante que o servidor sempre tenha o token mais atualizado
   useEffect(() => {
+    if (!isApproved) return;
     if (typeof window !== 'undefined' && 'Notification' in window) {
       if (Notification.permission === 'granted') {
         subscribeToPush();
       }
     }
-  }, []);
+  }, [isApproved]);
 
   const clearNotifications = () => {
     setAppNotifications([]);
