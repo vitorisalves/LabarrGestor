@@ -33,6 +33,7 @@ import { XmlImportTab, ImportRow } from './suppliers/XmlImportTab';
 import { useXmlImport } from '../hooks/useXmlImport';
 import { ProductsTab } from './products/ProductsTab';
 import { PurchaseSetorPicker } from './products/PurchaseSetorPicker';
+import { CategoryMultiSelect } from './products/CategoryMultiSelect';
 import { ConfirmationModal } from './modals/ConfirmationModal';
 import { usePermissions } from '../context/PermissionsContext';
 
@@ -570,18 +571,16 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
                                     </span>
                                   </div>
                                 </div>
+                                <CategoryMultiSelect
+                                  value={getProductCategories(product)}
+                                  onChange={(next) => saveSupplier({
+                                    ...supplier,
+                                    products: supplier.products.map((p, idx) => idx === originalIndex ? { ...p, categories: next } : p)
+                                  })}
+                                  options={availableCategories}
+                                  className="mb-2"
+                                />
                                 <div className="flex flex-wrap gap-1 mb-3">
-                                  {getProductCategories(product).length > 0 ? (
-                                    getProductCategories(product).map(cat => (
-                                      <span key={cat} className="px-2 py-0.5 bg-slate-100 text-slate-500 rounded-full text-[9px] font-black uppercase tracking-wider">
-                                        {cat}
-                                      </span>
-                                    ))
-                                  ) : (
-                                    <span className="px-2 py-0.5 bg-amber-50 text-amber-600 rounded-full text-[9px] font-black uppercase tracking-wider">
-                                      Sem Categoria
-                                    </span>
-                                  )}
                                   {product.setor && (
                                     <span className="px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded-full text-[9px] font-black uppercase tracking-wider">
                                       {product.setor}

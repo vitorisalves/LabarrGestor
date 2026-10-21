@@ -284,16 +284,8 @@ export const ProductsTab: React.FC<ProductsTabProps> = ({
                     value={getProductCategories(row.product)}
                     onChange={(next) => updateProductCategories(row.supplierId, row.productIndex, next)}
                     options={categories}
-                    className="mb-2"
+                    className="mb-4"
                   />
-                  <select
-                    value={row.product.setor || ''}
-                    onChange={(e) => updateProductSetor(row.supplierId, row.productIndex, e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold rounded-xl px-3 py-2 outline-none focus:border-indigo-500 mb-4"
-                  >
-                    <option value="">Sem Setor</option>
-                    {setores.map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
                 </div>
                 <div className="flex flex-col sm:flex-row gap-2 mt-auto">
                   <QuantitySelector
