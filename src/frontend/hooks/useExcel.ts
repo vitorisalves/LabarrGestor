@@ -4,14 +4,15 @@
  */
 
 import React from 'react';
-import * as XLSX from 'xlsx';
 import Papa from 'papaparse';
 import { Supplier, Product } from '../types';
 import { generateId, extractErrorMessage } from '../utils';
 import { getProductCategories } from '../utils/productCategories';
+import { readSheetAsObjects, buildXlsx, objectsToRows } from '../../shared/spreadsheet';
+import { downloadArrayBuffer } from '../utils/downloadFile';
 
 export const useExcel = (suppliers: Supplier[], importSuppliersAddOnly: (batch: Supplier[]) => Promise<{ ok: boolean; addedSuppliers: number; addedProducts: number; skippedProducts: number }>, addNotification: any) => {
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
     const exportData = suppliers.flatMap(supplier => 
       supplier.products.map(product => ({
         'Empresa Razão Social': supplier.name,
@@ -24,11 +25,14 @@ export const useExcel = (suppliers: Supplier[], importSuppliersAddOnly: (batch: 
       }))
     );
 
-    const worksheet = XLSX.utils.json_to_sheet(exportData);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Fornecedores");
-    XLSX.writeFile(workbook, "Labarr_Fornecedores.xlsx");
-    addNotification('Exportação concluída!', 0);
+    try {
+      const buf = await buildXlsx('Fornecedores', objectsToRows(exportData), [28, 16, 40, 12, 28, 20, 22]);
+      downloadArrayBuffer(buf, 'Labarr_Fornecedores.xlsx');
+      addNotification('Exportação concluída!', 0);
+    } catch (err) {
+      console.error('Erro na exportação:', extractErrorMessage(err));
+      addNotification('Erro ao exportar para Excel', 0);
+    }
   };
 
   const handleImportExcel = (e: React.ChangeEvent<HTMLInputElement>, onDataLoaded: (data: Record<string, Supplier>) => void) => {
@@ -39,10 +43,7 @@ export const useExcel = (suppliers: Supplier[], importSuppliersAddOnly: (batch: 
     reader.onload = async (evt) => {
       try {
         const data = evt.target?.result;
-        const workbook = XLSX.read(data, { type: 'array' });
-        const sheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[sheetName];
-        const rawData = XLSX.utils.sheet_to_json(worksheet) as any[];
+        const rawData = await readSheetAsObjects(data as ArrayBuffer);
 
         if (rawData.length === 0) {
           addNotification('Arquivo vazio ou inválido', 0);
@@ -112,7 +113,12 @@ export const useExcel = (suppliers: Supplier[], importSuppliersAddOnly: (batch: 
         e.target.value = '';
       } catch (err) {
         console.error('Erro na importação:', extractErrorMessage(err));
-        addNotification('Erro ao processar arquivo Excel', 0);
+        const msg = String((err as any)?.message || '').toLowerCase();
+        if (msg.includes('zip') || msg.includes('central directory')) {
+          addNotification('Arquivo não reconhecido. Salve a planilha como .xlsx e tente de novo.', 0);
+        } else {
+          addNotification('Erro ao processar arquivo Excel', 0);
+        }
       }
     };
     reader.readAsArrayBuffer(file);

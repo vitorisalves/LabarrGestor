@@ -33,3 +33,10 @@ test('isProductionEnv: NODE_ENV=production ou Vercel', () => {
   assert.equal(isProductionEnv({ VERCEL: '1' } as any), true);
   assert.equal(isProductionEnv({} as any), false);
 });
+
+test('corpo grande (413) vira mensagem em português, também em produção', () => {
+  const r = describeError({ type: 'entity.too.large', status: 413, message: 'request entity too large' }, { production: true });
+  assert.equal(r.status, 413);
+  assert.match(r.body.message, /grande demais/);
+  assert.doesNotMatch(r.body.message, /entity/);
+});

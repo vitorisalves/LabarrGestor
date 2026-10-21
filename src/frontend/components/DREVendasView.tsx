@@ -23,7 +23,8 @@ import {
   ChevronUp,
   RefreshCw
 } from 'lucide-react';
-import * as XLSX from 'xlsx';
+import { readSheetAsArrays, buildXlsx } from '../../shared/spreadsheet';
+import { downloadArrayBuffer } from '../utils/downloadFile';
 import { formatCurrency, safeStringify } from '../utils';
 import { DREDadoRow } from '../types';
 
@@ -117,9 +118,6 @@ export const DREVendasView: React.FC<DREVendasViewProps> = ({ addNotification })
       ];
 
       const dataForSheet = [...headers, summaryRow, [], ...rows];
-      const wb = XLSX.utils.book_new();
-      const ws = XLSX.utils.aoa_to_sheet(dataForSheet);
-
       // Auto-size columns to be beautifully laid out
       const maxColWidths = dataForSheet.reduce((acc: number[], row: any[]) => {
         row.forEach((cell, colIdx) => {
@@ -132,12 +130,10 @@ export const DREVendasView: React.FC<DREVendasViewProps> = ({ addNotification })
         });
         return acc;
       }, [] as number[]);
-      ws['!cols'] = maxColWidths.map(w => ({ wch: Math.min(Math.max((Number(w) || 0) + 3, 10), 50) }));
-
-      XLSX.utils.book_append_sheet(wb, ws, 'Dados Consolidado');
+      const colWidths = maxColWidths.map(w => Math.min(Math.max((Number(w) || 0) + 3, 10), 50));
 
       let fileSaved = false;
-      const excelsheetObj = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
+      const excelsheetObj = await buildXlsx('Dados Consolidado', dataForSheet, colWidths);
       const blob = new Blob([excelsheetObj], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
 
       if ('showSaveFilePicker' in window) {
@@ -163,7 +159,7 @@ export const DREVendasView: React.FC<DREVendasViewProps> = ({ addNotification })
       }
 
       if (!fileSaved) {
-        XLSX.writeFile(wb, fullName);
+        downloadArrayBuffer(excelsheetObj, fullName);
         addNotification(`Download do arquivo "${fullName}" iniciado! Verifique sua pasta de Downloads.`, 4000, 'info');
       }
     } catch (e) {
@@ -206,9 +202,6 @@ export const DREVendasView: React.FC<DREVendasViewProps> = ({ addNotification })
       ];
 
       const dataForSheet = [...headersv, summaryRowv, [], ...rowsv];
-      const wb = XLSX.utils.book_new();
-      const ws = XLSX.utils.aoa_to_sheet(dataForSheet);
-
       // Auto-size columns to be beautifully laid out
       const maxColWidths = dataForSheet.reduce((acc: number[], row: any[]) => {
         row.forEach((cell, colIdx) => {
@@ -221,12 +214,10 @@ export const DREVendasView: React.FC<DREVendasViewProps> = ({ addNotification })
         });
         return acc;
       }, [] as number[]);
-      ws['!cols'] = maxColWidths.map(w => ({ wch: Math.min(Math.max((Number(w) || 0) + 3, 10), 50) }));
-
-      XLSX.utils.book_append_sheet(wb, ws, 'Conferencia Vendedor');
+      const colWidths = maxColWidths.map(w => Math.min(Math.max((Number(w) || 0) + 3, 10), 50));
 
       let fileSaved = false;
-      const excelsheetObj = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
+      const excelsheetObj = await buildXlsx('Conferencia Vendedor', dataForSheet, colWidths);
       const blob = new Blob([excelsheetObj], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
 
       if ('showSaveFilePicker' in window) {
@@ -252,7 +243,7 @@ export const DREVendasView: React.FC<DREVendasViewProps> = ({ addNotification })
       }
 
       if (!fileSaved) {
-        XLSX.writeFile(wb, fullName);
+        downloadArrayBuffer(excelsheetObj, fullName);
         addNotification(`Download do arquivo "${fullName}" iniciado! Verifique sua pasta de Downloads.`, 4000, 'info');
       }
     } catch (e) {
@@ -417,15 +408,12 @@ export const DREVendasView: React.FC<DREVendasViewProps> = ({ addNotification })
   // Parse excel helper
   const handleImportExcel = (file: File) => {
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
         const data = e.target?.result;
-        const workbook = XLSX.read(data, { type: 'array' });
-        const firstSheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[firstSheetName];
-        
+
         // Leitura como matriz (array de arrays) para identificar cabeçalho
-        const rawArray = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
+        const rawArray = await readSheetAsArrays(data as ArrayBuffer);
 
         if (rawArray.length === 0) {
           addNotification('A planilha importada não possui linhas válidas.', 3000, 'info');
@@ -688,7 +676,12 @@ export const DREVendasView: React.FC<DREVendasViewProps> = ({ addNotification })
         addNotification(`Sucesso! ${parsedRows.length} registros importados de "${file.name}" para [${importSector}] em [${importMonth}/${importYear}].`, 4000, 'info');
       } catch (err) {
         console.error(err);
-        addNotification('Erro ao analisar o arquivo excel. Certifique-se de que é uma planilha válida.', 4000, 'info');
+        const msg = String((err as any)?.message || '').toLowerCase();
+        if (msg.includes('zip') || msg.includes('central directory')) {
+          addNotification('Arquivo não reconhecido. Salve a planilha como .xlsx e tente de novo.', 4000, 'info');
+        } else {
+          addNotification('Erro ao analisar o arquivo excel. Certifique-se de que é uma planilha válida.', 4000, 'info');
+        }
       }
     };
     reader.readAsArrayBuffer(file);
@@ -1559,7 +1552,7 @@ export const DREVendasView: React.FC<DREVendasViewProps> = ({ addNotification })
                 Selecionar Excel
                 <input
                   type="file"
-                  accept=".xlsx,.xls"
+                  accept=".xlsx"
                   onChange={handleFileChange}
                   className="hidden"
                 />

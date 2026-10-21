@@ -21,6 +21,9 @@ export function describeError(err: any, opts: { production: boolean; ref?: strin
   const status = Number.isInteger(raw) && raw >= 400 && raw <= 599 ? raw : 500;
   const original = String(err?.message || 'Ocorreu um erro inesperado.');
 
+  if (err?.type === 'entity.too.large' || status === 413) {
+    return { status: 413, body: { error: 'Arquivo muito grande', message: 'O conteúdo enviado é grande demais. Envie menos arquivos por vez ou arquivos menores.' } };
+  }
   if (status < 500) {
     return { status, body: { error: err?.name || 'Erro', message: original } };
   }

@@ -1,0 +1,22 @@
+[
+  [
+    "Produto",
+    "Preço",
+    "Categoria"
+  ],
+  [
+    "Item Alfa",
+    5.5,
+    "Cat X"
+  ],
+  [],
+  [
+    "Item Beta",
+    "2,50"
+  ],
+  [
+    "Item Gama",
+    7,
+    "Cat Y"
+  ]
+]

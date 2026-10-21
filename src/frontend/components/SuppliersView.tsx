@@ -355,7 +355,7 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
               >
                 <Upload className="w-4 h-4" />
                 Importar
-                <input type="file" accept=".xlsx, .xls" className="hidden" disabled={!canImportSheet} onChange={handleImportExcel} />
+                <input type="file" accept=".xlsx" className="hidden" disabled={!canImportSheet} onChange={handleImportExcel} />
               </label>
               <button
                 onClick={() => setIsAdding(true)}

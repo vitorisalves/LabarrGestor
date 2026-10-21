@@ -6,13 +6,21 @@ import { repo } from "../data/index.js";
  * Serviço de Notificações Push
  */
 export class PushService {
+  private static enabled = false;
+
   static init() {
+    if (!PUSH_CONFIG.publicKey || !PUSH_CONFIG.privateKey) {
+      console.warn('[Push] VAPID não configurado: notificações push desativadas.');
+      this.enabled = false;
+      return;
+    }
     try {
       webPush.setVapidDetails(
         PUSH_CONFIG.email,
         PUSH_CONFIG.publicKey,
         PUSH_CONFIG.privateKey
       );
+      this.enabled = true;
       console.log("[PushService] VAPID details initialized successfully.");
     } catch (err) {
       console.error("[PushService] Failed to initialize VAPID details:", err);
@@ -53,6 +61,7 @@ export class PushService {
    * Envia uma notificação para todos os inscritos
    */
   static async broadcast(title: string, message: string, url: string = '/', excludeEndpoint?: string | null) {
+    if (!this.enabled) return 0;
     const snapshot = await repo.getDocs('push_subscriptions');
     const subscriptions = snapshot.docs
       .map((doc: any) => (typeof doc.data === 'function' ? doc.data() : doc.data))

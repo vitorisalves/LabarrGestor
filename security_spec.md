@@ -7,6 +7,7 @@
 4. CPF is optional and informational only; it never grants access.
 5. All IDs must follow the standard ID pattern.
 6. Access is by verified Google account. The super admin is the account whose e-mail equals the SUPER_ADMIN_EMAIL environment variable (verified Google e-mail); it cannot be demoted, denied or removed by anyone.
+7. Firestore: all direct access from the browser is denied (`firestore.rules` is deny-all: `allow read, write: if false`). The API is the only door to the data; the backend uses a service credential (Admin SDK) or Supabase. The rules file in the repository is NOT published automatically: publishing is a manual step in the Firebase console (Firestore Database > Rules > Publish).
 
 ## The Dirty Dozen Payloads (Access Denied Tests)
 
@@ -23,7 +24,8 @@
 11. **Shadow Update**: Updating a supplier and adding a hidden 'is_verified' field not in the schema.
 12. **Unauthorized Deletion**: User 'A' tries to delete user document 'B' (duplicate cleaning bypass).
 
-## Test Runner Logic (firestore.rules.test.ts summary)
+## Test Runner Logic (enforced by the API, not by Firestore rules)
+- Firestore rules are deny-all; the checks below are enforced by the API authorization layer (backend), since the browser cannot reach Firestore.
 - Verify `allow list` on `authorized_users` fails for non-admins.
 - Verify `allow update` on `role` fails for users updating themselves.
 - Verify `allow write` on `suppliers` fails for `status: 'pending'` users.

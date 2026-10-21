@@ -1,0 +1,32 @@
+[
+  {
+    "Relatório de Vendas Exemplo": "Período fictício"
+  },
+  {
+    "Relatório de Vendas Exemplo": "Descrição",
+    "__EMPTY": "Vendedor",
+    "__EMPTY_1": "Quantidade",
+    "__EMPTY_2": "Valor"
+  },
+  {
+    "Relatório de Vendas Exemplo": "Produto A",
+    "__EMPTY": "Vendedor Um",
+    "__EMPTY_1": 2,
+    "__EMPTY_2": 10.5,
+    "__EMPTY_3": 21,
+    "__EMPTY_4": 46299.99967592592,
+    "__EMPTY_5": "Texto formatado"
+  },
+  {
+    "Relatório de Vendas Exemplo": "Produto B",
+    "__EMPTY": "Vendedor Dois",
+    "__EMPTY_1": 3,
+    "__EMPTY_2": 20
+  },
+  {
+    "Relatório de Vendas Exemplo": "Produto C",
+    "__EMPTY": "Vendedor Um",
+    "__EMPTY_1": 4,
+    "__EMPTY_2": 7.25
+  }
+]

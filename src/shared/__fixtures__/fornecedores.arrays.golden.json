@@ -1,0 +1,39 @@
+[
+  [
+    "Empresa Razão Social",
+    "Telefone",
+    "Produto",
+    "Preço",
+    "Categoria",
+    "Ultima Data Compra",
+    "Forma de Pagamento"
+  ],
+  [
+    "Alfa Exemplo Ltda",
+    "11 1111-1111",
+    "Arroz 5kg",
+    12.5,
+    "Grãos",
+    "05/10/2026",
+    "Boleto"
+  ],
+  [
+    "Beta Teste SA",
+    "22 2222-2222",
+    "Feijão 1kg",
+    "1.234,56",
+    "Grãos",
+    "06/10/2026",
+    "Pix"
+  ],
+  [],
+  [
+    "Gama Ficticia ME",
+    null,
+    "Óleo 900ml",
+    8,
+    "Óleos",
+    null,
+    "Dinheiro"
+  ]
+]

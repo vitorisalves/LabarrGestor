@@ -1,0 +1,35 @@
+[
+  [
+    "Relatório de Vendas Exemplo"
+  ],
+  [
+    "Período fictício"
+  ],
+  [
+    "Descrição",
+    "Vendedor",
+    "Quantidade",
+    "Valor"
+  ],
+  [
+    "Produto A",
+    "Vendedor Um",
+    2,
+    10.5,
+    21,
+    46299.99967592592,
+    "Texto formatado"
+  ],
+  [
+    "Produto B",
+    "Vendedor Dois",
+    3,
+    20
+  ],
+  [
+    "Produto C",
+    "Vendedor Um",
+    4,
+    7.25
+  ]
+]

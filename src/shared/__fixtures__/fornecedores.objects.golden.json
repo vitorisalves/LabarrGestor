@@ -1,0 +1,27 @@
+[
+  {
+    "Empresa Razão Social": "Alfa Exemplo Ltda",
+    "Telefone": "11 1111-1111",
+    "Produto": "Arroz 5kg",
+    "Preço": 12.5,
+    "Categoria": "Grãos",
+    "Ultima Data Compra": "05/10/2026",
+    "Forma de Pagamento": "Boleto"
+  },
+  {
+    "Empresa Razão Social": "Beta Teste SA",
+    "Telefone": "22 2222-2222",
+    "Produto": "Feijão 1kg",
+    "Preço": "1.234,56",
+    "Categoria": "Grãos",
+    "Ultima Data Compra": "06/10/2026",
+    "Forma de Pagamento": "Pix"
+  },
+  {
+    "Empresa Razão Social": "Gama Ficticia ME",
+    "Produto": "Óleo 900ml",
+    "Preço": 8,
+    "Categoria": "Óleos",
+    "Forma de Pagamento": "Dinheiro"
+  }
+]

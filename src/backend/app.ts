@@ -1,10 +1,11 @@
 import express, { Request, Response, NextFunction } from "express";
+import helmet from "helmet";
 import { initFirebase } from "./firebase.js";
 import { repo } from "./data/index.js";
 import { versionOf } from "./data/version.js";
 import { recordAudit } from "./audit.js";
 import { clearLocalTestCollection, checkQuotaExceeded, resetQuotaExceeded } from "./data/firestoreRepo.js";
-import { EXTERNAL_API_CONFIG, IS_VERCEL, PUSH_CONFIG, getFirebaseConfig } from "./config.js";
+import { EXTERNAL_API_CONFIG, IS_VERCEL, BODY_LIMIT, PUSH_CONFIG, getFirebaseConfig } from "./config.js";
 import { AIService } from "./services/aiService.js";
 import { buildConfirmedSpending } from "./services/confirmedSpending.js";
 import { findDuplicateInvoices } from "./services/invoiceDuplicates.js";
@@ -22,6 +23,7 @@ import { DEFAULT_PRICE_PARAMS } from "../shared/priceEstimation.js";
 import { normalizeParams, validateParams, diffParams } from "../shared/priceSettings.js";
 import { mergeSuppliersAddOnly } from "../shared/supplierMerge.js";
 import { parsePrice, parseQuantity, validateItems } from "./validation.js";
+import { RateLimiter, isHeavyPath, rateLimitMessage } from "./rateLimit.js";
 import { describeError, isProductionEnv, internalErrorMessage } from "./errors.js";
 import { estimateItems, EstimateInputError, EstimateRequestItem } from "./services/priceEstimationService.js";
 import { buildOrderDoc, applyRequisitionApproval, buildListFromOrder, OrderError } from "./services/orderEstimates.js";
@@ -41,8 +43,15 @@ const applyPagination = (req: Request, res: Response, data: any[]) => {
   }
   return data;
 };
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ limit: '10mb', extended: true }));
+app.disable('x-powered-by');
+app.use(helmet({
+  contentSecurityPolicy: false,          // a API só devolve JSON; a CSP do site está no vercel.json
+  crossOriginEmbedderPolicy: false,
+  crossOriginOpenerPolicy: false,        // não interferir no login por popup
+  crossOriginResourcePolicy: { policy: 'same-site' },
+}));
+app.use(express.json({ limit: BODY_LIMIT }));
+app.use(express.urlencoded({ limit: BODY_LIMIT, extended: true }));
 
 app.use((req, res, next) => {
   const isTestMode = req.headers['x-test-mode'] === 'true';
@@ -75,8 +84,9 @@ async function cleanupManualInvoices() {
   }
 }
 
-initFirebase().then(() => {
-  if (!IS_VERCEL) {
+const initialization = process.env.DATA_BACKEND === 'memory' ? Promise.resolve() : initFirebase();
+initialization.then(() => {
+  if (!IS_VERCEL && process.env.DISABLE_BACKGROUND_WORKER !== '1') {
     cleanupManualInvoices();
     startBackgroundReminderWorker();
   }
@@ -104,6 +114,30 @@ if (process.env.DISABLE_PERMISSION_ENFORCEMENT === '1' && !enforcementDisabled()
   console.warn('[Auth] DISABLE_PERMISSION_ENFORCEMENT ignorado: só vale fora de produção/Vercel.');
 }
 
+if ((IS_VERCEL || process.env.NODE_ENV === 'production') && !process.env.SUPER_ADMIN_EMAIL) {
+  console.warn('[Config] SUPER_ADMIN_EMAIL ausente: ninguém será admin. Defina a variável na Vercel.');
+}
+
+// --- LIMITE DE REQUISIÇÕES ---
+// Freio por instância (memória): por IP antes do acesso, por pessoa e nas rotas pesadas depois dele.
+// RATE_LIMIT_DISABLED=1 só vale fora de produção/Vercel. /api/health fica fora do limite.
+app.set('trust proxy', 1);
+const num = (v: string | undefined, d: number) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : d);
+const ipLimiter = new RateLimiter({ windowMs: 60_000, max: num(process.env.RATE_LIMIT_IP_PER_MIN, 600) });
+const userLimiter = new RateLimiter({ windowMs: 60_000, max: num(process.env.RATE_LIMIT_USER_PER_MIN, 300) });
+const heavyLimiter = new RateLimiter({ windowMs: 60_000, max: num(process.env.RATE_LIMIT_HEAVY_PER_MIN, 20) });
+const rateLimitDisabled = () => process.env.RATE_LIMIT_DISABLED === '1' && !IS_VERCEL && process.env.NODE_ENV !== 'production';
+const tooMany = (res: Response, retryAfterSec: number) => {
+  res.setHeader('Retry-After', String(retryAfterSec));
+  return res.status(429).json({ error: 'rate_limited', message: rateLimitMessage(retryAfterSec) });
+};
+
+app.use('/api', (req: Request, res: Response, next: NextFunction) => {
+  if (rateLimitDisabled() || req.path === '/health') return next();
+  const r = ipLimiter.check(req.ip || 'sem-ip');
+  return r.allowed ? next() : tooMany(res, r.retryAfterSec);
+});
+
 app.use('/api', asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
   if (enforcementDisabled()) return next();
 
@@ -126,6 +160,18 @@ app.use('/api', asyncHandler(async (req: Request, res: Response, next: NextFunct
     : null;
   next();
 }));
+
+app.use('/api', (req: Request, res: Response, next: NextFunction) => {
+  if (rateLimitDisabled() || req.path === '/health') return next();
+  const who = res.locals.identity?.uid || req.ip || 'sem-ip';
+  const r1 = userLimiter.check(who);
+  if (!r1.allowed) return tooMany(res, r1.retryAfterSec);
+  if (isHeavyPath(req.path)) {
+    const r2 = heavyLimiter.check(who);
+    if (!r2.allowed) return tooMany(res, r2.retryAfterSec);
+  }
+  next();
+});
 
 const handleCacheAndEtag = (collectionName: string) => {
   return (req: Request, res: Response, next: NextFunction) => {

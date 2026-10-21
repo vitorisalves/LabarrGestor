@@ -123,14 +123,20 @@ export const AI_CONFIG = {
 /**
  * Configuração de Web Push (VAPID)
  */
-export const PUSH_CONFIG = {
-  publicKey: process.env.VAPID_PUBLIC_KEY || 'BFjmGy_6FMAWoyK_Hae1TD5ZeyvuNJaF1Iu0qDK27iNwU53JdhZF_WwD3wf9Pf2Bk-u709lqQn_1-vhMY3oWNbA',
-  privateKey: process.env.VAPID_PRIVATE_KEY || 'qG0iHQ5JUVZseiEgeduL5OFCoEJ7Vxdr5Q1PWhk5sIQ',
-  email: 'mailto:vitorisalves1@gmail.com'
-};
+export function resolvePushConfig(env: NodeJS.ProcessEnv) {
+  return {
+    publicKey: (env.VAPID_PUBLIC_KEY || '').trim(),
+    privateKey: (env.VAPID_PRIVATE_KEY || '').trim(),
+    email: env.VAPID_CONTACT_EMAIL || 'mailto:vitorisalves1@gmail.com'
+  };
+}
+
+export const PUSH_CONFIG = resolvePushConfig(process.env);
 
 export const IS_VERCEL = 
   process.env.VERCEL === '1' || 
   process.env.VERCEL_ENV !== undefined || 
   process.env.NOW_REGION !== undefined || 
   process.env.AWS_LAMBDA_FUNCTION_NAME !== undefined;
+
+export const BODY_LIMIT = process.env.BODY_LIMIT || (IS_VERCEL ? '4mb' : '10mb');

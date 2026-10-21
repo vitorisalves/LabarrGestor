@@ -1,0 +1,16 @@
+[
+  {
+    "Produto": "Item Alfa",
+    "Preço": 5.5,
+    "Categoria": "Cat X"
+  },
+  {
+    "Produto": "Item Beta",
+    "Preço": "2,50"
+  },
+  {
+    "Produto": "Item Gama",
+    "Preço": 7,
+    "Categoria": "Cat Y"
+  }
+]
