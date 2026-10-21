@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Product, SavedList, CartItem } from '../types';
 import { extractErrorMessage, safeStringify, handleFirestoreError, OperationType, cleanObject } from '../utils';
 
@@ -159,11 +159,18 @@ export const useCart = (
       if (!items) clearCart(); // com itens próprios, o carrinho de compras não é tocado
       
       try {
-        await fetch('/api/xml/shopping_lists', {
+        const editRes = await fetch('/api/xml/shopping_lists', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ id: editingListId, ...listData })
         });
+        if (editRes.ok) {
+          const editData = await editRes.json().catch(() => ({}));
+          if (typeof editData.version === 'number') {
+            knownVersions.current.set(editingListId, editData.version);
+            setSavedLists(prev => prev.map(l => l.id === editingListId ? { ...l, version: editData.version } : l));
+          }
+        }
         await invalidateBackendCache('shopping_lists');
       } catch (err: any) {
         handleFirestoreError(err, OperationType.UPDATE, `shopping_lists/${editingListId}`);
@@ -186,7 +193,9 @@ export const useCart = (
         const data = await res.json();
         await invalidateBackendCache('shopping_lists');
         // Replace temp ID with real ID
-        setSavedLists(prev => prev.map(l => l.id === tempId ? { ...l, id: data.id } : l));
+        const newVersion = res.ok && typeof data.version === 'number' ? data.version : undefined;
+        if (newVersion !== undefined) knownVersions.current.set(data.id, newVersion);
+        setSavedLists(prev => prev.map(l => l.id === tempId ? { ...l, id: data.id, ...(newVersion !== undefined ? { version: newVersion } : {}) } : l));
         return { id: data.id, ...listData };
       } catch (err: any) {
         handleFirestoreError(err, OperationType.WRITE, 'shopping_lists');
@@ -194,6 +203,39 @@ export const useCart = (
         return newList;
       }
     }
+  };
+
+  // Salva os itens de uma lista com controle de versão. As gravações da mesma lista saem em fila
+  // (uma depende da versão devolvida pela anterior), então cliques seguidos não geram conflito falso.
+  const listQueues = useRef(new Map<string, Promise<unknown>>());
+  const knownVersions = useRef(new Map<string, number>());
+
+  const saveListItems = (list: SavedList, body: Record<string, unknown>): Promise<boolean> => {
+    const previous = listQueues.current.get(list.id) ?? Promise.resolve();
+    const run = previous.catch(() => undefined).then(async () => {
+      const baseVersion = Math.max(knownVersions.current.get(list.id) ?? 0, list.version ?? 0);
+      const res = await fetch('/api/xml/shopping_lists/update-items', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ listId: list.id, baseVersion, ...body })
+      });
+      if (res.status === 409) {
+        knownVersions.current.delete(list.id);
+        addAppNotification('Lista alterada', 'Esta lista foi alterada por outra pessoa. Atualizei a tela; refaça a alteração.');
+        await refreshLists();
+        return false;
+      }
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        if (typeof data.version === 'number') {
+          knownVersions.current.set(list.id, data.version);
+          setSavedLists(prev => prev.map(l => l.id === list.id ? { ...l, version: data.version } : l));
+        }
+      }
+      return res.ok;
+    });
+    listQueues.current.set(list.id, run);
+    return run;
   };
 
   const toggleSavedListItemBought = async (listId: string, productName: string, supplierName: string, updates: Partial<{ bought: boolean; deliveryId?: string; invoiceId?: string; boughtAt?: string; previousLastPurchaseDate?: string }> = {}) => {
@@ -212,11 +254,7 @@ export const useCart = (
     
     try {
       if (!listId.startsWith('temp-')) {
-        await fetch('/api/xml/shopping_lists/update-items', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ listId, items: updatedItems.map(item => cleanObject(item)) })
-        });
+        await saveListItems(list, { items: updatedItems.map(item => cleanObject(item)) });
         await invalidateBackendCache('shopping_lists');
       }
     } catch (e) {
@@ -279,13 +317,10 @@ export const useCart = (
     // Optimistic update
     setSavedLists(prev => prev.map(l => l.id === listId ? { ...l, ...updatedListData } : l));
 
+    let saved = true;
     try {
       if (!listId.startsWith('temp-')) {
-        await fetch('/api/xml/shopping_lists/update-items', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ listId, items: updatedItems, total: newTotal, date: newDate })
-        });
+        saved = await saveListItems(list, { items: updatedItems, total: newTotal, date: newDate });
         await invalidateBackendCache('shopping_lists');
       }
     } catch (err: any) {
@@ -293,7 +328,7 @@ export const useCart = (
       console.warn("Cloud update failed:", err.message);
     }
 
-    addAppNotification('Lista Atualizada', `O produto "${product.name}" foi adicionado à lista "${list.name}".`);
+    if (saved) addAppNotification('Lista Atualizada', `O produto "${product.name}" foi adicionado à lista "${list.name}".`);
   };
 
   const updateProductPriceInLists = async (productName: string, supplierName: string, newPrice: number) => {
@@ -329,11 +364,7 @@ export const useCart = (
     for (const list of listsToSync) {
       if (!list.id.startsWith('temp-')) {
         try {
-          await fetch('/api/xml/shopping_lists/update-items', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ listId: list.id, items: list.items, total: list.total })
-          });
+          await saveListItems(list, { items: list.items, total: list.total });
         } catch (err: any) {
           if (err.code === 'not-found' || err.message.toLowerCase().includes('not found') || err.message.includes('404')) {
             console.warn("Shopping list document not found in Firestore, skipping update:", list.id);

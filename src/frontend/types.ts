@@ -56,6 +56,7 @@ export interface SavedList {
   createdBy?: string;
   approvedBy?: string;
   orderRef?: { orderId: string; estimatedTotal?: number; suggestedLimit?: number; approvedLimit?: number | null };
+  version?: number;
 }
 
 export interface PurchaseOrder {

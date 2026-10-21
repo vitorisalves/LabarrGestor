@@ -55,6 +55,11 @@ test('debug-db só para admin', () => {
   assert.equal(run('GET', '/debug-db', google('a@x.com'), approved([], 'admin')).ok, true);
 });
 
+test('relatório de notas duplicadas só para admin', () => {
+  assert.equal(run('GET', '/xml/invoices/duplicates', google('a@x.com'), approved()).ok, false);
+  assert.equal(run('GET', '/xml/invoices/duplicates', google('a@x.com'), approved([], 'admin')).ok, true);
+});
+
 test('rotas /auth/ passam para qualquer identidade válida (o handler decide)', () => {
   assert.equal(run('POST', '/auth/session', google('a@x.com'), null).ok, true);
   assert.equal(run('GET', '/auth/users', null).ok, false);

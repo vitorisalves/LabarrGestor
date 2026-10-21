@@ -26,6 +26,7 @@ import {
   registerDiskPersistence
 } from './cache.js';
 import type { DataRepo, QuerySnapshot } from './types.js';
+import { versionOf } from './version.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -458,6 +459,15 @@ export const fsOps = {
       }
       throw err;
     }
+  },
+  updateIfVersion: async (ref: any, patch: any, expectedVersion: number, path: string = 'unknown') => {
+    // Uso local (desenvolvimento): leitura + comparação + gravação, sem trava no banco.
+    const snap: any = await fsOps.getDoc(ref, path, true);
+    const exists = typeof snap.exists === 'function' ? snap.exists() : !!snap.exists;
+    if (!exists) return 'not_found' as const;
+    if (versionOf(snap.data()) !== expectedVersion) return 'conflict' as const;
+    await fsOps.update(ref, { ...patch, version: expectedVersion + 1 }, path);
+    return 'ok' as const;
   },
   doc: async (coll: string, id: string) => {
     const prefix = getCollectionPrefix();

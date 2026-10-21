@@ -26,6 +26,7 @@ import {
   deleteCacheDoc
 } from './cache.js';
 import type { DataRepo, QuerySnapshot, DocRef } from './types.js';
+import { versionOf } from './version.js';
 
 let g_client: SupabaseClient | null = null;
 
@@ -235,6 +236,26 @@ export function makeSupabaseRepo(clientOverride?: SupabaseClient): DataRepo {
       const { error } = await table(ref.__coll).upsert({ id: ref.__id, data: merged, updated_at: new Date().toISOString() });
       if (error) throw new Error(`[SupabaseRepo] update falhou em ${realPath}: ${error.message ?? error}`);
       updateCacheWithDoc(realPath, merged);
+    },
+
+    async updateIfVersion(refPromise: DocRef | Promise<DocRef>, patch: any, expectedVersion: number, path: string = 'unknown') {
+      const ref = await refPromise;
+      const realPath = realPathOf(path);
+      const { data: current, error: readErr } = await table(ref.__coll).select('data,updated_at').eq('id', ref.__id).maybeSingle();
+      if (readErr) throw new Error(`[SupabaseRepo] updateIfVersion(read) falhou em ${realPath}: ${readErr.message ?? readErr}`);
+      if (!current) return 'not_found' as const;
+      if (versionOf(current.data) !== expectedVersion) return 'conflict' as const;
+      const merged = { ...(current.data ?? {}), ...normalizeTimestamps(patch), version: expectedVersion + 1 };
+      // Trava no banco: só grava se ninguém mexeu no registro desde a leitura (updated_at igual).
+      const { data: written, error } = await table(ref.__coll)
+        .update({ data: merged, updated_at: new Date().toISOString() })
+        .eq('id', ref.__id)
+        .eq('updated_at', current.updated_at)
+        .select('id');
+      if (error) throw new Error(`[SupabaseRepo] updateIfVersion falhou em ${realPath}: ${error.message ?? error}`);
+      if (!written || written.length === 0) return 'conflict' as const;
+      updateCacheWithDoc(realPath, merged);
+      return 'ok' as const;
     },
 
     async delete(refPromise: DocRef | Promise<DocRef>, path: string = 'unknown') {

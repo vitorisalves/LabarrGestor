@@ -26,3 +26,10 @@ View your app in AI Studio: https://ai.studio/apps/bed5d8c6-de22-4942-9608-255e0
 - Toda a API (`/api`) exige uma pessoa aprovada, inclusive as leituras. Só `/api/health` e a chave pública de notificações são abertas.
 - Para o login funcionar: ative o provedor **Google** em Firebase Authentication e inclua o domínio do site em *Authorized domains*.
 - `DISABLE_PERMISSION_ENFORCEMENT=1` desliga o controle de acesso apenas em desenvolvimento local; é ignorado em produção e na Vercel.
+
+## Integridade e auditoria
+
+- Rode `scripts/supabase/add-audit-log.sql` no **SQL Editor do Supabase**, uma única vez, para criar a tabela de auditoria.
+- O relatório `GET /api/xml/invoices/duplicates` (somente admin) lista possíveis notas repetidas. Ele só mostra os grupos; **nada é apagado**.
+- Reimportar uma nota que já existe é ignorado, com aviso, e não altera a nota nem gera novo alerta de preço.
+- A coleção `audit_log` guarda quem fez cada ação destrutiva (quem, o quê e quando).

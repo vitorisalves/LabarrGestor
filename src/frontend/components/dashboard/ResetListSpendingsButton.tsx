@@ -25,7 +25,7 @@ export const ResetListSpendingsButton: React.FC<ResetListSpendingsButtonProps> =
       const res = await fetch('/api/xml/list-spendings/reset', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ start: start.toISOString(), end: end.toISOString() })
+        body: JSON.stringify({ start: start.toISOString(), end: end.toISOString(), confirm: true })
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       await onDone?.();

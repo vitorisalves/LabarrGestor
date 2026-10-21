@@ -635,8 +635,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
           logs.push({ type: 'error', text: `Erro ao importar arquivo: ${r.error}` });
         } else {
           logs.push({
-            type: r.status === 'updated' ? 'warning' : 'success',
-            text: `Sucesso: Nota de "${r.supplierName}" (R$ ${r.vTotTrib.toFixed(2)}) ${r.status === 'updated' ? 'atualizada' : 'importada'}.`
+            type: r.status === 'imported' ? 'success' : 'warning',
+            text: r.status === 'duplicate'
+              ? `Nota de "${r.supplierName}" (R$ ${r.vTotTrib.toFixed(2)}) já existia e não foi importada de novo.`
+              : `Sucesso: Nota de "${r.supplierName}" (R$ ${r.vTotTrib.toFixed(2)}) importada.`
           });
 
         }

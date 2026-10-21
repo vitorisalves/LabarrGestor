@@ -52,3 +52,15 @@ test('guarda de acesso: sem token, gravar e ler dão 401; só /health e a chave 
     process.env.DISABLE_PERMISSION_ENFORCEMENT = '1';
   }
 });
+
+test('valores inválidos são recusados com 400 antes de gravar', async () => {
+  const post = (path: string, body: unknown) => fetch(`${base}${path}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+  const confirmRes = await post('/api/xml/pending-list-products/confirm', { items: [{ id: 'x', productName: 'Arroz', price: -5, quantity: 1 }] });
+  assert.equal(confirmRes.status, 400);
+  assert.match((await confirmRes.json()).message, /Preço/);
+  assert.equal((await post('/api/xml/shopping_lists/update-items', { listId: 'nao-existe', items: [{ name: 'a', price: 1, quantity: 0 }] })).status, 400);
+  assert.equal((await post('/api/xml/setor-limits', { setor: 'Cozinha', monthlyLimit: -10 })).status, 400);
+  assert.equal((await post('/api/xml/purchase_orders', { items: [{ name: 'a', price: 1, quantity: 1e9 }] })).status, 400);
+});

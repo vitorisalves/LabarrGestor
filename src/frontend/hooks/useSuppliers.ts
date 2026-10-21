@@ -233,6 +233,8 @@ export const useSuppliers = (isAuthReady: boolean, isApproved: boolean) => {
   };
 
   const deleteAllSuppliers = async () => {
+    const previous = suppliers;
+    const confirmCount = suppliers.filter(s => { const n = (s.name || '').trim().toUpperCase(); return n !== 'MERCADO' && n !== 'MATERIAIS'; }).length;
     // Target filtered list for optimistic update matching the backend logic
     setSuppliers(prev => {
       const next = prev.filter(s => {
@@ -244,7 +246,16 @@ export const useSuppliers = (isAuthReady: boolean, isApproved: boolean) => {
     });
 
     try {
-      await fetch('/api/xml/suppliers/delete-all', { method: 'POST' });
+      const res = await fetch('/api/xml/suppliers/delete-all', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirmCount })
+      });
+      if (!res.ok) {
+        setSuppliers(previous); // o servidor recusou: volta a lista como estava
+        console.warn('Exclusão em lote recusada:', res.status);
+        return;
+      }
       await invalidateBackendCache('suppliers');
     } catch (err: any) {
       console.warn("Cloud batch delete failed:", err.message);

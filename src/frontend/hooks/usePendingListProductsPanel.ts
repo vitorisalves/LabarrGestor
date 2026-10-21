@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 export const usePendingListProductsPanel = (
   addSystemLog: (type: 'category' | 'delete' | 'info', message: string) => void,
@@ -223,19 +223,23 @@ export const usePendingListProductsPanel = (
     }
   };
 
+  const confirmingRef = useRef(false);
+
   const handleConfirmPendingProducts = async () => {
+    if (confirmingRef.current) return; // clique duplo: o segundo clique é ignorado
     const itemsToConfirm = selectedPendingIds.length > 0
       ? pendingListProducts.filter(p => selectedPendingIds.includes(p.id))
       : pendingListProducts;
 
     if (itemsToConfirm.length === 0) return;
+    confirmingRef.current = true;
 
     try {
       setIsUploading(true);
       const res = await fetch('/api/xml/pending-list-products/confirm', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: itemsToConfirm })
+        body: JSON.stringify({ items: itemsToConfirm.map(p => ({ ...p, confirmId: p.id || crypto.randomUUID() })) })
       });
 
       if (res.ok) {
@@ -259,6 +263,7 @@ export const usePendingListProductsPanel = (
       alert("Falha na comunicação ao confirmar os produtos.");
     } finally {
       setIsUploading(false);
+      confirmingRef.current = false;
     }
   };
 

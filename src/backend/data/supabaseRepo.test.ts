@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { makeSupabaseRepo, normalizeTimestamps } from './supabaseRepo.ts';
 
-function fakeClient(store: Record<string, { id: string; data: any }[]>) {
+function fakeClient(store: Record<string, { id: string; data: any; updated_at?: string }[]>) {
   const api = {
     schema: () => api,
     from: (t: string) => tableApi(t)
@@ -21,12 +21,12 @@ function fakeClient(store: Record<string, { id: string; data: any }[]>) {
       limit(n: number) { q._limit = n; return q; },
       range(from: number, to: number) { q._rangeFrom = from; q._rangeTo = to; return q; },
       maybeSingle() {
-        let data = rows().map(r => ({ id: r.id, data: r.data }));
+        let data = rows().map(r => ({ id: r.id, data: r.data, updated_at: r.updated_at }));
         if (q._filterId !== undefined) data = data.filter(r => r.id === q._filterId);
         return Promise.resolve({ data: data[0] ?? null, error: null });
       },
       then(resolve: any) {
-        let data = rows().map(r => ({ id: r.id, data: r.data }));
+        let data = rows().map(r => ({ id: r.id, data: r.data, updated_at: r.updated_at }));
         if (q._filterId !== undefined) data = data.filter(r => r.id === q._filterId);
         if (q._limit !== undefined) data = data.slice(0, q._limit);
         if (q._rangeFrom !== undefined) {
@@ -42,6 +42,20 @@ function fakeClient(store: Record<string, { id: string; data: any }[]>) {
         const i = rs.findIndex(r => r.id === row.id);
         if (i >= 0) rs[i] = { id: row.id, data: row.data }; else rs.push({ id: row.id, data: row.data });
         return Promise.resolve({ error: null });
+      },
+      update(row: any) {
+        const filters: Array<[string, string]> = [];
+        const chain: any = {
+          eq(c: string, v: string) { filters.push([c, v]); return chain; },
+          select() {
+            const rs = rows();
+            const hit = rs.find(r => filters.every(([c, v]) => (c === 'id' ? r.id === v : (r as any)[c] === v)));
+            if (!hit) return Promise.resolve({ data: [], error: null });
+            hit.data = row.data; hit.updated_at = row.updated_at;
+            return Promise.resolve({ data: [{ id: hit.id }], error: null });
+          }
+        };
+        return chain;
       },
       delete() {
         return { eq: (_c: string, v: string) => { store[t] = rows().filter(r => r.id !== v); return Promise.resolve({ error: null }); } };
@@ -153,6 +167,50 @@ function failingClient() {
   const api: any = { schema: () => api, from: () => q };
   return api;
 }
+
+test('updateIfVersion: versão certa grava e incrementa', async () => {
+  const store: any = { shopping_lists: [{ id: 'l1', data: { items: [], version: 2 }, updated_at: 't1' }] };
+  const repo = makeSupabaseRepo(fakeClient(store));
+  const r = await repo.updateIfVersion(repo.doc('shopping_lists', 'l1'), { items: [1] }, 2, 'shopping_lists/l1');
+  assert.equal(r, 'ok');
+  assert.equal(store.shopping_lists[0].data.version, 3);
+  assert.deepEqual(store.shopping_lists[0].data.items, [1]);
+});
+
+test('updateIfVersion: versão velha dá conflict e não grava', async () => {
+  const store: any = { shopping_lists: [{ id: 'l1', data: { items: [], version: 5 }, updated_at: 't1' }] };
+  const repo = makeSupabaseRepo(fakeClient(store));
+  assert.equal(await repo.updateIfVersion(repo.doc('shopping_lists', 'l1'), { items: [9] }, 4, 'shopping_lists/l1'), 'conflict');
+  assert.deepEqual(store.shopping_lists[0].data.items, []);
+});
+
+test('updateIfVersion: documento sem version vale 0; inexistente dá not_found', async () => {
+  const store: any = { shopping_lists: [{ id: 'l1', data: { items: [] }, updated_at: 't1' }] };
+  const repo = makeSupabaseRepo(fakeClient(store));
+  assert.equal(await repo.updateIfVersion(repo.doc('shopping_lists', 'l1'), { items: [1] }, 0, 'shopping_lists/l1'), 'ok');
+  assert.equal(await repo.updateIfVersion(repo.doc('shopping_lists', 'nao'), { items: [1] }, 0, 'shopping_lists/nao'), 'not_found');
+});
+
+test('updateIfVersion: updated_at mudou entre leitura e gravação dá conflict e não grava', async () => {
+  const store: any = { shopping_lists: [{ id: 'l1', data: { items: [], version: 1 }, updated_at: 't1' }] };
+  const client = fakeClient(store);
+  const realFrom = client.from;
+  // Simula outra gravação logo depois da leitura (maybeSingle): muda updated_at antes do update.
+  client.from = (t: string) => {
+    const q = realFrom(t);
+    const origMaybe = q.maybeSingle;
+    q.maybeSingle = async () => {
+      const r = await origMaybe();
+      store.shopping_lists[0].updated_at = 't2';
+      return r;
+    };
+    return q;
+  };
+  const repo = makeSupabaseRepo(client);
+  assert.equal(await repo.updateIfVersion(repo.doc('shopping_lists', 'l1'), { items: [7] }, 1, 'shopping_lists/l1'), 'conflict');
+  assert.deepEqual(store.shopping_lists[0].data.items, []);
+  assert.equal(store.shopping_lists[0].data.version, 1);
+});
 
 test('getDocs strict lança quando a leitura falha; sem strict devolve vazio', async () => {
   const repo = makeSupabaseRepo(failingClient());

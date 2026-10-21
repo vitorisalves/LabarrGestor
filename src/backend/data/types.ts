@@ -10,6 +10,11 @@ export interface DataRepo {
   doc(coll: string, id: string): Promise<DocRef>;
   set(ref: DocRef | Promise<DocRef>, data: DocData, path?: string): Promise<void>;
   update(ref: DocRef | Promise<DocRef>, data: DocData, path?: string): Promise<void>;
+  /**
+   * Grava `patch` (mesclado ao documento) só se a versão atual for `expectedVersion`; a nova versão
+   * é `expectedVersion + 1`. 'conflict' = outra pessoa gravou antes; 'not_found' = documento não existe.
+   */
+  updateIfVersion(ref: DocRef | Promise<DocRef>, patch: DocData, expectedVersion: number, path?: string): Promise<'ok' | 'conflict' | 'not_found'>;
   delete(ref: DocRef | Promise<DocRef>, path?: string): Promise<void>;
   invalidateCache(path: string): void;
   getCollectionVersion(path: string): number;

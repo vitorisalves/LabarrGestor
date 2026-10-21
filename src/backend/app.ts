@@ -1,9 +1,13 @@
 import express, { Request, Response, NextFunction } from "express";
 import { initFirebase } from "./firebase.js";
 import { repo } from "./data/index.js";
+import { versionOf } from "./data/version.js";
+import { recordAudit } from "./audit.js";
 import { clearLocalTestCollection, checkQuotaExceeded, resetQuotaExceeded } from "./data/firestoreRepo.js";
 import { EXTERNAL_API_CONFIG, IS_VERCEL, PUSH_CONFIG, getFirebaseConfig } from "./config.js";
 import { AIService } from "./services/aiService.js";
+import { buildConfirmedSpending } from "./services/confirmedSpending.js";
+import { findDuplicateInvoices } from "./services/invoiceDuplicates.js";
 import { PushService } from "./services/pushService.js";
 import { OmieService } from "./services/omieService.js";
 import { ExcelService } from "./services/excelService.js";
@@ -17,6 +21,8 @@ import { authorizeUserAction, canViewUsers } from "./auth/users.js";
 import { DEFAULT_PRICE_PARAMS } from "../shared/priceEstimation.js";
 import { normalizeParams, validateParams, diffParams } from "../shared/priceSettings.js";
 import { mergeSuppliersAddOnly } from "../shared/supplierMerge.js";
+import { parsePrice, parseQuantity, validateItems } from "./validation.js";
+import { describeError, isProductionEnv, internalErrorMessage } from "./errors.js";
 import { estimateItems, EstimateInputError, EstimateRequestItem } from "./services/priceEstimationService.js";
 import { buildOrderDoc, applyRequisitionApproval, buildListFromOrder, OrderError } from "./services/orderEstimates.js";
 
@@ -186,7 +192,7 @@ app.get("/api/debug-db", asyncHandler(async (req: Request, res: Response) => {
       }
     });
   } catch (error: any) {
-    res.status(500).json({ error: error?.message || String(error) });
+    res.status(500).json({ error: internalErrorMessage(error, 'debug-db') });
   }
 }));
 
@@ -197,7 +203,7 @@ app.get("/api/excel-sync", asyncHandler(async (req: Request, res: Response) => {
     const data = await ExcelService.syncFromGoogleSheets(SHEET_ID);
     res.json({ data });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: internalErrorMessage(error, 'excel-sync') });
   }
 }));
 
@@ -223,6 +229,12 @@ const priceEstimationEnabled = () => process.env.PRICE_ESTIMATION_ENABLED === '1
 
 const actorName = (req: Request, res: Response): string =>
   String(res.locals.authUser?.name || req.body?.by || 'sistema');
+
+const auditActor = (res: Response) => ({
+  uid: res.locals.identity?.uid,
+  email: res.locals.identity?.email,
+  name: res.locals.authUser?.name,
+});
 
 async function loadPriceSettings(opts: { strict?: boolean } = {}) {
   try {
@@ -332,7 +344,11 @@ app.post("/api/xml/process", asyncHandler(async (req: Request, res: Response) =>
   const docRef = repo.doc('invoices', parsedData.id);
   const docSnapshot = await repo.getDoc(docRef);
   const exists = typeof docSnapshot.exists === 'function' ? docSnapshot.exists() : !!docSnapshot.exists;
-  
+  if (exists) {
+    // A nota já foi importada: não regrava (preserva ajustes) nem refaz alertas de preço.
+    return res.json({ status: 'duplicate', id: parsedData.id });
+  }
+
   await repo.set(docRef, parsedData, 'invoices/' + parsedData.id);
   
   // Salva também em xml_spendings para persistência simultânea multitabelas
@@ -408,7 +424,7 @@ app.post("/api/xml/process", asyncHandler(async (req: Request, res: Response) =>
           percentIncrease,
           invoiceId: currentInvoiceId,
           invoiceDate: currentInvoiceDate,
-          alreadyImported: exists, // marca se a nota já foi importada anteriormente
+          alreadyImported: false,
           createdAt: new Date().toISOString()
         };
 
@@ -434,7 +450,7 @@ app.post("/api/xml/process", asyncHandler(async (req: Request, res: Response) =>
     }
   }
   
-  res.json({ status: exists ? 'updated' : 'imported', id: parsedData.id });
+  res.json({ status: 'imported', id: parsedData.id });
 }));
 
 app.post("/api/xml/process-batch", asyncHandler(async (req: Request, res: Response) => {
@@ -484,6 +500,16 @@ app.post("/api/xml/process-batch", asyncHandler(async (req: Request, res: Respon
       const docRef = repo.doc('invoices', parsedData.id);
       const docSnapshot = await repo.getDoc(docRef);
       const exists = typeof docSnapshot.exists === 'function' ? docSnapshot.exists() : !!docSnapshot.exists;
+      if (exists) {
+        results.push({
+          id: parsedData.id,
+          supplierName: parsedData.supplierName,
+          dhEmi: parsedData.date,
+          vTotTrib: parsedData.vTotTrib || 0,
+          status: 'duplicate'
+        });
+        continue;
+      }
 
       // Persiste na tabela invoices
       await repo.set(docRef, parsedData, 'invoices/' + parsedData.id);
@@ -550,7 +576,7 @@ app.post("/api/xml/process-batch", asyncHandler(async (req: Request, res: Respon
               percentIncrease,
               invoiceId: currentInvoiceId,
               invoiceDate: currentInvoiceDate,
-              alreadyImported: exists,
+              alreadyImported: false,
               createdAt: new Date().toISOString()
         };
 
@@ -568,7 +594,7 @@ app.post("/api/xml/process-batch", asyncHandler(async (req: Request, res: Respon
         supplierName: parsedData.supplierName,
         dhEmi: parsedData.date,
         vTotTrib: parsedData.vTotTrib || 0,
-        status: exists ? 'updated' : 'imported'
+        status: 'imported'
       });
     } catch (err: any) {
       console.error(`Erro ao processar arquivo no lote:`, err);
@@ -596,7 +622,7 @@ app.get("/api/xml/price-increases", handleCacheAndEtag("price_increases"), async
     res.json(applyPagination(req, res, data));
   } catch (error: any) {
     console.error("Error fetching price increases:", error);
-    res.status(500).json({ error: "Error fetching price increases", message: error.message });
+    res.status(500).json({ error: "Error fetching price increases", message: internalErrorMessage(error) });
   }
 }));
 
@@ -612,6 +638,17 @@ app.post("/api/xml/price-increases/delete", asyncHandler(async (req: Request, re
   }
   repo.invalidateCache('price_increases');
   res.json({ status: "success", deletedCount: ids.length });
+}));
+
+// Relatório de notas repetidas: só leitura. Nada é apagado por aqui; quem decide é o dono.
+app.get("/api/xml/invoices/duplicates", asyncHandler(async (req: Request, res: Response) => {
+  const snapshot = await repo.getDocs('invoices', 'invoices', true);
+  const invoices = snapshot.docs.map((doc: any) => {
+    const d = typeof doc.data === 'function' ? doc.data() : doc.data;
+    return { id: doc.id, ...d };
+  });
+  const groups = findDuplicateInvoices(invoices);
+  res.json({ total: invoices.length, groups });
 }));
 
 app.get("/api/xml/invoices", handleCacheAndEtag("invoices"), asyncHandler(async (req: Request, res: Response) => {
@@ -701,9 +738,7 @@ app.get("/api/xml/invoices", handleCacheAndEtag("invoices"), asyncHandler(async 
     console.error("Error fetching invoices:", error);
     res.status(500).json({
       error: "Error fetching invoices",
-      message: error?.message || String(error),
-      code: error?.code || "",
-      stack: error?.stack || ""
+      message: internalErrorMessage(error, 'invoices')
     });
   }
 }));
@@ -719,7 +754,7 @@ app.get("/api/xml/suppliers", handleCacheAndEtag("suppliers"), asyncHandler(asyn
     res.json(applyPagination(req, res, data));
   } catch (error: any) {
     console.error("Error fetching cached suppliers:", error);
-    res.status(500).json({ error: "Error fetching suppliers", message: error.message });
+    res.status(500).json({ error: "Error fetching suppliers", message: internalErrorMessage(error) });
   }
 }));
 
@@ -742,6 +777,7 @@ app.post("/api/xml/suppliers/import", asyncHandler(async (req: Request, res: Res
   if (!Array.isArray(suppliers) || suppliers.length === 0) {
     return res.status(400).json({ error: "Nenhum fornecedor enviado." });
   }
+  for (const s of suppliers) { if (s && Array.isArray(s.products)) validateItems(s.products, 'Produto'); }
   const snapshot = await repo.getDocs('suppliers', 'suppliers', true, true);
   const existing = snapshot.docs.map((d: any) => ({ id: d.id, ...(typeof d.data === 'function' ? d.data() : d.data) }));
   const result = mergeSuppliersAddOnly(
@@ -768,23 +804,39 @@ app.post("/api/xml/suppliers/delete", asyncHandler(async (req: Request, res: Res
     return res.status(400).json({ error: "id ausente." });
   }
   const docRef = repo.doc('suppliers', id);
+  let supplierName: string | undefined;
+  try {
+    const snap: any = await repo.getDoc(docRef, 'suppliers/' + id);
+    const sd = typeof snap?.data === 'function' ? snap.data() : snap?.data;
+    supplierName = sd?.name;
+  } catch { /* nome é só para auditoria */ }
   await repo.delete(docRef, 'suppliers/' + id);
   repo.invalidateCache('suppliers');
+  await recordAudit(repo, { action: 'supplier.delete', actor: auditActor(res), target: 'suppliers/' + id, before: { name: supplierName } });
   res.json({ status: "success" });
 }));
 
 app.post("/api/xml/suppliers/delete-all", asyncHandler(async (req: Request, res: Response) => {
   const snapshot = await repo.getDocs('suppliers', 'suppliers', true);
-  let count = 0;
-  for (const docSnap of snapshot.docs) {
+  const deletable = snapshot.docs.filter((docSnap: any) => {
     const d = typeof docSnap.data === 'function' ? docSnap.data() : docSnap.data;
     const name = String(d?.name || '').trim().toUpperCase();
-    if (name === 'MERCADO' || name === 'MATERIAIS') continue;
-    const docRef = repo.doc('suppliers', docSnap.id);
-    await repo.delete(docRef, 'suppliers/' + docSnap.id);
+    return name !== 'MERCADO' && name !== 'MATERIAIS';
+  });
+  if (Number(req.body?.confirmCount) !== deletable.length) {
+    return res.status(409).json({
+      error: "confirm_count_mismatch",
+      expected: deletable.length,
+      message: `Confirmação necessária: isto apagaria ${deletable.length} fornecedores. Recarregue a tela e confirme de novo.`
+    });
+  }
+  let count = 0;
+  for (const docSnap of deletable) {
+    await repo.delete(repo.doc('suppliers', docSnap.id), 'suppliers/' + docSnap.id);
     count++;
   }
   repo.invalidateCache('suppliers');
+  await recordAudit(repo, { action: 'supplier.delete_all', actor: auditActor(res), target: 'suppliers', meta: { count } });
   res.json({ status: "success", count });
 }));
 
@@ -802,7 +854,7 @@ app.get("/api/xml/authorized_users", handleCacheAndEtag("authorized_users"), asy
     res.json(applyPagination(req, res, data));
   } catch (error: any) {
     console.error("Error fetching cached authorized_users:", error);
-    res.status(500).json({ error: "Error fetching authorized users", message: error.message });
+    res.status(500).json({ error: "Error fetching authorized users", message: internalErrorMessage(error) });
   }
 }));
 
@@ -904,6 +956,7 @@ app.post("/api/auth/users/status", asyncHandler(async (req: Request, res: Respon
   else await repo.update(repo.doc('authorized_users', uid), { status }, 'authorized_users/' + uid);
   invalidateAuthUser(uid);
   repo.invalidateCache('authorized_users');
+  await recordAudit(repo, { action: status === 'approved' ? 'user.approve' : 'user.deny', actor: auditActor(res), target: 'authorized_users/' + uid, before: { status: target?.status }, after: { status } });
   res.json({ status: "success" });
 }));
 
@@ -920,6 +973,7 @@ app.post("/api/auth/users/delete", asyncHandler(async (req: Request, res: Respon
   await repo.delete(repo.doc('authorized_users', uid), 'authorized_users/' + uid);
   invalidateAuthUser(uid);
   repo.invalidateCache('authorized_users');
+  await recordAudit(repo, { action: 'user.delete', actor: auditActor(res), target: 'authorized_users/' + uid, before: { email: target?.email, status: target?.status } });
   res.json({ status: "success" });
 }));
 
@@ -944,6 +998,7 @@ app.post("/api/auth/users/permissions", asyncHandler(async (req: Request, res: R
   await repo.update(repo.doc('authorized_users', uid), { permissions: granted }, 'authorized_users/' + uid);
   invalidateAuthUser(uid);
   repo.invalidateCache('authorized_users');
+  await recordAudit(repo, { action: 'user.permissions', actor: auditActor(res), target: 'authorized_users/' + uid, before: { permissions: target!.permissions }, after: { permissions: granted } });
   res.json({ status: "success", permissions: granted });
 }));
 
@@ -958,7 +1013,7 @@ app.get("/api/xml/spendings", handleCacheAndEtag("xml_spendings"), asyncHandler(
     res.json(applyPagination(req, res, data));
   } catch (error: any) {
     console.error("Error fetching cached spendings:", error);
-    res.status(500).json({ error: "Error fetching spendings", message: error.message });
+    res.status(500).json({ error: "Error fetching spendings", message: internalErrorMessage(error) });
   }
 }));
 
@@ -975,6 +1030,7 @@ app.delete("/api/xml/spendings/:id", asyncHandler(async (req: Request, res: Resp
   if (exists) {
     await repo.delete(docRef, 'xml_spendings/' + id);
     repo.invalidateCache('xml_spendings');
+    await recordAudit(repo, { action: 'spending.delete', actor: auditActor(res), target: 'xml_spendings/' + id });
     res.json({ status: 'deleted', id });
   } else {
     res.json({ status: 'not_found', message: `Spending ${id} not found but checked.` });
@@ -992,7 +1048,7 @@ app.get("/api/xml/categories", handleCacheAndEtag("categories"), asyncHandler(as
     res.json(applyPagination(req, res, data));
   } catch (error: any) {
     console.error("Error fetching cached categories:", error);
-    res.status(500).json({ error: "Error fetching categories", message: error.message });
+    res.status(500).json({ error: "Error fetching categories", message: internalErrorMessage(error) });
   }
 }));
 
@@ -1007,7 +1063,7 @@ app.get("/api/xml/setores", handleCacheAndEtag("setores"), asyncHandler(async (r
     res.json(applyPagination(req, res, data));
   } catch (error: any) {
     console.error("Error fetching cached setores:", error);
-    res.status(500).json({ error: "Error fetching setores", message: error.message });
+    res.status(500).json({ error: "Error fetching setores", message: internalErrorMessage(error) });
   }
 }));
 
@@ -1080,7 +1136,7 @@ app.get("/api/xml/delivered_products", handleCacheAndEtag("delivered_products"),
     res.json(applyPagination(req, res, data));
   } catch (error: any) {
     console.error("Error fetching cached delivered_products:", error);
-    res.status(500).json({ error: "Error fetching delivered products", message: error.message });
+    res.status(500).json({ error: "Error fetching delivered products", message: internalErrorMessage(error) });
   }
 }));
 
@@ -1116,7 +1172,7 @@ app.get("/api/xml/reminders", handleCacheAndEtag("reminders"), asyncHandler(asyn
     res.json(applyPagination(req, res, data));
   } catch (error: any) {
     console.error("Error fetching cached reminders:", error);
-    res.status(500).json({ error: "Error fetching reminders", message: error.message });
+    res.status(500).json({ error: "Error fetching reminders", message: internalErrorMessage(error) });
   }
 }));
 
@@ -1156,29 +1212,58 @@ app.get("/api/xml/shopping_lists", handleCacheAndEtag("shopping_lists"), asyncHa
     res.json(applyPagination(req, res, data));
   } catch (error: any) {
     console.error("Error fetching cached shopping_lists:", error);
-    res.status(500).json({ error: "Error fetching shopping lists", message: error.message });
+    res.status(500).json({ error: "Error fetching shopping lists", message: internalErrorMessage(error) });
   }
 }));
 
 app.post("/api/xml/shopping_lists/update-items", asyncHandler(async (req: Request, res: Response) => {
-  const { listId, items, total, date } = req.body;
+  const { listId, items, total, date, baseVersion } = req.body;
   if (!listId || !Array.isArray(items)) {
     return res.status(400).json({ error: "listId e items são obrigatórios" });
   }
+  validateItems(items);
   const updates: any = { items };
-  if (typeof total === 'number') updates.total = total;
+  if (typeof total === 'number') updates.total = parsePrice(total, 'Total');
   if (typeof date === 'string') updates.date = date;
-  await repo.update(repo.doc('shopping_lists', listId), updates, 'shopping_lists/' + listId);
+  const ref = repo.doc('shopping_lists', listId);
+  const path = 'shopping_lists/' + listId;
+
+  if (baseVersion === undefined || baseVersion === null) {
+    // Tela antiga (sem versão): grava como antes, mas sempre avança a versão.
+    const current = await repo.getDoc(ref, path, true, true);
+    const exists = typeof current.exists === 'function' ? current.exists() : !!current.exists;
+    const version = (exists ? versionOf(current.data()) : 0) + 1;
+    await repo.update(ref, { ...updates, version }, path);
+    repo.invalidateCache('shopping_lists');
+    return res.json({ status: "success", version });
+  }
+
+  const expected = Number(baseVersion);
+  if (!Number.isInteger(expected) || expected < 0) {
+    return res.status(400).json({ error: "baseVersion inválido" });
+  }
+  const outcome = await repo.updateIfVersion(ref, updates, expected, path);
+  if (outcome === 'not_found') return res.status(404).json({ error: "not_found", message: "Lista não encontrada." });
+  if (outcome === 'conflict') {
+    return res.status(409).json({ error: "version_conflict", message: "Esta lista foi alterada por outra pessoa. Recarregue a tela e tente de novo." });
+  }
   repo.invalidateCache('shopping_lists');
-  res.json({ status: "success" });
+  res.json({ status: "success", version: expected + 1 });
 }));
 
 app.post("/api/xml/shopping_lists", asyncHandler(async (req: Request, res: Response) => {
   const { id, ...listData } = req.body;
+  if (Array.isArray(listData.items)) validateItems(listData.items);
   const listId = id || `list_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-  await repo.set(repo.doc('shopping_lists', listId), listData, 'shopping_lists/' + listId);
+  const ref = repo.doc('shopping_lists', listId);
+  const path = 'shopping_lists/' + listId;
+  // Mantém a contagem de versões: regravar a lista inteira também avança a versão.
+  const existing = await repo.getDoc(ref, path, true, true);
+  const exists = typeof existing.exists === 'function' ? existing.exists() : !!existing.exists;
+  const version = (exists ? versionOf(existing.data()) : 0) + 1;
+  await repo.set(ref, { ...listData, version }, path);
   repo.invalidateCache('shopping_lists');
-  res.json({ status: "success", id: listId });
+  res.json({ status: "success", id: listId, version });
 }));
 
 app.post("/api/xml/shopping_lists/delete", asyncHandler(async (req: Request, res: Response) => {
@@ -1202,7 +1287,7 @@ app.get("/api/xml/purchase_orders", handleCacheAndEtag("purchase_orders"), async
     res.json(applyPagination(req, res, data));
   } catch (error: any) {
     console.error("Error fetching purchase_orders:", error);
-    res.status(500).json({ error: "Error fetching purchase orders", message: error.message });
+    res.status(500).json({ error: "Error fetching purchase orders", message: internalErrorMessage(error) });
   }
 }));
 
@@ -1211,6 +1296,8 @@ app.post("/api/xml/purchase_orders", asyncHandler(async (req: Request, res: Resp
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: "Itens são obrigatórios" });
   }
+  validateItems(items);
+  parsePrice(shippingFee, 'Frete');
   const id = `po_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
 
   if (priceEstimationEnabled()) {
@@ -1241,8 +1328,8 @@ app.post("/api/xml/purchase_orders", asyncHandler(async (req: Request, res: Resp
     name: name || 'Lista de Compras',
     date: new Date().toISOString(),
     items,
-    total: Number(total) || 0,
-    shippingFee: Number(shippingFee) || 0,
+    total: parsePrice(total, 'Total'),
+    shippingFee: parsePrice(shippingFee, 'Frete'),
     createdBy: createdBy || '',
     status: 'pending'
   };
@@ -1457,6 +1544,11 @@ const deleteInvoiceHelper = async (id: string, res: Response) => {
     await repo.delete(docRef, 'invoices/' + finalId);
     repo.invalidateCache('xml_spendings'); // Invalida o cache de gastos também
     repo.invalidateCache('invoices'); // Invalida o cache de faturas também
+    const inv: any = (typeof docSnapshot.data === 'function' ? docSnapshot.data() : docSnapshot.data) || {};
+    await recordAudit(repo, {
+      action: 'invoice.delete', actor: auditActor(res), target: 'invoices/' + finalId,
+      before: { supplierName: inv.supplierName, vTotTrib: inv.vTotTrib, date: inv.date, produtos: Array.isArray(inv.produtos) ? inv.produtos.length : 0 },
+    });
     res.json({ status: 'deleted', id: finalId });
   } else {
     // Retornamos 200/sucesso mesmo se não encontrar para evitar quebrar o fluxo do frontend de forma destrutiva
@@ -1483,6 +1575,9 @@ app.post("/api/xml/list-spendings/reset", asyncHandler(async (req: Request, res:
   if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || startMs > endMs) {
     return res.status(400).json({ error: "Período inválido" });
   }
+  if (req.body?.confirm !== true) {
+    return res.status(400).json({ error: "confirm_required", message: "Confirmação necessária para resetar os gastos das listas." });
+  }
 
   let removed = 0;
   for (const coll of ['invoices', 'xml_spendings']) {
@@ -1497,6 +1592,7 @@ app.post("/api/xml/list-spendings/reset", asyncHandler(async (req: Request, res:
     }
     repo.invalidateCache(coll);
   }
+  await recordAudit(repo, { action: 'list_spendings.reset', actor: auditActor(res), target: 'invoices', meta: { start, end, removed } });
   res.json({ status: "success", removed });
 }));
 
@@ -1783,7 +1879,7 @@ app.get("/api/xml/setor-limits", handleCacheAndEtag("setor_limits"), asyncHandle
     res.json(applyPagination(req, res, data));
   } catch (error: any) {
     console.error("Error fetching setor_limits:", error);
-    res.status(500).json({ error: "Error fetching setor_limits", message: error.message });
+    res.status(500).json({ error: "Error fetching setor_limits", message: internalErrorMessage(error) });
   }
 }));
 
@@ -1796,7 +1892,7 @@ app.post("/api/xml/setor-limits", asyncHandler(async (req: Request, res: Respons
   const limitRef = repo.doc('setor_limits', limitId);
   await repo.set(limitRef, {
     setor,
-    monthlyLimit: Number(monthlyLimit) || 0,
+    monthlyLimit: parsePrice(monthlyLimit, 'Limite mensal'),
     updatedAt: new Date().toISOString()
   }, 'setor_limits/' + limitId);
   repo.invalidateCache('setor_limits');
@@ -1898,6 +1994,7 @@ app.post("/api/xml/products/delete", asyncHandler(async (req: Request, res: Resp
   repo.invalidateCache('suppliers');
   repo.invalidateCache('product_categories');
 
+  await recordAudit(repo, { action: 'product.delete', actor: auditActor(res), target: 'products', meta: { code: targetCode, name } });
   res.json({ status: "success" });
 }));
 
@@ -1944,10 +2041,11 @@ app.post("/api/xml/products/delete-item", asyncHandler(async (req: Request, res:
       }
     }
     repo.invalidateCache('invoices');
+    await recordAudit(repo, { action: 'product.delete_item', actor: auditActor(res), target: 'invoices/' + invKey, meta: { productIndex, code, name } });
     res.json({ status: "success" });
   } catch (err: any) {
     console.error("Erro ao deletar item especifico de invoice:", err);
-    res.status(500).json({ error: "Erro ao deletar produto", message: err.message });
+    res.status(500).json({ error: "Erro ao deletar produto", message: internalErrorMessage(err) });
   }
 }));
 
@@ -1999,59 +2097,20 @@ app.post("/api/xml/pending-list-products/confirm", asyncHandler(async (req: Requ
   }
 
   const now = new Date();
-  let confirmedCount = 0;
+  const valid = items.filter((it: any) => it);
+  // Monta tudo antes de gravar: um item inválido recusa o pedido inteiro, sem gravação parcial.
+  const payloads = valid.map((it: any) => ({ it, spending: buildConfirmedSpending(it, now) }));
 
-  for (const it of items) {
-    if (!it) continue;
-    const itemPrice = Number(it.price || 0);
-    const itemQty = Number(it.quantity || 1);
-    const totalVal = itemPrice * itemQty;
-    const dateStr = it.date || now.toISOString();
-    const spendingId = `conf_list_${it.id || Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-
-    const spendingPayload = {
-      id: spendingId,
-      dhEmi: dateStr,
-      date: dateStr,
-      createdAt: dateStr,
-      supplierName: it.supplierName || 'Lista de Compras',
-      vTotTrib: totalVal,
-      vNF: totalVal,
-      total: totalVal,
-      source: 'shopping_list',
-      hasNF: it.hasNF === true,
-      listName: it.listName || 'Minhas Listas',
-      products: [{
-        code: `LIST_${String(it.productName || 'PROD').toUpperCase()}`,
-        cProd: `LIST_${String(it.productName || 'PROD').toUpperCase()}`,
-        name: it.productName || 'Produto sem nome',
-        xProd: it.productName || 'Produto sem nome',
-        vUnCom: itemPrice,
-        price: itemPrice,
-        quantity: itemQty,
-        vProd: totalVal,
-        category: it.category || 'Outros',
-        categoryId: it.category || 'Outros',
-        setor: it.setor || ''
-      }]
-    };
-
-    // Save into xml_spendings
-    const spendingRef = repo.doc('xml_spendings', spendingId);
-    await repo.set(spendingRef, spendingPayload, 'xml_spendings/' + spendingId);
-
-    // Also save into invoices so rangeProducts and other invoice searches pick it up
-    const invoiceRef = repo.doc('invoices', spendingId);
-    await repo.set(invoiceRef, spendingPayload, 'invoices/' + spendingId);
-
-    // Delete from pending_list_products if it was pending
+  for (const { it, spending } of payloads) {
+    // O ID é derivado do item: repetir a confirmação regrava os mesmos registros (nada duplica).
+    await repo.set(repo.doc('xml_spendings', spending.id), spending, 'xml_spendings/' + spending.id);
+    // Também em invoices, para as buscas por período enxergarem o gasto.
+    await repo.set(repo.doc('invoices', spending.id), spending, 'invoices/' + spending.id);
     if (it.id) {
-      const pendingRef = repo.doc('pending_list_products', it.id);
-      await repo.delete(pendingRef, 'pending_list_products/' + it.id);
+      await repo.delete(repo.doc('pending_list_products', it.id), 'pending_list_products/' + it.id);
     }
-
-    confirmedCount++;
   }
+  const confirmedCount = payloads.length;
 
   // Invalidate caches
   repo.invalidateCache('xml_spendings');
@@ -2132,10 +2191,9 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
     });
   }
 
-  res.status(err.status || 500).json({ 
-    error: err.name || 'Erro no servidor',
-    message: err.message || 'Ocorreu um erro inesperado.'
-  });
+  const described = describeError(err, { production: isProductionEnv() });
+  if (described.body.ref) console.error(`[ErrorHandler] ref=${described.body.ref}`, err?.stack || err);
+  res.status(described.status).json(described.body);
 });
 
 export default app;
