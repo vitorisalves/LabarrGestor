@@ -555,13 +555,16 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
                           return (
                             <div key={qKey} className={`bg-white p-6 rounded-3xl border shadow-sm flex flex-col justify-between group transition-all ${isSelected ? 'border-indigo-400 ring-1 ring-indigo-200' : 'border-slate-100 hover:border-indigo-200'}`}>
                               <div>
-                                <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-start justify-between mb-3">
+                                  <div className="flex items-center gap-2">
                                   <input
                                     type="checkbox"
                                     checked={isSelected}
                                     onChange={() => toggleProductSelected(supplierId, originalIndex)}
-                                    className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
+                                    className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 mt-0.5"
                                   />
+                                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest truncate max-w-[90px]">{supplier.name}</span>
+                                  </div>
                                   <div className='flex gap-2 items-center'>
                                     <button onClick={() => onEditProduct(product, supplier.name)} className='p-1 hover:bg-slate-100 rounded-md'>
                                       <Pencil className="w-3 h-3 text-slate-400 hover:text-indigo-600" />
@@ -570,22 +573,6 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
                                       {formatCurrency(product.price)}
                                     </span>
                                   </div>
-                                </div>
-                                <CategoryMultiSelect
-                                  value={getProductCategories(product)}
-                                  onChange={(next) => saveSupplier({
-                                    ...supplier,
-                                    products: supplier.products.map((p, idx) => idx === originalIndex ? { ...p, categories: next } : p)
-                                  })}
-                                  options={availableCategories}
-                                  className="mb-2"
-                                />
-                                <div className="flex flex-wrap gap-1 mb-3">
-                                  {product.setor && (
-                                    <span className="px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded-full text-[9px] font-black uppercase tracking-wider">
-                                      {product.setor}
-                                    </span>
-                                  )}
                                 </div>
                                 <h4 
                                   className={`font-bold mb-3 transition-colors ${isLink(product.name) ? 'text-indigo-600 hover:underline cursor-pointer' : 'text-slate-900'}`}
@@ -598,7 +585,7 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
                                 >
                                   {product.name}
                                 </h4>
-                                <div className="space-y-1.5 mb-6">
+                                <div className="space-y-1.5 mb-3">
                                   <div className="flex items-center gap-2 bg-indigo-50/50 px-2 py-1 rounded-lg border border-indigo-100/50">
                                     <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full" />
                                     <span className="text-[11px] text-slate-500 font-bold uppercase">Código:</span>
@@ -619,6 +606,15 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
                                     </div>
                                   )}
                                 </div>
+                                <CategoryMultiSelect
+                                  value={getProductCategories(product)}
+                                  onChange={(next) => saveSupplier({
+                                    ...supplier,
+                                    products: supplier.products.map((p, idx) => idx === originalIndex ? { ...p, categories: next } : p)
+                                  })}
+                                  options={availableCategories}
+                                  className="mb-4"
+                                />
                               </div>
                               <div className="flex flex-col sm:flex-row gap-2 mt-auto">
                                 <QuantitySelector
