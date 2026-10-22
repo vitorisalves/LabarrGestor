@@ -272,10 +272,41 @@ app.post("/api/xml/reminders/delete", asyncHandler(async (req: Request, res: Res
   res.json({ status: "success" });
 }));
 
+// Altera só UMA compra (um item de uma nota), sem mexer nas outras compras do mesmo produto.
+// O item fica marcado (lockField) para a leitura das notas não reaplicar a troca feita por produto.
+async function updateSingleInvoiceItem(invKey: string, productIndex: number, identity: { code: string; name: string }, patch: Record<string, any>, lockField: string): Promise<boolean> {
+  const normStr = (s: string) => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+  const invSnapshot = await repo.getDocs('invoices', 'invoices', true);
+  for (const doc of invSnapshot.docs) {
+    const d: any = typeof doc.data === 'function' ? doc.data() : doc.data;
+    const inv: any = { id: doc.id, ...d };
+    const currentKey = inv.chNFe || inv.nfeKey || inv.id;
+    if (inv.id !== invKey && currentKey !== invKey) continue;
+    if (!Array.isArray(inv.products) || !Number.isInteger(productIndex) || productIndex < 0 || productIndex >= inv.products.length) return false;
+    const p = inv.products[productIndex];
+    const pCode = String(p.code !== undefined && p.code !== null && p.code !== "" ? p.code : (p.cProd !== undefined && p.cProd !== null ? p.cProd : "")).trim();
+    const pName = normStr(p.name || p.xProd || "");
+    // Confere se o item naquela posição é mesmo o produto pedido (evita alterar o item errado).
+    const sameItem = (identity.code && pCode && identity.code === pCode) || (pName && pName === normStr(identity.name));
+    if (!sameItem) return false;
+    inv.products[productIndex] = { ...p, ...patch, [lockField]: true };
+    await repo.set(repo.doc('invoices', inv.id), inv, 'invoices/' + inv.id);
+    repo.invalidateCache('invoices');
+    return true;
+  }
+  return false;
+}
+
 app.post("/api/xml/products/update-category", asyncHandler(async (req: Request, res: Response) => {
   const { code, name, category } = req.body;
   if (!category) {
     return res.status(400).json({ error: "Categoria é obrigatória" });
+  }
+
+  if (req.body.invKey !== undefined) {
+    const ok = await updateSingleInvoiceItem(String(req.body.invKey), Number(req.body.productIndex), { code: String(code || "").trim(), name: String(name || "") }, { categoryId: category, category }, 'categoryLocked');
+    if (!ok) return res.status(404).json({ error: "Item da compra não encontrado" });
+    return res.json({ status: "success", scope: "single" });
   }
 
   const normStr = (s: string) => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
@@ -317,7 +348,8 @@ app.post("/api/xml/products/update-category", asyncHandler(async (req: Request, 
 
         if (codeMatches || nameMatches) {
           invChanged = true;
-          return { ...p, categoryId: category, category: category };
+          const { categoryLocked: _unlock, ...rest } = p;
+          return { ...rest, categoryId: category, category: category };
         }
         return p;
       });
@@ -388,6 +420,12 @@ app.post("/api/xml/products/update-setor", asyncHandler(async (req: Request, res
     return res.status(400).json({ error: "Setor e obrigatorio" });
   }
 
+  if (req.body.invKey !== undefined) {
+    const ok = await updateSingleInvoiceItem(String(req.body.invKey), Number(req.body.productIndex), { code: String(code || "").trim(), name: String(name || "") }, { setor }, 'setorLocked');
+    if (!ok) return res.status(404).json({ error: "Item da compra não encontrado" });
+    return res.json({ status: "success", scope: "single" });
+  }
+
   const normStr = (s: string) => String(s || "").toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, "").trim();
   const targetCode = String(code || "").trim();
   const targetName = normStr(name);
@@ -427,7 +465,8 @@ app.post("/api/xml/products/update-setor", asyncHandler(async (req: Request, res
 
         if (codeMatches || nameMatches) {
           invChanged = true;
-          return { ...p, setor };
+          const { setorLocked: _unlock, ...rest } = p;
+          return { ...rest, setor };
         }
         return p;
       });

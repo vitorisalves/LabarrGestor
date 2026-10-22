@@ -115,6 +115,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
   const [pieSearchQuery, setPieSearchQuery] = useState('');
   const [pieCategoryFilter, setPieCategoryFilter] = useState('ALL');
   const [showPieProductList, setShowPieProductList] = useState(false);
+  // Alcance das trocas de categoria/setor na lista: todas as compras do produto ou só a compra clicada.
+  const [applyScope, setApplyScope] = useState<'all' | 'single'>('all');
 
   const [productMemory, setProductMemory] = useState<Record<string, string>>(() => {
     try { return JSON.parse(localStorage.getItem('dashboard_product_memory') || '{}'); } catch { return {}; }
@@ -895,7 +897,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
         const invKey = inv.chNFe || inv.nfeKey || inv.id || `inv_${invIdx}`;
         const formattedDate = format(spendingDate, 'dd/MM/yyyy');
 
-        (inv.products || []).filter((p: any) => !p.deleted).forEach((p: any, pIdx: number) => {
+        (inv.products || []).forEach((p: any, pIdx: number) => {
+          if (p.deleted) return;
           const name = String(p.name || p.xProd || "Produto sem nome");
           const code = String(p.code ?? p.cProd ?? "");
           const rawCat = p.categoryId || p.category || "";
@@ -938,6 +941,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
             code,
             name,
             category: cat,
+            setor: p.setor || "",
             supplierName: suppName,
             quantity: qty,
             unitPrice,
@@ -984,8 +988,43 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
     });
   }, [rangeProducts, pieSearchQuery, pieCategoryFilter]);
 
-  const handleUpdateProductCategory = async (code: string, name: string, newCategory: string) => {
+  // Troca só a compra indicada (nota + posição do item). Não mexe nas outras compras do produto.
+  const updateSingleItemLocally = (target: { invKey: string; productIndex: number }, patch: Record<string, any>, lockField: string) => {
+    const next = invoices.map((inv: any, i: number) => {
+      const key = inv.chNFe || inv.nfeKey || inv.id || `inv_${i}`;
+      if (key !== target.invKey || !Array.isArray(inv.products)) return inv;
+      return {
+        ...inv,
+        products: inv.products.map((p: any, idx: number) => idx === target.productIndex ? { ...p, ...patch, [lockField]: true } : p)
+      };
+    });
+    setInvoices(next);
+    localStorage.setItem("cached_dashboard_invoices", JSON.stringify(next));
+  };
+
+  const handleUpdateProductCategory = async (code: string, name: string, newCategory: string, target?: { invKey: string; productIndex: number }) => {
     if (!newCategory) return;
+
+    if (target) {
+      updateSingleItemLocally(target, { categoryId: newCategory, category: newCategory }, 'categoryLocked');
+      if (!normalizedCategories.some(c => String(c.name || "").toLowerCase() === newCategory.toLowerCase())) {
+        setCategories(prev => [...prev, { id: newCategory.toLowerCase().replace(/\s+/g, "_"), name: newCategory }]);
+      }
+      addSystemLog('category', `Categoria de uma compra do produto "${name}" alterada para "${newCategory}".`);
+      if (!isTestMode) {
+        try {
+          await fetch("/api/xml/products/update-category", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ code: String(code || "").trim(), name, category: newCategory, invKey: target.invKey, productIndex: target.productIndex })
+          });
+        } catch (err) {
+          console.error("Erro ao salvar categoria no servidor:", err);
+        }
+      }
+      return;
+    }
+
     const normStr = (s: string) => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
     const targetCode = String(code || "").trim();
     const targetName = normStr(name);
@@ -1008,8 +1047,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
           invChanged = true;
           invoicesChanged = true;
           updatedProductsCount++;
+          const { categoryLocked: _unlock, ...rest } = p;
           return {
-            ...p,
+            ...rest,
             categoryId: newCategory,
             category: newCategory
           };
@@ -1095,8 +1135,24 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
     }
   };
 
-  const handleUpdateProductSetor = async (code: string, name: string, newSetor: string) => {
+  const handleUpdateProductSetor = async (code: string, name: string, newSetor: string, target?: { invKey: string; productIndex: number }) => {
     if (!newSetor) return;
+
+    if (target) {
+      updateSingleItemLocally(target, { setor: newSetor }, 'setorLocked');
+      addSystemLog('category', `Setor de uma compra do produto "${name}" alterado para "${newSetor}".`);
+      try {
+        await fetch("/api/xml/products/update-setor", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code: String(code || "").trim(), name, setor: newSetor, invKey: target.invKey, productIndex: target.productIndex })
+        });
+      } catch (err) {
+        console.error("Erro ao salvar setor no servidor:", err);
+      }
+      return;
+    }
+
     const normStr = (s: string) => String(s || "").toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, "").trim();
     const targetCode = String(code || "").trim();
     const targetName = normStr(name);
@@ -1113,7 +1169,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
 
         if (codeMatches || nameMatches) {
           invChanged = true;
-          return { ...p, setor: newSetor };
+          const { setorLocked: _unlock, ...rest } = p;
+          return { ...rest, setor: newSetor };
         }
         return p;
       });
@@ -1719,6 +1776,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
             uncategorizedCount={uncategorizedCount}
             onUpdateProductCategory={handleUpdateProductCategory}
             onUpdateProductSetor={handleUpdateProductSetor}
+            applyScope={applyScope}
+            setApplyScope={setApplyScope}
             setores={setores}
             setDeleteProductConfirmModal={setDeleteProductConfirmModal}
           />

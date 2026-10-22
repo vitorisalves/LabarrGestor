@@ -83,7 +83,7 @@ app.get("/api/xml/invoices", handleCacheAndEtag("invoices"), asyncHandler(async 
 
             const over = (pCode && productOverridesMap.get(pCode)) || (pName && productOverridesMap.get(pName));
             if (over) {
-              if (over.category) {
+              if (over.category && !p.categoryLocked) {
                 p.category = over.category;
                 p.categoryId = over.category;
               }
@@ -93,7 +93,7 @@ app.get("/api/xml/invoices", handleCacheAndEtag("invoices"), asyncHandler(async 
             }
 
             const setorOver = (pCode && setorOverridesMap.get(pCode)) || (pName && setorOverridesMap.get(pName));
-            if (setorOver && setorOver.setor) {
+            if (setorOver && setorOver.setor && !p.setorLocked) {
               p.setor = setorOver.setor;
             }
             return p;

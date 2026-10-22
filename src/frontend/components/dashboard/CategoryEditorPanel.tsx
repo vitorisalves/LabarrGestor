@@ -17,8 +17,10 @@ interface CategoryEditorPanelProps {
   filteredPieProducts: any[];
   normalizedCategories: any[];
   uncategorizedCount: number;
-  onUpdateProductCategory: (code: string, name: string, newCategory: string) => Promise<void>;
-  onUpdateProductSetor: (code: string, name: string, newSetor: string) => Promise<void>;
+  onUpdateProductCategory: (code: string, name: string, newCategory: string, target?: { invKey: string; productIndex: number }) => Promise<void>;
+  onUpdateProductSetor: (code: string, name: string, newSetor: string, target?: { invKey: string; productIndex: number }) => Promise<void>;
+  applyScope: 'all' | 'single';
+  setApplyScope: (v: 'all' | 'single') => void;
   setores: string[];
   setDeleteProductConfirmModal: (v: any) => void;
 }
@@ -35,12 +37,17 @@ export const CategoryEditorPanel: React.FC<CategoryEditorPanelProps> = ({
   uncategorizedCount,
   onUpdateProductCategory,
   onUpdateProductSetor,
+  applyScope,
+  setApplyScope,
   setores,
   setDeleteProductConfirmModal
 }) => {
   if (!(showPieProductList || pieSearchQuery.trim().length > 0 || pieCategoryFilter !== "ALL")) {
     return null;
   }
+
+  // Em "Só esta compra", a troca vale para a nota e a posição do item clicado.
+  const targetOf = (p: any) => applyScope === 'single' ? { invKey: p.invKey, productIndex: p.productIndexInInvoice } : undefined;
 
   return (
     <div className="mt-6 pt-6 border-t border-slate-100 space-y-4 animate-fadeIn">
@@ -70,6 +77,24 @@ export const CategoryEditorPanel: React.FC<CategoryEditorPanelProps> = ({
             ))}
           </select>
         </div>
+      </div>
+
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-[10px] font-black uppercase text-slate-400">Aplicar troca a:</span>
+        {([['single', 'Só esta compra'], ['all', 'Todas as compras do produto']] as const).map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            onClick={() => setApplyScope(value)}
+            className={`px-3 py-1.5 rounded-xl text-[11px] font-black uppercase border cursor-pointer transition-colors ${
+              applyScope === value
+                ? "bg-emerald-600 text-[#ffffff] border-emerald-500"
+                : "bg-slate-50 text-slate-600 border-slate-200 hover:border-slate-300"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
       <div className="bg-[#1e293b] rounded-2xl border border-slate-800 p-4 max-h-[380px] overflow-y-auto space-y-2">
@@ -128,10 +153,10 @@ export const CategoryEditorPanel: React.FC<CategoryEditorPanelProps> = ({
                       if (val === "__ADD_NEW__") {
                         const customCat = prompt("Digite o nome da nova categoria:");
                         if (customCat && customCat.trim()) {
-                          onUpdateProductCategory(p.code, p.name, customCat.trim());
+                          onUpdateProductCategory(p.code, p.name, customCat.trim(), targetOf(p));
                         }
                       } else if (val !== "__CUSTOM__") {
-                        onUpdateProductCategory(p.code, p.name, val);
+                        onUpdateProductCategory(p.code, p.name, val, targetOf(p));
                       }
                     }}
                     className={`text-xs font-black px-3 py-1.5 rounded-xl border outline-none cursor-pointer ${
@@ -155,7 +180,7 @@ export const CategoryEditorPanel: React.FC<CategoryEditorPanelProps> = ({
                   </span>
                   <select
                     value={p.setor || ''}
-                    onChange={(e) => onUpdateProductSetor(p.code, p.name, e.target.value)}
+                    onChange={(e) => onUpdateProductSetor(p.code, p.name, e.target.value, targetOf(p))}
                     className="text-xs font-black px-3 py-1.5 rounded-xl border outline-none cursor-pointer bg-slate-800 text-slate-200 border-slate-700 focus:ring-2 focus:ring-indigo-500"
                   >
                     <option value="">-- Selecionar --</option>
