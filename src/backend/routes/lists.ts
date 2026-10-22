@@ -4,6 +4,7 @@ import { Request, Response } from "express";
 import { repo } from "../data/index.js";
 import { versionOf } from "../data/version.js";
 import { buildConfirmedSpending } from "../services/confirmedSpending.js";
+import { applyUnbilledPurchase, findSupplierByName } from "../services/supplierProductSync.js";
 import { parsePrice, validateItems } from "../validation.js";
 import { internalErrorMessage } from "../errors.js";
 import { estimateItems, EstimateRequestItem } from "../services/priceEstimationService.js";
@@ -313,11 +314,35 @@ app.post("/api/xml/pending-list-products/confirm", asyncHandler(async (req: Requ
   }
   const confirmedCount = payloads.length;
 
+  // Concluídos "Sem NF" nunca terão nota: os dados passam para o produto do fornecedor
+  // (a data da última compra fica como está). Falha aqui não desfaz a confirmação.
+  let productsUpdated = 0;
+  try {
+    const unbilled = payloads.filter(({ it }) => it.hasNF === true);
+    if (unbilled.length > 0) {
+      const snap = await repo.getDocs('suppliers', 'suppliers', true, true);
+      const suppliers: any[] = snap.docs.map((d: any) => ({ id: d.id, ...(typeof d.data === 'function' ? d.data() : d.data) }));
+      for (const { it } of unbilled) {
+        const supplier = findSupplierByName(suppliers, it.supplierName);
+        if (!supplier) continue;
+        const updated = applyUnbilledPurchase(supplier, it);
+        if (!updated) continue;
+        const { id, ...rest } = updated;
+        await repo.set(repo.doc('suppliers', id), rest, 'suppliers/' + id);
+        suppliers[suppliers.indexOf(supplier)] = updated;
+        productsUpdated++;
+      }
+      if (productsUpdated > 0) repo.invalidateCache('suppliers');
+    }
+  } catch (err) {
+    console.error("Erro ao atualizar produtos dos fornecedores após conclusão sem NF:", err);
+  }
+
   // Invalidate caches
   repo.invalidateCache('xml_spendings');
   repo.invalidateCache('invoices');
   repo.invalidateCache('pending_list_products');
 
-  res.json({ status: "success", confirmedCount });
+  res.json({ status: "success", confirmedCount, productsUpdated });
 }));
 }

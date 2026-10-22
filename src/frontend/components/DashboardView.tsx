@@ -71,13 +71,15 @@ interface DashboardViewProps {
   savedLists?: SavedList[];
   categories?: any[];
   setores?: string[];
+  /** Chamado quando a conclusão de itens "Sem NF" atualizou produtos no cadastro dos fornecedores. */
+  onSuppliersChanged?: () => void;
 }
 
 // Entrada da lista de compras ainda provisória (marcada "NF"): aguarda a NF real e
 // por isso não conta como gasto. Entradas "Sem NF" (hasNF === true) contam.
 const isProvisionalListEntry = (item: any) => item?.source === 'shopping_list' && item?.hasNF !== true;
 
-export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, categories: propCategories = [], setores = [] }) => {
+export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, categories: propCategories = [], setores = [], onSuppliersChanged }) => {
   const { isTestMode } = useTestMode();
   const [startDate, setStartDate] = useState<string>(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
   const [endDate, setEndDate] = useState<string>(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
@@ -96,6 +98,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
     setInvoices,
     setSuppliers,
   } = useXmlSpendings();
+
+  // Cópias do estado mais recente: trocas em sequência (lote) partem do resultado da anterior.
+  const invoicesRef = useRef(invoices);
+  invoicesRef.current = invoices;
+  const suppliersRef = useRef(suppliers);
+  suppliersRef.current = suppliers;
 
   // Upload state
   const [isUploading, setIsUploading] = useState(false);
@@ -317,7 +325,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
     return () => clearTimeout(timer);
   }, []);
 
-  const pendingPanel = usePendingListProductsPanel(addSystemLog, fetchPricingData, fetchSpendings, setIsUploading);
+  const pendingPanel = usePendingListProductsPanel(addSystemLog, fetchPricingData, fetchSpendings, setIsUploading, onSuppliersChanged);
 
   const expenseChartRef = useRef<HTMLDivElement>(null);
 
@@ -986,7 +994,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
 
   // Troca só a compra indicada (nota + posição do item). Não mexe nas outras compras do produto.
   const updateSingleItemLocally = (target: { invKey: string; productIndex: number }, patch: Record<string, any>, lockField: string) => {
-    const next = invoices.map((inv: any, i: number) => {
+    const next = invoicesRef.current.map((inv: any, i: number) => {
       const key = inv.chNFe || inv.nfeKey || inv.id || `inv_${i}`;
       if (key !== target.invKey || !Array.isArray(inv.products)) return inv;
       return {
@@ -994,6 +1002,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
         products: inv.products.map((p: any, idx: number) => idx === target.productIndex ? { ...p, ...patch, [lockField]: true } : p)
       };
     });
+    invoicesRef.current = next;
     setInvoices(next);
     localStorage.setItem("cached_dashboard_invoices", JSON.stringify(next));
   };
@@ -1030,7 +1039,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
 
     // 1. Update Invoices state
     let invoicesChanged = false;
-    const nextInvoices = invoices.map(inv => {
+    const nextInvoices = invoicesRef.current.map(inv => {
       let invChanged = false;
       const updatedProducts = (inv.products || []).map((p: any) => {
         const pCode = String(p.code !== undefined && p.code !== null && p.code !== "" ? p.code : (p.cProd !== undefined && p.cProd !== null ? p.cProd : "")).trim();
@@ -1061,13 +1070,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
     });
 
     if (invoicesChanged) {
+      invoicesRef.current = nextInvoices;
       setInvoices(nextInvoices);
       localStorage.setItem("cached_dashboard_invoices", JSON.stringify(nextInvoices));
     }
 
     // 2. Update Suppliers state
     let suppliersChanged = false;
-    const nextSuppliers = suppliers.map(s => {
+    const nextSuppliers = suppliersRef.current.map(s => {
       let suppChanged = false;
       const updatedProducts = (s.products || []).map((p: any) => {
         const pCode = String(p.code !== undefined && p.code !== null && p.code !== "" ? p.code : (p.cProd !== undefined && p.cProd !== null ? p.cProd : "")).trim();
@@ -1094,6 +1104,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
     });
 
     if (suppliersChanged) {
+      suppliersRef.current = nextSuppliers;
       setSuppliers(nextSuppliers);
       localStorage.setItem("cached_dashboard_suppliers", JSON.stringify(nextSuppliers));
     }
@@ -1154,7 +1165,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
     const targetName = normStr(name);
 
     let invoicesChanged = false;
-    const nextInvoices = invoices.map(inv => {
+    const nextInvoices = invoicesRef.current.map(inv => {
       let invChanged = false;
       const updatedProducts = (inv.products || []).map((p: any) => {
         const pCode = String(p.code !== undefined && p.code !== null && p.code !== "" ? p.code : (p.cProd !== undefined && p.cProd !== null ? p.cProd : "")).trim();
@@ -1179,6 +1190,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
     });
 
     if (invoicesChanged) {
+      invoicesRef.current = nextInvoices;
       setInvoices(nextInvoices);
       localStorage.setItem("cached_dashboard_invoices", JSON.stringify(nextInvoices));
     }

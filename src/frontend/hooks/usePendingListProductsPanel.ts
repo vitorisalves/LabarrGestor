@@ -9,7 +9,8 @@ export const usePendingListProductsPanel = (
   addSystemLog: (type: 'category' | 'delete' | 'info', message: string) => void,
   fetchPricingData: (force?: boolean) => Promise<void>,
   fetchSpendings: (force?: boolean) => Promise<void>,
-  setIsUploading: (v: boolean) => void
+  setIsUploading: (v: boolean) => void,
+  onSuppliersChanged?: () => void
 ) => {
   const [pendingListProducts, setPendingListProducts] = useState<any[]>([]);
   const [isPendingLoading, setIsPendingLoading] = useState(false);
@@ -249,6 +250,9 @@ export const usePendingListProductsPanel = (
         setSelectedPendingIds(prev => prev.filter(id => !confirmedIds.includes(id)));
 
         addSystemLog('info', `${data.confirmedCount || itemsToConfirm.length} produto(s) de listas de compras confirmado(s) e adicionado(s) aos gráficos.`);
+
+        // Concluídos "Sem NF" atualizaram produtos dos fornecedores: recarrega a aba Produtos.
+        if (data.productsUpdated > 0) onSuppliersChanged?.();
 
         // Refresh all charts & invoices instantly
         await fetchPricingData(true);
