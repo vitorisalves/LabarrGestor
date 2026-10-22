@@ -74,7 +74,7 @@ export const CategoryEditorPanel: React.FC<CategoryEditorPanelProps> = ({
 
       <div className="bg-[#1e293b] rounded-2xl border border-slate-800 p-4 max-h-[380px] overflow-y-auto space-y-2">
         {filteredPieProducts.length === 0 ? (
-          <div className="py-8 text-center text-slate-400 text-xs font-bold uppercase tracking-wider">
+          <div className="py-8 text-center text-[#ffffff] text-xs font-bold uppercase tracking-wider">
             Nenhum produto encontrado para o filtro digitado
           </div>
         ) : (
@@ -91,7 +91,7 @@ export const CategoryEditorPanel: React.FC<CategoryEditorPanelProps> = ({
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm font-black text-slate-100 truncate" title={p.name}>
+                    <span className="text-sm font-black text-[#ffffff] truncate" title={p.name}>
                       {p.name}
                     </span>
                     {p.code && (
@@ -104,21 +104,21 @@ export const CategoryEditorPanel: React.FC<CategoryEditorPanelProps> = ({
                     </span>
                   </div>
 
-                  <div className="flex items-center gap-2.5 mt-1.5 text-[11px] text-slate-400 font-medium flex-wrap">
-                    <span>🏢 <strong className="text-slate-300">{p.supplierName}</strong></span>
+                  <div className="flex items-center gap-2.5 mt-1.5 text-[11px] text-[#ffffff] font-medium flex-wrap">
+                    <span>🏢 <strong className="text-[#ffffff]">{p.supplierName}</strong></span>
                     <span>•</span>
-                    <span>📅 <strong className="text-slate-300">{p.dateStr}</strong></span>
+                    <span>📅 <strong className="text-[#ffffff]">{p.dateStr}</strong></span>
                     <span>•</span>
-                    <span>📦 Qtd: <strong className="text-slate-200">{p.quantity}</strong></span>
+                    <span>📦 Qtd: <strong className="text-[#ffffff]">{p.quantity}</strong></span>
                     <span>•</span>
-                    <span>💰 Un: <strong className="text-slate-200">{formatCurrency(p.unitPrice)}</strong></span>
+                    <span>💰 Un: <strong className="text-[#ffffff]">{formatCurrency(p.unitPrice)}</strong></span>
                     <span>•</span>
                     <span>Total: <strong className="text-emerald-400">{formatCurrency(p.totalNet)}</strong></span>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-2.5 shrink-0">
-                  <span className="text-[10px] font-extrabold uppercase text-slate-400">
+                  <span className="text-[10px] font-extrabold uppercase text-[#ffffff]">
                     Categoria:
                   </span>
                   <select
@@ -150,7 +150,7 @@ export const CategoryEditorPanel: React.FC<CategoryEditorPanelProps> = ({
                     <option value="__ADD_NEW__">＋ Criar Nova Categoria...</option>
                   </select>
 
-                  <span className="text-[10px] font-extrabold uppercase text-slate-400">
+                  <span className="text-[10px] font-extrabold uppercase text-[#ffffff]">
                     Setor:
                   </span>
                   <select
