@@ -127,12 +127,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
   }, []);
 
   const normalizedCategories = useMemo(() => {
-    const defaults = ['Embalagens', 'Ingredientes', 'Limpeza', 'Escritório', 'Fornecedor', 'Insumos', 'Loja', 'Fábrica'];
+    // Só as categorias criadas nas Configurações (sem lista fixa embutida no código).
     const map = new Map<string, { id: string, name: string }>();
-
-    defaults.forEach(d => {
-      map.set(d.toLowerCase(), { id: d, name: d });
-    });
 
     const listsToMerge = [...propCategories, ...(Array.isArray(categories) ? categories : [])];
     listsToMerge.forEach((item: any) => {

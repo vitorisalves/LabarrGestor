@@ -105,13 +105,12 @@ export default function App() {
     error: suppliersError
   } = useSuppliers(isAuthReady, isApproved);
 
-  // Single, consistent list of product-classification category options shared by
-  // every category picker/editor in the app (Fazer Compras, Produtos, Fornecedores).
-  const availableCategories = React.useMemo(() => {
-    const defaults = ['Ingredientes', 'Embalagens', 'Limpeza', 'Escritório', 'Fornecedor'];
-    const combined = [...(categories || []), ...defaults];
-    return Array.from(new Set(combined.filter(Boolean)));
-  }, [categories]);
+  // Lista única das categorias criadas nas Configurações, usada por todos os seletores de categoria
+  // do app (Fazer Compras, Produtos, Fornecedores). Sem categorias fixas embutidas no código.
+  const availableCategories = React.useMemo(
+    () => Array.from(new Set((categories || []).filter(Boolean))),
+    [categories]
+  );
 
   const {
     reminders,
