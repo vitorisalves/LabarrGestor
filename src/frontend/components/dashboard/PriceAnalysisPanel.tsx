@@ -92,8 +92,8 @@ export const PriceAnalysisPanel: React.FC<PriceAnalysisPanelProps> = ({
                         {formatCurrency(prod.currentPrice)}
                       </td>
                       <td className="py-3.5 text-right">
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-red-50 dark:bg-[#1e293b] text-red-700 rounded-lg text-xs font-black tracking-tight">
-                          <ArrowUpRight className="w-3.5 h-3.5 text-red-600 shrink-0" />
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-red-50 dark:bg-[#1e293b] text-[#ff8a8a] border border-[#ff8a8a]/30 rounded-lg text-xs font-black tracking-tight">
+                          <ArrowUpRight className="w-3.5 h-3.5 text-[#ff8a8a] shrink-0" />
                           +{prod.totalPercentChange.toFixed(1)}%
                         </span>
                       </td>
@@ -205,9 +205,9 @@ export const PriceAnalysisPanel: React.FC<PriceAnalysisPanelProps> = ({
                     </div>
                     <span className={`text-[11px] font-black px-2.5 py-1 rounded-lg whitespace-nowrap ${
                       prod.totalPercentChange > 0
-                        ? 'bg-red-50 dark:bg-[#1e293b] text-red-700'
+                        ? 'bg-red-50 dark:bg-[#1e293b] text-[#ff8a8a]'
                         : prod.totalPercentChange < 0
-                          ? 'bg-emerald-50 dark:bg-[#1e293b] text-emerald-700'
+                          ? 'bg-emerald-50 dark:bg-[#1e293b] text-[#6ee7b7]'
                           : 'bg-slate-100 dark:bg-[#1e293b] text-slate-600'
                     }`}>
                       {prod.totalPercentChange > 0 ? '+' : ''}
@@ -232,9 +232,9 @@ export const PriceAnalysisPanel: React.FC<PriceAnalysisPanelProps> = ({
                   <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Variação Geral</div>
                   <div className={`text-lg font-black tracking-tight mt-0.5 ${
                     selectedProduct.totalPercentChange > 0
-                      ? 'text-red-600'
+                      ? 'text-[#ff8a8a]'
                       : selectedProduct.totalPercentChange < 0
-                        ? 'text-emerald-700'
+                        ? 'text-[#6ee7b7]'
                         : 'text-slate-600'
                   }`}>
                     {selectedProduct.totalPercentChange > 0 ? '▲ +' : selectedProduct.totalPercentChange < 0 ? '▼ ' : ''}
@@ -281,8 +281,8 @@ export const PriceAnalysisPanel: React.FC<PriceAnalysisPanelProps> = ({
                               ) : (
                                 <span className={`inline-flex items-center gap-0.5 text-xs font-black ${
                                   hist.percentChange > 0
-                                    ? 'text-red-600'
-                                    : 'text-emerald-700'
+                                    ? 'text-[#ff8a8a]'
+                                    : 'text-[#6ee7b7]'
                                 }`}>
                                   {hist.percentChange > 0 ? (
                                     <>

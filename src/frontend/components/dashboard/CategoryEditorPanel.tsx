@@ -46,6 +46,8 @@ export const CategoryEditorPanel: React.FC<CategoryEditorPanelProps> = ({
   const [bulkCategory, setBulkCategory] = React.useState('');
   const [bulkSetor, setBulkSetor] = React.useState('');
   const [isBulkApplying, setIsBulkApplying] = React.useState(false);
+  // Andamento do lote: quantos produtos já foram trocados do total.
+  const [progress, setProgress] = React.useState<{ done: number; total: number } | null>(null);
 
   if (!(showPieProductList || pieSearchQuery.trim().length > 0 || pieCategoryFilter !== "ALL")) {
     return null;
@@ -68,19 +70,30 @@ export const CategoryEditorPanel: React.FC<CategoryEditorPanelProps> = ({
     if ((!bulkCategory && !bulkSetor) || selectedRows.length === 0 || isBulkApplying) return;
     setIsBulkApplying(true);
     try {
+      // Lista do que será trocado (em "Todas as compras", o mesmo produto entra uma vez só).
       const seen = new Set<string>();
-      for (const p of selectedRows) {
-        if (applyScope === 'all') {
-          const id = p.code ? `c:${p.code}` : `n:${p.name}`;
-          if (seen.has(id)) continue;
-          seen.add(id);
-        }
+      const rows = selectedRows.filter(p => {
+        if (applyScope !== 'all') return true;
+        const id = p.code ? `c:${p.code}` : `n:${p.name}`;
+        if (seen.has(id)) return false;
+        seen.add(id);
+        return true;
+      });
+      setProgress({ done: 0, total: rows.length });
+      for (let i = 0; i < rows.length; i++) {
+        const p = rows[i];
         if (bulkCategory) await onUpdateProductCategory(p.code, p.name, bulkCategory, targetOf(p));
         if (bulkSetor) await onUpdateProductSetor(p.code, p.name, bulkSetor, targetOf(p));
+        setProgress({ done: i + 1, total: rows.length });
       }
       setBulkCategory('');
       setBulkSetor('');
       setSelectedKeys(new Set());
+      // Mantém "Concluído" visível por alguns segundos.
+      setTimeout(() => setProgress(null), 3000);
+    } catch (err) {
+      setProgress(null);
+      throw err;
     } finally {
       setIsBulkApplying(false);
     }
@@ -171,6 +184,22 @@ export const CategoryEditorPanel: React.FC<CategoryEditorPanelProps> = ({
           </>
         )}
       </div>
+
+      {progress && (
+        <div className="space-y-1.5" role="status" aria-live="polite">
+          <div className="flex items-center justify-between text-[11px] font-black uppercase">
+            <span className={progress.done >= progress.total ? "text-emerald-600" : "text-slate-500"}>
+              {progress.done >= progress.total
+                ? `✓ Concluído: ${progress.total} produto(s) atualizado(s)`
+                : `Atualizando produtos... ${progress.done} de ${progress.total}`}
+            </span>
+            <span className="text-slate-500">{Math.round((progress.done / Math.max(progress.total, 1)) * 100)}%</span>
+          </div>
+          <div className="choc-bar">
+            <div className="choc-bar-fill" style={{ width: `${(progress.done / Math.max(progress.total, 1)) * 100}%` }} />
+          </div>
+        </div>
+      )}
 
       <div className="bg-[#1e293b] rounded-2xl border border-slate-800 p-4 max-h-[380px] overflow-y-auto space-y-2">
         {filteredPieProducts.length === 0 ? (
