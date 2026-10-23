@@ -10,7 +10,7 @@ import {
   where,
   limit
 } from 'firebase/firestore/lite';
-import { getDb, isAdminDbActive } from '../firebase.js';
+import { getDb } from '../firebase.js';
 import { IS_VERCEL } from '../config.js';
 import { getCollectionPrefix, isTestModeActive } from '../context.js';
 import {
@@ -122,7 +122,7 @@ export function resetQuotaExceeded() {
 export const handleFirestoreError = (error: unknown, operationType: OperationType, path: string | null) => {
   const errInfo = {
     error: error instanceof Error ? error.message : String(error),
-    authInfo: { userId: "server-context", usingAdmin: isAdminDbActive() },
+    authInfo: { userId: "server-context", usingAdmin: false },
     operationType,
     path
   };

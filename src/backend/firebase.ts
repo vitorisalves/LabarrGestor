@@ -1,16 +1,11 @@
 import { getFirestore } from 'firebase/firestore/lite';
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getFirebaseConfig, IS_VERCEL } from './config.js';
+import { getFirebaseConfig } from './config.js';
 
-let adminDb: any = null;
 let clientDb: any = null;
-let adminDisabled = true;
-
-/** Indica se o Admin SDK está ativo (usado só para enriquecer logs de erro). */
-export const isAdminDbActive = () => !!adminDb;
 
 /**
- * Inicializa os SDKs do Firebase (Admin e Client)
+ * Inicializa o SDK cliente do Firebase (Firestore Lite)
  */
 let initPromise: Promise<void> | null = null;
 
@@ -19,39 +14,6 @@ export const initFirebase = async () => {
 
   initPromise = (async () => {
     const firebaseConfig = await getFirebaseConfig();
-
-    // Initialize Admin SDK
-    try {
-      if (IS_VERCEL) {
-        console.log("[Firebase] Vercel environment detected. Skipper Admin SDK init completely to avoid metadata credential hangs.");
-        adminDisabled = true;
-      } else {
-        const { initializeApp: initAdminApp, getApps: getAdminApps } = await import('firebase-admin/app');
-        const { getFirestore: getAdminFirestore } = await import('firebase-admin/firestore');
-
-        if (getAdminApps().length === 0) {
-          initAdminApp({ projectId: firebaseConfig.projectId });
-        }
-        const dbId = firebaseConfig.firestoreDatabaseId || '(default)';
-        try {
-          adminDb = getAdminFirestore(dbId);
-        } catch (dbErr) {
-          adminDb = getAdminFirestore();
-        }
-
-        // Quick health check for Admin SDK
-        try {
-          await adminDb.collection('_health_check').limit(1).get();
-          console.log("[Firebase] Admin SDK verified successfully.");
-          adminDisabled = false;
-        } catch (healthErr: any) {
-          console.log("[Firebase] Admin SDK status: client-only mode active (Server SDK bypassed).");
-          adminDisabled = true;
-        }
-      }
-    } catch (e) {
-      console.log("[Firebase] Admin SDK status: client-only mode active.");
-    }
 
     // Initialize Client SDK
     if (firebaseConfig.apiKey && firebaseConfig.projectId) {
@@ -69,14 +31,12 @@ export const initFirebase = async () => {
 };
 
 /**
- * Retorna a instância ativa do banco (prefere Admin)
+ * Retorna a instância ativa do banco
  */
 export const getDb = async () => {
-  if (!adminDb && !clientDb) {
+  if (!clientDb) {
     await initFirebase();
   }
-  if (adminDb && !adminDisabled) return adminDb;
-
   if (!clientDb) {
     console.warn("[Firebase] clientDb está nulo em getDb(), tentando inicialização forçada de recuperação...");
     try {
