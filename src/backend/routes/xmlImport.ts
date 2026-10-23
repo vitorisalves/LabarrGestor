@@ -6,6 +6,7 @@ import { PushService } from "../services/pushService.js";
 import { XMLService } from "../services/xmlService.js";
 import { normalizeParams, validateParams, diffParams } from "../../shared/priceSettings.js";
 import { internalErrorMessage } from "../errors.js";
+import { isRelevantIncrease } from "../../shared/priceIncrease.js";
 import { estimateItems, EstimateRequestItem } from "../services/priceEstimationService.js";
 import { asyncHandler, applyPagination, handleCacheAndEtag, actorName, readDocData, priceEstimationEnabled, loadPriceSettings, loadEstimateContext, sendKnownError } from "../http.js";
 
@@ -144,9 +145,9 @@ app.post("/api/xml/process", asyncHandler(async (req: Request, res: Response) =>
       const oldPrice = lastPrevious.price;
       const newPrice = Number(prod.vUnCom || prod.price || prod.vUnTrib || 0);
 
-      if (newPrice > oldPrice) {
-        // Preço subiu!
-        const percentIncrease = ((newPrice - oldPrice) / oldPrice) * 100;
+      // Preço subiu! (só vale se o aumento for de pelo menos 0,1%)
+      const percentIncrease = newPrice > oldPrice ? ((newPrice - oldPrice) / oldPrice) * 100 : 0;
+      if (isRelevantIncrease(percentIncrease)) {
         const increaseId = `${currentInvoiceId}_${prodCode !== 'N/A' ? prodCode : prod.name.replace(/[^a-zA-Z0-9]/g, '_')}`;
 
         const priceIncreaseDoc = {
@@ -297,8 +298,8 @@ app.post("/api/xml/process-batch", asyncHandler(async (req: Request, res: Respon
           const oldPrice = lastPrevious.price;
           const newPrice = Number(prod.vUnCom || prod.price || prod.vUnTrib || 0);
 
-          if (newPrice > oldPrice) {
-            const percentIncrease = ((newPrice - oldPrice) / oldPrice) * 100;
+          const percentIncrease = newPrice > oldPrice ? ((newPrice - oldPrice) / oldPrice) * 100 : 0;
+          if (isRelevantIncrease(percentIncrease)) {
             const increaseId = `${currentInvoiceId}_${prodCode !== 'N/A' ? prodCode : prod.name.replace(/[^a-zA-Z0-9]/g, '_')}`;
 
             const priceIncreaseDoc = {
@@ -352,7 +353,7 @@ app.get("/api/xml/price-increases", handleCacheAndEtag("price_increases"), async
     const data = snapshot.docs.map((doc: any) => {
       const d = typeof doc.data === 'function' ? doc.data() : doc.data;
       return { id: doc.id, ...d };
-    });
+    }).filter((d: any) => isRelevantIncrease(d.percentIncrease)); // esconde também os registros antigos de 0,0%
     data.sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
     res.json(applyPagination(req, res, data));
   } catch (error: any) {

@@ -1768,7 +1768,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ savedLists, catego
             setSelectedChartCategory={setSelectedChartCategory}
             uncategorizedCount={uncategorizedCount}
             showPieProductList={showPieProductList}
-            setShowPieProductList={setShowPieProductList}
+            setShowPieProductList={(v: boolean) => {
+              setShowPieProductList(v);
+              // Ocultar também limpa busca e filtro, que mantinham o painel aberto.
+              if (!v) { setPieSearchQuery(""); setPieCategoryFilter("ALL"); }
+            }}
             setPieCategoryFilter={setPieCategoryFilter}
           />
 
