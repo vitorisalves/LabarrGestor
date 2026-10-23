@@ -63,8 +63,9 @@ export const CategoryEditorPanel: React.FC<CategoryEditorPanelProps> = ({
 
   // Aplica em sequência (cada troca parte do resultado da anterior). Em "Todas as compras",
   // o mesmo produto selecionado em várias compras é trocado uma vez só.
-  const applyBulk = async (kind: 'category' | 'setor', value: string) => {
-    if (!value || selectedRows.length === 0 || isBulkApplying) return;
+  // Categoria e setor escolhidos no lote são aplicados juntos, com uma única confirmação.
+  const applyBulk = async () => {
+    if ((!bulkCategory && !bulkSetor) || selectedRows.length === 0 || isBulkApplying) return;
     setIsBulkApplying(true);
     try {
       const seen = new Set<string>();
@@ -74,10 +75,11 @@ export const CategoryEditorPanel: React.FC<CategoryEditorPanelProps> = ({
           if (seen.has(id)) continue;
           seen.add(id);
         }
-        if (kind === 'category') await onUpdateProductCategory(p.code, p.name, value, targetOf(p));
-        else await onUpdateProductSetor(p.code, p.name, value, targetOf(p));
+        if (bulkCategory) await onUpdateProductCategory(p.code, p.name, bulkCategory, targetOf(p));
+        if (bulkSetor) await onUpdateProductSetor(p.code, p.name, bulkSetor, targetOf(p));
       }
-      if (kind === 'category') setBulkCategory(''); else setBulkSetor('');
+      setBulkCategory('');
+      setBulkSetor('');
       setSelectedKeys(new Set());
     } finally {
       setIsBulkApplying(false);
@@ -150,14 +152,6 @@ export const CategoryEditorPanel: React.FC<CategoryEditorPanelProps> = ({
               <option value="">-- Categoria em Lote --</option>
               {normalizedCategories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
             </select>
-            <button
-              type="button"
-              onClick={() => applyBulk('category', bulkCategory)}
-              disabled={!bulkCategory || isBulkApplying}
-              className="px-3 py-1.5 rounded-xl text-[11px] font-black uppercase bg-emerald-600 text-[#ffffff] disabled:opacity-40 cursor-pointer"
-            >
-              Aplicar Categoria
-            </button>
             <select
               value={bulkSetor}
               onChange={e => setBulkSetor(e.target.value)}
@@ -168,11 +162,11 @@ export const CategoryEditorPanel: React.FC<CategoryEditorPanelProps> = ({
             </select>
             <button
               type="button"
-              onClick={() => applyBulk('setor', bulkSetor)}
-              disabled={!bulkSetor || isBulkApplying}
-              className="px-3 py-1.5 rounded-xl text-[11px] font-black uppercase bg-indigo-600 text-[#ffffff] disabled:opacity-40 cursor-pointer"
+              onClick={applyBulk}
+              disabled={(!bulkCategory && !bulkSetor) || isBulkApplying}
+              className="px-4 py-1.5 rounded-xl text-[11px] font-black uppercase bg-emerald-600 text-[#ffffff] disabled:opacity-40 cursor-pointer"
             >
-              Aplicar Setor
+              {isBulkApplying ? 'Aplicando...' : 'Confirmar alterações'}
             </button>
           </>
         )}
