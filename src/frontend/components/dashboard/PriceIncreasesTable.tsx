@@ -143,8 +143,8 @@ export const PriceIncreasesTable: React.FC<PriceIncreasesTableProps> = ({
                       {formatCurrency(item.newPrice)}
                     </td>
                     <td className="py-3.5 text-right">
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-red-50 dark:bg-[#1e293b] text-red-700 rounded-lg text-xs font-black tracking-tight">
-                        <ArrowUpRight className="w-3.5 h-3.5 text-red-600 shrink-0" />
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-red-50 dark:bg-[#1e293b] text-[#ff8a8a] border border-[#ff8a8a]/30 rounded-lg text-xs font-black tracking-tight">
+                        <ArrowUpRight className="w-3.5 h-3.5 text-[#ff8a8a] shrink-0" />
                         +{item.percentIncrease.toFixed(1)}%
                       </span>
                     </td>
