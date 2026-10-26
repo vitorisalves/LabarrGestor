@@ -82,7 +82,7 @@ export const useExcel = (suppliers: Supplier[], importSuppliersAddOnly: (batch: 
             }
           }
           
-          const pCat = findVal(row, ['Categoria', 'Grupo', 'Seção']) || 'Fornecedor';
+          const pCat = findVal(row, ['Categoria', 'Grupo', 'Seção']) || '';
           const pLastDate = findVal(row, ['Ultima Data Compra', 'Data Compra', 'Última Data', 'Data', 'Data de Compra', 'Ult. Compra', 'Compra', 'Dt Compra']) || "";
           const pPayMethod = findVal(row, ['Forma de Pagamento', 'Pagamento', 'Pagto', 'Forma Pagto', 'Meio de Pagamento', 'Tipo de Pagamento', 'Condicao', 'Condição de Pagamento']) || "";
 
@@ -170,7 +170,7 @@ export const useExcel = (suppliers: Supplier[], importSuppliersAddOnly: (batch: 
         const sPhone = findVal(row, ['Telefone', 'WhatsApp', 'Celular', 'Contato']) || '';
         const pName = findVal(row, ['Produto', 'Nome', 'Nome do Produto', 'Descrição', 'Item']);
         const rawPrice = findVal(row, ['Valor Unitário', 'Preço Unitário', 'Preço', 'Valor', 'Preço de Custo', 'Custo']);
-        const category = findVal(row, ['Categoria', 'Grupo', 'Seção']) || 'Fornecedor';
+        const category = findVal(row, ['Categoria', 'Grupo', 'Seção']) || '';
         const lastPurchaseDate = findVal(row, ['Ultima Data Compra', 'Data Compra', 'Última Data', 'Data', 'Data de Compra', 'Ult. Compra', 'Compra', 'Dt Compra']) || "";
         const paymentMethod = findVal(row, ['Forma de Pagamento', 'Pagamento', 'Pagto', 'Forma Pagto', 'Meio de Pagamento', 'Tipo de Pagamento', 'Condicao', 'Condição de Pagamento']) || "";
 

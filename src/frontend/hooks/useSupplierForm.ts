@@ -57,7 +57,7 @@ export const useSupplierForm = (
                     name: formState.productName.trim(),
                     code: formState.productCode.trim(),
                     price: parsePrice(formState.productPrice),
-                    categories: formState.productCategories.length > 0 ? formState.productCategories : ['Fornecedor'],
+                    categories: formState.productCategories.length > 0 ? formState.productCategories : [],
                     lastPurchaseDate: formState.productLastPurchaseDate.trim(),
                     paymentMethod: formState.productPaymentMethod.trim()
                 };
@@ -68,7 +68,7 @@ export const useSupplierForm = (
                     name: formState.productName.trim(),
                     code: formState.productCode.trim(),
                     price: parsePrice(formState.productPrice),
-                    categories: formState.productCategories.length > 0 ? formState.productCategories : ['Fornecedor'],
+                    categories: formState.productCategories.length > 0 ? formState.productCategories : [],
                     lastPurchaseDate: formState.productLastPurchaseDate.trim(),
                     paymentMethod: formState.productPaymentMethod.trim()
                 };
@@ -153,7 +153,7 @@ export const useSupplierForm = (
                     name: formState.productName.trim(),
                     code: formState.productCode.trim(),
                     price: parsePrice(formState.productPrice),
-                    categories: formState.productCategories.length > 0 ? formState.productCategories : ['Fornecedor'],
+                    categories: formState.productCategories.length > 0 ? formState.productCategories : [],
                     lastPurchaseDate: formState.productLastPurchaseDate.trim(),
                     paymentMethod: formState.productPaymentMethod.trim()
                 };

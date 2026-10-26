@@ -6,7 +6,6 @@ import { recordAudit } from "../audit.js";
 import { Identity } from "../auth/identity.js";
 import { mergeSuppliersAddOnly } from "../../shared/supplierMerge.js";
 import { parsePrice, validateItems } from "../validation.js";
-import { stripCategory, stripCategoryFromSupplier, LEGACY_DEFAULT_CATEGORY } from "../services/categoryCleanup.js";
 import { internalErrorMessage } from "../errors.js";
 import { asyncHandler, applyPagination, handleCacheAndEtag, auditActor } from "../http.js";
 
@@ -297,51 +296,6 @@ async function updateSingleInvoiceItem(invKey: string, productIndex: number, ide
   }
   return false;
 }
-
-// Manutenção (só admin): tira o antigo padrão "Ingredientes" dos produtos dos fornecedores e dos itens
-// pendentes, que passam a ficar sem categoria. Sem "apply: true" só conta o que mudaria.
-// Não mexe se "Ingredientes" for uma categoria cadastrada nas Configurações.
-app.post("/api/xml/maintenance/clear-default-category", asyncHandler(async (req: Request, res: Response) => {
-  const apply = req.body?.apply === true;
-  const catSnap = await repo.getDocs('categories', 'categories', true);
-  const registered = catSnap.docs.some((doc: any) => {
-    const d = typeof doc.data === 'function' ? doc.data() : doc.data;
-    return String(d?.name ?? '').trim().toLowerCase() === LEGACY_DEFAULT_CATEGORY.toLowerCase();
-  });
-  if (registered) {
-    return res.json({ status: "skipped", reason: `"${LEGACY_DEFAULT_CATEGORY}" é uma categoria cadastrada nas Configurações.`, applied: false });
-  }
-
-  let supplierProducts = 0;
-  const suppSnap = await repo.getDocs('suppliers', 'suppliers', true);
-  for (const doc of suppSnap.docs) {
-    const d: any = typeof doc.data === 'function' ? doc.data() : doc.data;
-    const { supplier, changed } = stripCategoryFromSupplier({ id: doc.id, ...d }, LEGACY_DEFAULT_CATEGORY);
-    if (!changed) continue;
-    supplierProducts += changed;
-    if (apply) {
-      const { id: _id, ...rest } = supplier;
-      await repo.set(repo.doc('suppliers', doc.id), rest, 'suppliers/' + doc.id);
-    }
-  }
-
-  let pendingItems = 0;
-  const pendSnap = await repo.getDocs('pending_list_products', 'pending_list_products', true);
-  for (const doc of pendSnap.docs) {
-    const d: any = typeof doc.data === 'function' ? doc.data() : doc.data;
-    const stripped = stripCategory(d, LEGACY_DEFAULT_CATEGORY);
-    if (!stripped) continue;
-    pendingItems++;
-    if (apply) await repo.set(repo.doc('pending_list_products', doc.id), stripped, 'pending_list_products/' + doc.id);
-  }
-
-  if (apply) {
-    repo.invalidateCache('suppliers');
-    repo.invalidateCache('pending_list_products');
-    await recordAudit(repo, { action: 'category.clear_default', actor: auditActor(res), target: 'suppliers', meta: { supplierProducts, pendingItems } });
-  }
-  res.json({ status: "success", applied: apply, supplierProducts, pendingItems });
-}));
 
 app.post("/api/xml/products/update-category", asyncHandler(async (req: Request, res: Response) => {
   const { code, name, category } = req.body;

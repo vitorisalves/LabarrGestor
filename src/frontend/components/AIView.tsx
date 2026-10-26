@@ -224,7 +224,7 @@ export const AIView: React.FC<AIViewProps> = ({
             selectedContext,
             selectedSupplierId,
             newSupplierName,
-            selectedCategories: matchedProduct ? getProductCategories(matchedProduct) : (categories.length > 0 ? [categories[0]] : ['Fornecedor'])
+            selectedCategories: matchedProduct ? getProductCategories(matchedProduct) : []
           };
         });
 
@@ -312,7 +312,7 @@ export const AIView: React.FC<AIViewProps> = ({
             s.products.push({
               name: res.extracted.name,
               price: res.extracted.price,
-              categories: res.selectedCategories && res.selectedCategories.length > 0 ? res.selectedCategories : ['Fornecedor'],
+              categories: res.selectedCategories && res.selectedCategories.length > 0 ? res.selectedCategories : [],
               lastPurchaseDate: res.extracted.lastPurchaseDate,
               paymentMethod: res.extracted.paymentMethod,
               code: ''
@@ -333,7 +333,7 @@ export const AIView: React.FC<AIViewProps> = ({
             s.products.push({
               name: res.extracted.name,
               price: res.extracted.price,
-              categories: res.selectedCategories && res.selectedCategories.length > 0 ? res.selectedCategories : ['Fornecedor'],
+              categories: res.selectedCategories && res.selectedCategories.length > 0 ? res.selectedCategories : [],
               lastPurchaseDate: res.extracted.lastPurchaseDate,
               paymentMethod: res.extracted.paymentMethod,
               code: ''

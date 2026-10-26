@@ -66,7 +66,7 @@ export class ExcelService {
       const sPhone = findVal(row, ['Telefone', 'WhatsApp', 'Celular']) || '';
       const pName = findVal(row, ['Produto', 'Nome', 'Descrição', 'Item']);
       const rawPrice = findVal(row, ['Valor Unitário', 'Preço Unitário', 'Preço', 'Custo']);
-      const category = findVal(row, ['Categoria', 'Grupo']) || 'Fornecedores';
+      const category = findVal(row, ['Categoria', 'Grupo']) || '';
       const lastPurchaseDate = findVal(row, ['Ultima Data Compra', 'Data Compra', 'Última Data', 'Data', 'Data de Compra', 'Ult. Compra', 'Compra', 'Dt Compra']) || "";
       const paymentMethod = findVal(row, ['Forma de Pagamento', 'Pagamento', 'Pagto', 'Forma Pagto', 'Meio de Pagamento', 'Tipo de Pagamento', 'Condicao', 'Condição de Pagamento']) || "";
 

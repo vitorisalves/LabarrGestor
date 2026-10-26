@@ -4,7 +4,6 @@ import { X, Settings, Package, Building2, Trash2, UserPlus, User, Check, Moon, S
 import { AuthorizedUser } from '../../types';
 import { PERMISSIONS } from '../../../shared/permissions';
 import { PriceSettingsSection } from '../prices/PriceSettingsSection';
-import { ClearDefaultCategoryTool } from './ClearDefaultCategoryTool';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -149,7 +148,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         </div>
                       ))}
                     </div>
-                    {isAdmin && <ClearDefaultCategoryTool />}
                   </section>
 
                   {/* Setores */}
