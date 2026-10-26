@@ -94,14 +94,13 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
 
   // `categories` is expected to already be the full, deduplicated set (user categories
   // plus the standard defaults) as computed once in App.tsx, so every purchase-category
-  // picker in the app offers the same options. Fall back to the 5 defaults if the caller
-  // passes nothing, so this component still works standalone.
+  // picker in the app offers the same options. Empty if the caller
+  // passes nothing (no built-in categories).
   const availableCategories = React.useMemo(() => {
-    const defaults = ['Ingredientes', 'Embalagens', 'Limpeza', 'Escritório', 'Fornecedor'];
     if (categories && Array.isArray(categories) && categories.length > 0) {
       return Array.from(new Set(categories.filter(Boolean)));
     }
-    return defaults;
+    return [];
   }, [categories]);
 
   // --- HOOK PARA IMPORTAÇÃO DE XML ---

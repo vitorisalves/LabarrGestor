@@ -46,8 +46,8 @@ export function buildConfirmedSpending(it: Record<string, any>, now: Date): Reco
       price,
       quantity,
       vProd: total,
-      category: it.category || 'Outros',
-      categoryId: it.category || 'Outros',
+      category: it.category || 'Sem Categoria',
+      categoryId: it.category || 'Sem Categoria',
       setor: it.setor || ''
     }]
   };

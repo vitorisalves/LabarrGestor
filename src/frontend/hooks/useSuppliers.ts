@@ -14,7 +14,7 @@ export const useSuppliers = (isAuthReady: boolean, isApproved: boolean) => {
   });
   const [categories, setCategories] = useState<string[]>(() => {
     const cached = localStorage.getItem('cache_categories');
-    return cached ? JSON.parse(cached) : ['Embalagens', 'Ingredientes', 'Limpeza', 'Escritório', 'Fornecedor'];
+    return cached ? JSON.parse(cached) : [];
   });
   const [setores, setSetores] = useState<string[]>(() => {
     const cached = localStorage.getItem('cache_setores');

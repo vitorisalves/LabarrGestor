@@ -161,7 +161,7 @@ export function useXmlImport(
         associatedSupplierName,
         associatedProductCode,
         targetType: 'suppliers' as const,
-        targetCategories: matched ? getProductCategories(matched.product) : ['Ingredientes']
+        targetCategories: matched ? getProductCategories(matched.product) : []
       };
     });
   }, [findExactMatch]);
@@ -388,7 +388,7 @@ export function useXmlImport(
             code: row.cProd || `XML_${row.nfeKey.substring(0, 4)}_${row.id.substring(0, 4)}`,
             name: row.xProd,
             price: newPrice,
-            categories: row.targetCategories.length > 0 ? row.targetCategories : ['Ingredientes'],
+            categories: row.targetCategories.length > 0 ? row.targetCategories : [],
             lastPurchaseDate: newDate
           };
 

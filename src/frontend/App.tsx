@@ -302,8 +302,8 @@ export default function App() {
           supplierName,
           quantity: item.quantity || 1,
           price: (item.estimate && item.estimate.lastPrice > 0 ? item.estimate.lastPrice : item.price) || 0, // último preço pago, não a estimativa
-          // Categoria que o produto já tem no cadastro (senão o padrão antigo).
-          category: supplierForDate?.products.find(p => p.name === productName)?.categories?.[0] || 'Ingredientes',
+          // Categoria que o produto já tem no cadastro; sem ela, fica sem categoria.
+          category: supplierForDate?.products.find(p => p.name === productName)?.categories?.[0] || '',
           setor: (item as any).setor || '',
           hasNF: false,
           date: now.toISOString(),
