@@ -58,7 +58,7 @@ export const usePendingListProductsPanel = (
   };
 
   const handlePendingQuantityChange = async (id: string, newQuantity: number) => {
-    const qty = Math.max(1, newQuantity || 1);
+    const qty = newQuantity > 0 ? newQuantity : 1;
     const updated = pendingListProducts.map(p => p.id === id ? { ...p, quantity: qty } : p);
     setPendingListProducts(updated);
     const target = updated.find(p => p.id === id);

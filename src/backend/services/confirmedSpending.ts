@@ -19,7 +19,7 @@ export function confirmedSpendingId(it: { id?: unknown; confirmId?: unknown; dat
 export function buildConfirmedSpending(it: Record<string, any>, now: Date): Record<string, any> {
   const price = parsePrice(it.price, 'Preço');
   const quantity = parseQuantity(it.quantity, 'Quantidade');
-  const total = price * quantity;
+  const total = Math.round(price * quantity * 100) / 100; // quantidade fracionada: fecha em centavos
   const id = confirmedSpendingId(it);
   const dateStr = it.date || now.toISOString();
   const name = it.productName || 'Produto sem nome';

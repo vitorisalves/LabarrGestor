@@ -7,6 +7,29 @@ import React from 'react';
 import { ShoppingCart, CheckCircle2, Trash2 } from 'lucide-react';
 import { formatCurrency } from '../../utils';
 
+/** Quantidade editável: aceita apagar, vírgula ou ponto; vazio/inválido volta ao valor anterior ao sair do campo. */
+const QuantityInput: React.FC<{ value: number; onCommit: (n: number) => void }> = ({ value, onCommit }) => {
+  const [draft, setDraft] = React.useState<string | null>(null);
+  const commit = () => {
+    if (draft === null) return;
+    const n = parseFloat(draft.replace(',', '.'));
+    if (Number.isFinite(n) && n > 0 && n !== value) onCommit(n);
+    setDraft(null);
+  };
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      value={draft ?? String(value).replace('.', ',')}
+      onFocus={e => e.target.select()}
+      onChange={e => { if (/^[0-9]*[.,]?[0-9]*$/.test(e.target.value)) setDraft(e.target.value); }}
+      onBlur={commit}
+      onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') setDraft(null); }}
+      className="w-16 bg-white border border-slate-200 text-slate-800 font-bold rounded-lg px-2 py-1 text-xs outline-none focus:border-indigo-500 text-center"
+    />
+  );
+};
+
 interface PendingListProductsPanelProps {
   pendingListProducts: any[];
   isPendingLoading: boolean;
@@ -262,13 +285,9 @@ export const PendingListProductsPanel: React.FC<PendingListProductsPanelProps> =
                         <td className="p-3.5 text-slate-600 font-medium">{p.supplierName}</td>
                         <td className="p-3.5 text-slate-500 font-medium text-[11px]">{p.listName || 'Minhas Listas'}</td>
                         <td className="p-3.5 font-bold text-slate-800">
-                          <input
-                            type="number"
-                            min="1"
-                            step="1"
+                          <QuantityInput
                             value={p.quantity !== undefined ? p.quantity : 1}
-                            onChange={(e) => handlePendingQuantityChange(p.id, parseInt(e.target.value, 10) || 1)}
-                            className="w-16 bg-white border border-slate-200 text-slate-800 font-bold rounded-lg px-2 py-1 text-xs outline-none focus:border-indigo-500 text-center"
+                            onCommit={(n) => handlePendingQuantityChange(p.id, n)}
                           />
                         </td>
                         <td className="p-3.5">
