@@ -7,13 +7,13 @@ import React from 'react';
 import { ShoppingCart, CheckCircle2, Trash2 } from 'lucide-react';
 import { formatCurrency } from '../../utils';
 
-/** Quantidade editável: aceita apagar, vírgula ou ponto; vazio/inválido volta ao valor anterior ao sair do campo. */
-const QuantityInput: React.FC<{ value: number; onCommit: (n: number) => void }> = ({ value, onCommit }) => {
+/** Número editável: aceita apagar, vírgula ou ponto; vazio/inválido volta ao valor anterior ao sair do campo. */
+const QuantityInput: React.FC<{ value: number; onCommit: (n: number) => void; allowZero?: boolean; className?: string }> = ({ value, onCommit, allowZero, className = 'w-16 text-center' }) => {
   const [draft, setDraft] = React.useState<string | null>(null);
   const commit = () => {
     if (draft === null) return;
     const n = parseFloat(draft.replace(',', '.'));
-    if (Number.isFinite(n) && n > 0 && n !== value) onCommit(n);
+    if (Number.isFinite(n) && (allowZero ? n >= 0 : n > 0) && n !== value) onCommit(n);
     setDraft(null);
   };
   return (
@@ -25,7 +25,7 @@ const QuantityInput: React.FC<{ value: number; onCommit: (n: number) => void }> 
       onChange={e => { if (/^[0-9]*[.,]?[0-9]*$/.test(e.target.value)) setDraft(e.target.value); }}
       onBlur={commit}
       onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') setDraft(null); }}
-      className="w-16 bg-white border border-slate-200 text-slate-800 font-bold rounded-lg px-2 py-1 text-xs outline-none focus:border-indigo-500 text-center"
+      className={`${className} bg-white border border-slate-200 text-slate-800 font-bold rounded-lg px-2 py-1 text-xs outline-none focus:border-indigo-500`}
     />
   );
 };
@@ -291,12 +291,11 @@ export const PendingListProductsPanel: React.FC<PendingListProductsPanelProps> =
                           />
                         </td>
                         <td className="p-3.5">
-                          <input
-                            type="number"
-                            step="0.01"
-                            value={p.price !== undefined ? p.price : ''}
-                            onChange={(e) => handlePendingPriceChange(p.id, parseFloat(e.target.value) || 0)}
-                            className="w-28 bg-white border border-slate-200 text-slate-800 font-bold rounded-lg px-2.5 py-1 text-xs outline-none focus:border-indigo-500"
+                          <QuantityInput
+                            value={p.price !== undefined ? p.price : 0}
+                            allowZero
+                            className="w-28"
+                            onCommit={(n) => handlePendingPriceChange(p.id, n)}
                           />
                         </td>
                         <td className="p-3.5 font-black text-indigo-700">
