@@ -215,11 +215,11 @@ export default function App() {
     }
   }, [updateCartQuantity, cart, updateDeliveredQuantity]);
 
-  const handleToggleSavedListItemBought = React.useCallback(async (listId: string, productName: string, supplierName: string) => {
+  const handleToggleSavedListItemBought = React.useCallback(async (listId: string, productName: string, supplierName: string, itemId?: string) => {
     const list = savedLists.find(l => l.id === listId);
     if (!list) return;
 
-    const item = list.items.find(i => i.name === productName && i.supplierName === supplierName);
+    const item = list.items.find(i => i.name === productName && i.supplierName === supplierName && (i.itemId ?? undefined) === itemId);
     if (!item) return;
 
     // Se o item NÃO estava comprado, ele vai se tornar comprado agora (Check)
@@ -248,7 +248,7 @@ export default function App() {
       deliveryId: newDeliveryId,
       boughtAt: becomingBought ? now.toISOString() : undefined,
       previousLastPurchaseDate: becomingBought ? currentProductLastPurchaseDate : undefined
-    });
+    }, itemId);
 
     if (becomingBought) {
       const day = now.getDate().toString().padStart(2, '0');
@@ -293,7 +293,7 @@ export default function App() {
 
       // Send to pending_list_products for Dashboard confirmation
       try {
-        const pendingId = `pending_${sanitizeForId(listId)}_${sanitizeForId(productName)}_${sanitizeForId(supplierName)}`;
+        const pendingId = `pending_${sanitizeForId(listId)}_${sanitizeForId(productName)}_${sanitizeForId(supplierName)}${itemId ? `_${sanitizeForId(itemId)}` : ''}`;
         const pendingItem = {
           id: pendingId,
           listId,
@@ -366,7 +366,7 @@ export default function App() {
 
       // Se desmarcou, remove da lista pendente do dashboard se ainda não foi confirmado
       try {
-        const pendingId = `pending_${sanitizeForId(listId)}_${sanitizeForId(productName)}_${sanitizeForId(supplierName)}`;
+        const pendingId = `pending_${sanitizeForId(listId)}_${sanitizeForId(productName)}_${sanitizeForId(supplierName)}${itemId ? `_${sanitizeForId(itemId)}` : ''}`;
         fetch('/api/xml/pending-list-products/delete', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

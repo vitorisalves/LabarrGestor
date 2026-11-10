@@ -38,7 +38,7 @@ interface HistoryViewProps {
   editSavedList: (list: SavedList) => void;
   deleteSavedList: (id: string) => void;
   deleteSavedListNow: (id: string) => void;
-  toggleSavedListItemBought: (listId: string, productName: string, supplierName: string) => void;
+  toggleSavedListItemBought: (listId: string, productName: string, supplierName: string, itemId?: string) => void;
   setActiveTargetList: (id: string | null, name: string | null) => void;
 }
 
@@ -49,7 +49,7 @@ const HistoryItemRow = React.memo(({
 }: { 
   listId: string; 
   item: any; 
-  onToggle: (listId: string, productName: string, supplierName: string) => void;
+  onToggle: (listId: string, productName: string, supplierName: string, itemId?: string) => void;
 }) => {
   return (
     <tr className={`group hover:bg-slate-50 transition-colors ${item.bought ? 'bg-slate-50/50' : ''}`}>
@@ -57,7 +57,7 @@ const HistoryItemRow = React.memo(({
         <button
           onClick={(e) => {
             e.stopPropagation();
-            onToggle(listId, item.name, item.supplierName);
+            onToggle(listId, item.name, item.supplierName, item.itemId);
           }}
           className={`w-7 h-7 rounded-lg border flex items-center justify-center transition-all ${
             item.bought 

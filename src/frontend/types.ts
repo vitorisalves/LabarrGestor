@@ -44,13 +44,15 @@ export interface CartItem extends Omit<Product, 'categories'> {
   supplierName: string;
   quantity: number;
   manualPrice?: ManualPriceInput | null;
+  /** Identifica a linha numa lista salva (o mesmo produto pode aparecer em mais de uma linha). */
+  itemId?: string;
 }
 
 export interface SavedList {
   id: string;
   name: string;
   date: string;
-  items: (Omit<Product, 'categories'> & { setor: string; supplierName: string; bought: boolean; quantity: number, deliveryId?: string, invoiceId?: string, boughtAt?: string, previousLastPurchaseDate?: string, estimate?: PriceEstimate })[];
+  items: (Omit<Product, 'categories'> & { setor: string; supplierName: string; bought: boolean; quantity: number, deliveryId?: string, invoiceId?: string, boughtAt?: string, previousLastPurchaseDate?: string, itemId?: string, estimate?: PriceEstimate })[];
   total: number;
   shippingFee: number;
   createdBy?: string;

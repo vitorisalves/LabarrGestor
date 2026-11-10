@@ -238,12 +238,12 @@ export const useCart = (
     return run;
   };
 
-  const toggleSavedListItemBought = async (listId: string, productName: string, supplierName: string, updates: Partial<{ bought: boolean; deliveryId?: string; invoiceId?: string; boughtAt?: string; previousLastPurchaseDate?: string }> = {}) => {
+  const toggleSavedListItemBought = async (listId: string, productName: string, supplierName: string, updates: Partial<{ bought: boolean; deliveryId?: string; invoiceId?: string; boughtAt?: string; previousLastPurchaseDate?: string }> = {}, itemId?: string) => {
     const list = savedLists.find(l => l.id === listId);
     if (!list) return;
 
     const updatedItems = list.items.map(item => {
-      if (item.name === productName && item.supplierName === supplierName) {
+      if (item.name === productName && item.supplierName === supplierName && (item.itemId ?? undefined) === itemId) {
         return { ...item, ...updates };
       }
       return item;
@@ -287,7 +287,8 @@ export const useCart = (
     if (!list) return;
 
     const { categories, ...productWithoutCategories } = product;
-    const existingItemIndex = list.items.findIndex(item => item.name === product.name && item.supplierName === supplierName);
+    // Só soma em linha ainda não marcada: produto já marcado (comprado) e adicionado de novo vira uma linha nova.
+    const existingItemIndex = list.items.findIndex(item => item.name === product.name && item.supplierName === supplierName && !item.bought);
     let updatedItems = [...list.items];
 
     if (existingItemIndex !== -1) {
@@ -301,7 +302,8 @@ export const useCart = (
         supplierName,
         quantity,
         bought: false,
-        setor
+        setor,
+        itemId: crypto.randomUUID()
       });
     }
 
