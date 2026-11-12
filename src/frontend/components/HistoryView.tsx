@@ -356,6 +356,14 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
                         <p className="text-sm font-black text-slate-600 tabular-nums tracking-tighter">{formatCurrency(list.shippingFee || 0)}</p>
                       </div>
                       <div className="flex flex-col items-end">
+                        <p className="text-[9px] font-bold text-green-600 uppercase tracking-widest mb-1">Já comprado</p>
+                        <p className="text-sm font-black text-green-700 tabular-nums tracking-tighter">{formatCurrency(list.items.filter(i => i.bought).reduce((acc, i) => acc + i.price * i.quantity, 0))}</p>
+                      </div>
+                      <div className="flex flex-col items-end">
+                        <p className="text-[9px] font-bold text-amber-600 uppercase tracking-widest mb-1">Falta comprar</p>
+                        <p className="text-sm font-black text-amber-700 tabular-nums tracking-tighter">{formatCurrency(list.items.filter(i => !i.bought).reduce((acc, i) => acc + i.price * i.quantity, 0))}</p>
+                      </div>
+                      <div className="flex flex-col items-end">
                         <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1">Total</p>
                         <p className="text-2xl font-black text-slate-800 tabular-nums tracking-tighter">{formatCurrency(list.total)}</p>
                       </div>
